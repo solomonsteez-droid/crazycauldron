@@ -125,6 +125,12 @@ export async function openPostgres(url: string): Promise<pg.Pool> {
       PRIMARY KEY (wallet, item_id)
     );
 
+    CREATE TABLE IF NOT EXISTS server_flags (
+      name       TEXT PRIMARY KEY,
+      value      TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS shop_purchases (
       signature TEXT PRIMARY KEY,
       wallet    TEXT NOT NULL REFERENCES players(wallet) ON DELETE CASCADE,
@@ -475,6 +481,22 @@ export class PostgresGameRepository implements GameRepository {
       cook: Number(r.cook),
       at: r.at,
     }));
+  }
+
+  async readFlag(name: string): Promise<string | null> {
+    const { rows } = await this.pool.query<{ value: string }>(
+      "SELECT value FROM server_flags WHERE name = $1",
+      [name],
+    );
+    return rows[0]?.value ?? null;
+  }
+
+  async writeFlag(name: string, value: string): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO server_flags (name, value, updated_at) VALUES ($1, $2, $3)
+       ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at`,
+      [name, value, new Date().toISOString()],
+    );
   }
 
   async topByChefXp(limit: number): Promise<LeaderboardEntry[]> {

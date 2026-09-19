@@ -7,6 +7,7 @@ import {
   type LeaderboardPayload,
 } from "@crazycauldron/shared";
 import { requireAuth } from "../auth/middleware.js";
+import { MAINTENANCE_MESSAGE, maintenanceOn } from "../maintenance.js";
 import { gameStore } from "../db/index.js";
 import { log } from "../logger.js";
 import { capacity, reserveSeat } from "./index.js";
@@ -19,6 +20,15 @@ export const matchmakeRouter = Router();
  * which keeps the hub/waiting decision on the server.
  */
 matchmakeRouter.post("/enter", requireAuth, async (req, res) => {
+  /*
+   * The door, not the server. /health stays up and anyone already playing
+   * stays playing; this only stops new arrivals walking into whatever is
+   * being fixed.
+   */
+  if (await maintenanceOn()) {
+    return res.status(503).json({ error: "maintenance", message: MAINTENANCE_MESSAGE });
+  }
+
   const claims = req.claims!;
   const header = req.header("authorization") ?? "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : header;

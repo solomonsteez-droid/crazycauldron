@@ -81,4 +81,14 @@ export interface GameRepository {
 
   /** What a wallet has bought, newest first. */
   purchasesOf(wallet: string): Promise<PurchaseRecord[]>;
+
+  /**
+   * A named switch, shared by every process.
+   *
+   * On Colyseus Cloud there are as many processes as cores, each with its own
+   * memory, and a switch that lives in one of them is a switch that half the
+   * players never see. The database is the one thing all of them agree on.
+   */
+  readFlag(name: string): Promise<string | null>;
+  writeFlag(name: string, value: string): Promise<void>;
 }

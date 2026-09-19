@@ -78,3 +78,5 @@ export const LEADERBOARD_SIZE = 20;
 /** Reason codes sent with MSG_KICK / join errors so the UI can explain itself. */
 export const KICK_INSUFFICIENT_HOLD = "insufficient_hold";
 export const KICK_AUTH_EXPIRED = "auth_expired";
+/** Entry is closed while something is being fixed. Nobody has done anything wrong. */
+export const KICK_MAINTENANCE = "maintenance";

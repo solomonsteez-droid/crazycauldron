@@ -2,6 +2,7 @@ import type Phaser from "phaser";
 import {
   KICK_AUTH_EXPIRED,
   KICK_INSUFFICIENT_HOLD,
+  KICK_MAINTENANCE,
   ROOM_HUB,
 } from "@crazycauldron/shared";
 import { ApiError, enterWorld } from "../net/api.js";
@@ -45,6 +46,9 @@ export function describeEnterFailure(err: unknown): string {
   if (message === KICK_AUTH_EXPIRED) {
     clearSession();
     return "Your session expired. Connect your wallet again.";
+  }
+  if (message === KICK_MAINTENANCE) {
+    return "The cauldron is closed for a few minutes while we fix something. Please try again shortly.";
   }
   return message || "Could not reach the cauldron.";
 }

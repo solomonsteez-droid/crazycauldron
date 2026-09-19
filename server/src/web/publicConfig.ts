@@ -12,10 +12,11 @@
 
 import { Router } from "express";
 import { config } from "../config.js";
+import { maintenanceOn } from "../maintenance.js";
 
 export const publicRouter = Router();
 
-publicRouter.get("/config", (_req, res) => {
+publicRouter.get("/config", async (_req, res) => {
   // A minute of caching: enough that a page refresh is free, short enough that
   // a corrected address reaches everyone within the minute.
   res.setHeader("Cache-Control", "public, max-age=60");
@@ -28,6 +29,8 @@ publicRouter.get("/config", (_req, res) => {
       telegram: config.socialTelegram,
     },
     shopEnabled: config.shopEnabled,
-    maintenance: false,
+    // So the login screen can say the door is shut before somebody connects a
+    // wallet and is turned away by it.
+    maintenance: await maintenanceOn(),
   });
 });

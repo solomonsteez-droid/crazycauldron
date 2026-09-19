@@ -78,6 +78,12 @@ export function migrateGameTables(db: Database.Database) {
       PRIMARY KEY (wallet, item_id)
     );
 
+    CREATE TABLE IF NOT EXISTS server_flags (
+      name       TEXT PRIMARY KEY,
+      value      TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS shop_purchases (
       signature TEXT PRIMARY KEY,
       wallet    TEXT NOT NULL REFERENCES players(wallet) ON DELETE CASCADE,
@@ -376,6 +382,22 @@ export class SqliteGameRepository implements GameRepository {
       cook: r.cook,
       at: r.at,
     }));
+  }
+
+  async readFlag(name: string): Promise<string | null> {
+    const row = this.db
+      .prepare<[string], { value: string }>("SELECT value FROM server_flags WHERE name = ?")
+      .get(name);
+    return row?.value ?? null;
+  }
+
+  async writeFlag(name: string, value: string): Promise<void> {
+    this.db
+      .prepare(
+        `INSERT INTO server_flags (name, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(name) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+      )
+      .run(name, value, new Date().toISOString());
   }
 
   async topByChefXp(limit: number): Promise<LeaderboardEntry[]> {
