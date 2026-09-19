@@ -19,7 +19,13 @@ import {
   MSG_MOVE,
   MSG_NODES,
   MSG_PROFILE,
+  MSG_ATE,
+  MSG_BOUGHT,
+  MSG_BUY,
+  MSG_EAT,
   MSG_REJECTED,
+  MSG_SELL,
+  MSG_SOLD,
   MSG_TRAVEL,
   findSection,
   isAdjacentOrOn,
@@ -32,7 +38,10 @@ import {
   type MoveIntent,
   type NodesPayload,
   type ProfilePayload,
+  type AtePayload,
+  type BoughtPayload,
   type RejectedPayload,
+  type SoldPayload,
   type TilePos,
 } from "@crazycauldron/shared";
 import { fetchCapacity } from "../net/api.js";
@@ -43,7 +52,24 @@ import type { HubStateView, KickNotice, PlayerView } from "../net/state.js";
 import { clearSession, type Session } from "../net/session.js";
 import { Hud } from "../ui/hud.js";
 import { openKitchen, runHeatBar, runPrep, showCookResult, type KitchenCallbacks } from "../ui/cooking.js";
-import { showPanel, showProgress, toast, type ModalHandle, type ProgressHandle } from "../ui/overlay.js";
+import {
+  Dock,
+  openCodex,
+  openInventory,
+  openLeaderboard,
+  openShop,
+  openSkills,
+  openTavern,
+  type PanelCallbacks,
+} from "../ui/panels.js";
+import {
+  showPanel,
+  showProgress,
+  toast,
+  uiRoot,
+  type ModalHandle,
+  type ProgressHandle,
+} from "../ui/overlay.js";
 import { SCENE_HUB, SCENE_LOGIN } from "./keys.js";
 
 interface HubSceneData {
@@ -84,6 +110,7 @@ export class HubScene extends Phaser.Scene {
   private pendingStation: string | null = null;
   private progress: ProgressHandle | null = null;
   private cookModal: ModalHandle | null = null;
+  private dock!: Dock;
   private cooldownTimer?: Phaser.Time.TimerEvent;
 
   constructor() {
@@ -114,6 +141,13 @@ export class HubScene extends Phaser.Scene {
     void fetchCapacity()
       .then((capacity) => this.hud.update({ hubMax: capacity.hubMax }))
       .catch(() => undefined);
+
+    this.dock = new Dock(uiRoot(), {
+      inventory: () => openInventory(this.panelCallbacks()),
+      skills: () => openSkills(),
+      codex: () => openCodex(),
+      leaderboard: () => openLeaderboard(this.session.wallet),
+    });
 
     this.bindState();
     this.bindInput();
@@ -320,13 +354,19 @@ export class HubScene extends Phaser.Scene {
     };
   }
 
+  /** Selling, eating and buying all report back through here. */
+  private panelCallbacks(): PanelCallbacks {
+    return {
+      onEat: (stackKey) => this.room.send(MSG_EAT, { stackKey }),
+      onSell: (stackKey, qty) => this.room.send(MSG_SELL, { stackKey, qty }),
+      onBuy: (kind, tier) => this.room.send(MSG_BUY, { kind, tier }),
+    };
+  }
+
   private openStation(id: string) {
-    if (id === "kitchen") {
-      this.cookModal = openKitchen(this.kitchenCallbacks());
-      return;
-    }
-    // The tavern and outfitter arrive with the economy panels.
-    toast("Nothing to do here yet.");
+    if (id === "kitchen") this.cookModal = openKitchen(this.kitchenCallbacks());
+    else if (id === "tavern") openTavern(this.panelCallbacks());
+    else if (id === "outfitter") openShop(this.panelCallbacks());
   }
 
   private bindCooking() {
@@ -345,13 +385,27 @@ export class HubScene extends Phaser.Scene {
       this.cookModal?.close();
       this.cookModal = showCookResult(result, gameStore.profile);
     });
+
+    this.room.onMessage(MSG_SOLD, (sold: SoldPayload) => {
+      toast(`Sold ${sold.qty} x ${sold.name} for ${sold.coins}c · ${sold.totalCoins} coins`);
+    });
+
+    this.room.onMessage(MSG_ATE, (ate: AtePayload) => {
+      const minutes = Math.round((ate.buffExpiresAt - gameStore.serverNow()) / 60000);
+      toast(`Ate ${ate.name}. +${ate.gatherSpeedPct}% gathering for ${minutes} minutes.`);
+    });
+
+    this.room.onMessage(MSG_BOUGHT, (bought: BoughtPayload) => {
+      toast(`Bought the ${bought.name} for ${bought.coins}c · ${bought.totalCoins} coins left`);
+    });
   }
 
   /** Redraws node sprites from whatever the server last said about them. */
   private refreshNodes() {
     if (this.currentSection === HUB_MAP) return;
     for (const node of gameStore.nodes(this.currentSection)) {
-      this.map.setNodeReady(node.id, node.readyAt === 0, node.available);
+      const seconds = gameStore.cooldownSeconds(this.currentSection, node.id);
+      this.map.setNodeReady(node.id, seconds === 0, node.available, seconds);
     }
   }
 
@@ -492,6 +546,7 @@ export class HubScene extends Phaser.Scene {
     this.cooldownTimer?.remove();
     this.progress?.done();
     this.cookModal?.close();
+    this.dock?.destroy();
     for (const sessionId of [...this.avatars.keys()]) this.removeAvatar(sessionId);
     this.hud.destroy();
     if (!this.departing) {

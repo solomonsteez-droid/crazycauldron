@@ -46,6 +46,7 @@ export class GameMap {
   readonly floor: Phaser.GameObjects.RenderTexture;
   readonly features: MapFeature[] = [];
   private readonly nodeSprites = new Map<string, Phaser.GameObjects.Image>();
+  private readonly nodeLabels = new Map<string, Phaser.GameObjects.Text>();
   private readonly decorations: Phaser.GameObjects.GameObject[] = [];
 
   constructor(
@@ -141,6 +142,7 @@ export class GameMap {
     for (const node of section.nodes) {
       const sprite = this.addNode(node, section.accentColor);
       this.nodeSprites.set(node.id, sprite);
+      this.nodeLabels.set(node.id, this.addNodeLabel(node));
       this.features.push({
         kind: "node",
         id: node.id,
@@ -159,6 +161,18 @@ export class GameMap {
       .setTint(Phaser.Display.Color.HexStringToColor(accent).color);
     this.decorations.push(sprite);
     return sprite;
+  }
+
+  /** Regrowth countdown, drawn above a spent node. */
+  private addNodeLabel(node: GatherNodeDef): Phaser.GameObjects.Text {
+    const at = this.tileCentre(node.tileX, node.tileY);
+    const text = this.scene.add
+      .text(at.x, at.y - 22, "", { fontFamily: "monospace", fontSize: "7px", color: "#9a8f7a" })
+      .setOrigin(0.5, 1)
+      .setResolution(3)
+      .setDepth(node.tileX + node.tileY + 1);
+    this.decorations.push(text);
+    return text;
   }
 
   private addMarker(texture: string, tileX: number, tileY: number, label: string, colour: string) {
@@ -182,11 +196,16 @@ export class GameMap {
    * Nodes on cooldown are drawn spent and dimmed. The timers themselves live on
    * the server; this only reflects what it last said.
    */
-  setNodeReady(nodeId: string, ready: boolean, available: boolean) {
+  setNodeReady(nodeId: string, ready: boolean, available: boolean, cooldownSeconds = 0) {
     const sprite = this.nodeSprites.get(nodeId);
     if (!sprite) return;
     sprite.setTexture(ready ? TEX_NODE : TEX_NODE_SPENT);
     sprite.setAlpha(available ? (ready ? 1 : 0.45) : 0.15);
+
+    const label = this.nodeLabels.get(nodeId);
+    if (!label) return;
+    if (!available) label.setText("locked");
+    else label.setText(cooldownSeconds > 0 ? `${cooldownSeconds}s` : "");
   }
 
   /** The feature on a tile, so a click can mean "gather" or "enter" not "walk". */
@@ -226,6 +245,7 @@ export class GameMap {
     for (const decoration of this.decorations) decoration.destroy();
     this.decorations.length = 0;
     this.nodeSprites.clear();
+    this.nodeLabels.clear();
     this.features.length = 0;
     this.floor.destroy();
   }
