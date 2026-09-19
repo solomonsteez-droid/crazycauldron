@@ -87,7 +87,7 @@ function devAlign(): Plugin {
           void (async () => {
             try {
               const body = (await readJson(req)) as { kind?: string; id?: string; png?: string };
-              const kind = body.kind === "hats" || body.kind === "aprons" ? body.kind : null;
+              const kind = body.kind === "hats" || body.kind === "cloaks" ? body.kind : null;
               const id = String(body.id ?? "");
               const png = String(body.png ?? "");
               if (!kind || !SAFE_ID.test(id)) throw new Error("bad kind or id");
