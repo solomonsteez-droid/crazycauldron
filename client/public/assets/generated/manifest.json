@@ -1,0 +1,215 @@
+{
+  "generatedAt": "2026-09-19T07:18:41.696Z",
+  "bodyFrame": {
+    "width": 32,
+    "height": 48
+  },
+  "bodies": {
+    "male": {
+      "scale": 0.0547945205479452,
+      "frames": [
+        "male_idle_down",
+        "male_idle_up",
+        "male_idle_left",
+        "male_idle_right",
+        "male_walk_down_0",
+        "male_walk_down_1",
+        "male_walk_down_2",
+        "male_walk_down_3",
+        "male_walk_up_0",
+        "male_walk_up_1",
+        "male_walk_up_2",
+        "male_walk_up_3",
+        "male_walk_left_0",
+        "male_walk_left_1",
+        "male_walk_left_2",
+        "male_walk_left_3",
+        "male_walk_right_0",
+        "male_walk_right_1",
+        "male_walk_right_2",
+        "male_walk_right_3"
+      ]
+    },
+    "female": {
+      "scale": 0.05491990846681922,
+      "frames": [
+        "female_idle_down",
+        "female_idle_up",
+        "female_idle_left",
+        "female_idle_right",
+        "female_walk_down_0",
+        "female_walk_down_1",
+        "female_walk_down_2",
+        "female_walk_down_3",
+        "female_walk_up_0",
+        "female_walk_up_1",
+        "female_walk_up_2",
+        "female_walk_up_3",
+        "female_walk_left_0",
+        "female_walk_left_1",
+        "female_walk_left_2",
+        "female_walk_left_3",
+        "female_walk_right_0",
+        "female_walk_right_1",
+        "female_walk_right_2",
+        "female_walk_right_3"
+      ]
+    }
+  },
+  "hats": [
+    {
+      "id": "hat_01_chef",
+      "width": 82,
+      "height": 28,
+      "offset": {
+        "x": 1,
+        "y": -2
+      }
+    },
+    {
+      "id": "hat_02_straw",
+      "width": 85,
+      "height": 28,
+      "offset": {
+        "x": -1,
+        "y": -2
+      }
+    },
+    {
+      "id": "hat_03_mushroom",
+      "width": 50,
+      "height": 28,
+      "offset": {
+        "x": 11,
+        "y": -2
+      }
+    },
+    {
+      "id": "hat_04_acorn",
+      "width": 59,
+      "height": 28,
+      "offset": {
+        "x": 11,
+        "y": -2
+      }
+    },
+    {
+      "id": "hat_05_circlet",
+      "width": 84,
+      "height": 28,
+      "offset": {
+        "x": -16,
+        "y": -2
+      }
+    },
+    {
+      "id": "hat_06_dragonscale",
+      "width": 54,
+      "height": 40,
+      "offset": {
+        "x": 12,
+        "y": -14
+      }
+    },
+    {
+      "id": "hat_07_moonpetal",
+      "width": 61,
+      "height": 40,
+      "offset": {
+        "x": 10,
+        "y": -14
+      }
+    },
+    {
+      "id": "hat_08_bronze",
+      "width": 59,
+      "height": 28,
+      "offset": {
+        "x": 12,
+        "y": -2
+      }
+    },
+    {
+      "id": "hat_09_gold",
+      "width": 51,
+      "height": 28,
+      "offset": {
+        "x": 3,
+        "y": -2
+      }
+    }
+  ],
+  "aprons": [
+    {
+      "id": "apron_01_linen",
+      "width": 55,
+      "height": 86,
+      "offset": {
+        "x": 1,
+        "y": 21
+      }
+    },
+    {
+      "id": "apron_02_patched",
+      "width": 50,
+      "height": 90,
+      "offset": {
+        "x": 2,
+        "y": 21
+      }
+    },
+    {
+      "id": "apron_03_berry",
+      "width": 50,
+      "height": 90,
+      "offset": {
+        "x": 6,
+        "y": 21
+      }
+    },
+    {
+      "id": "apron_04_rugged",
+      "width": 39,
+      "height": 90,
+      "offset": {
+        "x": 2,
+        "y": 21
+      }
+    },
+    {
+      "id": "apron_05_midnight",
+      "width": 46,
+      "height": 85,
+      "offset": {
+        "x": 4,
+        "y": 21
+      }
+    },
+    {
+      "id": "apron_06_silver",
+      "width": 32,
+      "height": 70,
+      "offset": {
+        "x": 5,
+        "y": 21
+      }
+    },
+    {
+      "id": "apron_07_gold",
+      "width": 32,
+      "height": 70,
+      "offset": {
+        "x": 5,
+        "y": 21
+      }
+    }
+  ],
+  "props": [],
+  "optional": {
+    "ingredients": [],
+    "dishes": [],
+    "nodes": [],
+    "ui": [],
+    "effects": []
+  }
+}
