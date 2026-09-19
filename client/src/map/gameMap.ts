@@ -18,7 +18,8 @@ import {
 import { LABEL_SCREEN_PX, MAP_WORLD_BOUNDS, SMALL_LABEL_SCREEN_PX, labelScale, type Rect } from "./camera.js";
 import { TEX_CAULDRON, TEX_GLOW, TEX_NODE, TEX_NODE_SPENT, TEX_TILE } from "./textures.js";
 import { PORTAL_PROP, STATION_PROP, propKey, terrainKey } from "../art/assets.js";
-import { loadArt, type TerrainEntry } from "../art/manifest.js";
+import { type TerrainEntry } from "../art/manifest.js";
+import { Effects } from "../world/effects.js";
 
 /**
  * Headroom above and below the logical grid.
@@ -297,6 +298,12 @@ export class GameMap {
     if (!label) return;
     if (!available) label.setText("locked");
     else label.setText(cooldownSeconds > 0 ? `${cooldownSeconds}s` : "");
+  }
+
+  /** A quick squash on a node that was just clicked, so the click lands. */
+  squashNode(nodeId: string) {
+    const sprite = this.nodeSprites.get(nodeId);
+    if (sprite) Effects.squash(this.scene, sprite);
   }
 
   /** The feature on a tile, so a click can mean "gather" or "enter" not "walk". */

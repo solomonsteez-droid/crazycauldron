@@ -16,6 +16,7 @@ import {
   type ProfilePayload,
   type Recipe,
 } from "@crazycauldron/shared";
+import { dishKey } from "../art/assets.js";
 import { gameStore } from "../net/game.js";
 import { openModal, type ModalHandle } from "./overlay.js";
 
@@ -247,17 +248,47 @@ const QUALITY_BLURB: Record<string, string> = {
   superb: "A perfect plate.",
 };
 
-export function showCookResult(result: CookResultPayload, profile: ProfilePayload | null): ModalHandle {
+/**
+ * The dish reveal card.
+ *
+ * The one moment in the loop that is purely a reward, so it gets the dish
+ * itself rather than a line of text: the sprite the pipeline produced, or the
+ * lettered placeholder standing in for it, with the quality glowing in its own
+ * colour and the XP and coins that were just earned.
+ */
+export function showCookResult(
+  result: CookResultPayload,
+  profile: ProfilePayload | null,
+  before: { coins: number; chefXp: number } | null,
+): ModalHandle {
   const recipe = RECIPES.find((r) => r.id === result.recipeId);
-  const modal = openModal(`${recipe?.name ?? result.recipeId} - ${result.quality}`, "cc-cook");
+  const modal = openModal(recipe?.name ?? result.recipeId, "cc-cook cc-reveal");
+
+  const card = document.createElement("div");
+  card.className = `cc-card cc-${result.quality}`;
+
+  // The dish art is a canvas so the same texture the world uses can be shown
+  // here, placeholder or not, without a second copy of it as an <img>.
+  const art = document.createElement("canvas");
+  art.className = "cc-card-art";
+  art.width = 64;
+  art.height = 64;
+  drawDish(art, result.recipeId);
+
+  const quality = document.createElement("strong");
+  quality.className = "cc-quality";
+  quality.textContent = result.quality.toUpperCase();
 
   const blurb = document.createElement("p");
   blurb.textContent = QUALITY_BLURB[result.quality] ?? "";
 
-  const xp = document.createElement("p");
-  xp.textContent = `+${result.chefXp} Chef XP · ${result.skillXp
-    .map((award) => `+${award.xp} ${award.skill}`)
-    .join(" · ")}`;
+  const gains = document.createElement("p");
+  gains.className = "cc-gains";
+  const coinGain = profile && before ? profile.coins - before.coins : 0;
+  gains.textContent = `+${result.chefXp} Chef XP` + (coinGain > 0 ? ` · +${coinGain} coins` : "");
+
+  const breakdown = document.createElement("small");
+  breakdown.textContent = result.skillXp.map((a) => `+${a.xp} ${a.skill}`).join(" · ");
 
   const note = document.createElement("p");
   note.className = "cc-error";
@@ -265,10 +296,32 @@ export function showCookResult(result: CookResultPayload, profile: ProfilePayloa
   else if (result.upgraded) note.textContent = "Your spicecraft lifted it a step.";
   note.hidden = !result.downgraded && !result.upgraded;
 
-  const coins = document.createElement("small");
-  coins.textContent = profile ? `${profile.coins} coins · Chef ${profile.chefLevel}` : "";
+  card.append(art, quality, blurb, gains, breakdown, note);
+  modal.body.append(card);
 
-  modal.body.append(blurb, xp, note, coins);
-  window.setTimeout(() => modal.close(), 3500);
+  window.setTimeout(() => modal.close(), 4000);
   return modal;
+}
+
+/** Copies the dish texture out of Phaser and onto the card. */
+function drawDish(canvas: HTMLCanvasElement, recipeId: string): void {
+  const context = canvas.getContext("2d");
+  const game = (window as unknown as { __ccGame?: Phaser.Game }).__ccGame;
+  if (!context || !game) return;
+
+  context.imageSmoothingEnabled = false;
+  const texture = game.textures.get(dishKey(recipeId));
+  const source = texture?.getSourceImage() as CanvasImageSource | undefined;
+  if (!source) return;
+
+  const w = (texture.source[0]?.width ?? 20) as number;
+  const h = (texture.source[0]?.height ?? 20) as number;
+  const scale = Math.max(1, Math.floor(Math.min(canvas.width / w, canvas.height / h)));
+  context.drawImage(
+    source,
+    Math.floor((canvas.width - w * scale) / 2),
+    Math.floor((canvas.height - h * scale) / 2),
+    w * scale,
+    h * scale,
+  );
 }

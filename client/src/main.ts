@@ -16,7 +16,7 @@ import { WaitingScene } from "./scenes/WaitingScene.js";
  * Cameras are not resized by the scale manager, so each scene listens for
  * RESIZE and re-lays-out itself.
  */
-new Phaser.Game({
+const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: "game",
   backgroundColor: "#14101a",
@@ -32,6 +32,13 @@ new Phaser.Game({
   },
   scene: [BootScene, LoginScene, HubScene, WaitingScene],
 });
+
+/*
+ * The reveal card draws the dish straight out of the texture manager, so it
+ * needs a handle on the game. One global beats threading a reference through
+ * every panel that might want to show an item.
+ */
+(window as unknown as { __ccGame?: Phaser.Game }).__ccGame = game;
 
 // The static "warming the cauldron" text is replaced the moment a scene draws
 // its own overlay; remove it so it cannot flash behind a panel.

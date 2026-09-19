@@ -295,6 +295,47 @@ const CSS = `
 .cc-silver { background: #c9d2dd; }
 .cc-gold { background: #f7d372; }
 
+/* Panels as parchment cards with a ribbon header. Placeholder 9-slice: a
+   flat parchment fill and a berry ribbon until real UI art lands. */
+.cc-modal {
+  background:
+    linear-gradient(rgba(232, 217, 176, 0.06), rgba(232, 217, 176, 0.02)),
+    rgba(20, 16, 26, 0.97);
+  border-color: #6b5b45;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(232, 217, 176, 0.08);
+}
+.cc-modal header {
+  background: linear-gradient(rgba(181, 72, 126, 0.30), rgba(181, 72, 126, 0.10));
+  border-bottom: 1px solid #6b5b45;
+  border-radius: 9px 9px 0 0;
+}
+.cc-modal h2 { color: #f3e9d2; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5); }
+
+/* Dish reveal card. */
+.cc-reveal .cc-modal-body { display: flex; justify-content: center; }
+.cc-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 14px 20px 16px;
+  text-align: center;
+  background: rgba(232, 217, 176, 0.10);
+  border: 1px solid #6b5b45;
+  border-radius: 8px;
+  min-width: 200px;
+}
+.cc-card-art { image-rendering: pixelated; margin-bottom: 4px; }
+.cc-quality {
+  font-size: 15px;
+  letter-spacing: 0.16em;
+}
+.cc-card.cc-common .cc-quality { color: #e8d9b0; text-shadow: 0 0 8px rgba(232, 217, 176, 0.55); }
+.cc-card.cc-fine .cc-quality { color: #f2b53b; text-shadow: 0 0 10px rgba(242, 181, 59, 0.75); }
+.cc-card.cc-superb .cc-quality { color: #b5487e; text-shadow: 0 0 14px rgba(181, 72, 126, 0.95); }
+.cc-gains { margin: 2px 0 0; color: #7ce08a; }
+.cc-card small { color: #9a8f7a; }
+
 .cc-toast {
   position: fixed;
   left: 50%;

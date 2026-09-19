@@ -51,6 +51,7 @@ import { fetchCapacity } from "../net/api.js";
 import { gameStore } from "../net/game.js";
 import { GameMap, type MapFeature } from "../map/gameMap.js";
 import { Avatar } from "../world/avatar.js";
+import { Effects } from "../world/effects.js";
 import { loadArt, type Direction, type Manifest, type OffsetsFile } from "../art/manifest.js";
 import { LABEL_SCREEN_PX, labelScale, planCamera } from "../map/camera.js";
 import { TEX_MARKER } from "../map/textures.js";
@@ -114,6 +115,12 @@ export class HubScene extends Phaser.Scene {
   private readonly avatars = new Map<string, AvatarEntry>();
   private manifest!: Manifest;
   private artOffsets!: OffsetsFile;
+  private fx!: Effects;
+  /** Coins and XP before the current cook, so the reveal card can show the gain. */
+  private beforeCook: { coins: number; chefXp: number } | null = null;
+  /** Chef level last seen, to notice a level-up. */
+  private lastChefLevel = 0;
+  private steamTimer?: Phaser.Time.TimerEvent;
   private departing = false;
   private currentSection = HUB_MAP;
   private pending: PendingAction | null = null;
@@ -144,6 +151,7 @@ export class HubScene extends Phaser.Scene {
     this.currentSection = HUB_MAP;
 
     this.cameras.main.setBackgroundColor("#101a14");
+    this.fx = new Effects(this);
     this.buildMap(HUB_MAP);
     this.layoutCamera();
 
@@ -185,6 +193,14 @@ export class HubScene extends Phaser.Scene {
       delay: 1000,
       loop: true,
       callback: () => this.refreshNodes(),
+    });
+
+    // A pot is always on at the kitchen. Slow enough to read as steam rather
+    // than smoke, and cheap enough to leave running.
+    this.steamTimer = this.time.addEvent({
+      delay: 420,
+      loop: true,
+      callback: () => this.steamOverKitchen(),
     });
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.teardown());
@@ -271,6 +287,8 @@ export class HubScene extends Phaser.Scene {
       tile: feature.tile,
     };
 
+    if (feature.kind === "node") this.map.squashNode(feature.id);
+
     if (this.isSelfNear(feature.tile)) {
       this.firePending();
       return;
@@ -330,6 +348,7 @@ export class HubScene extends Phaser.Scene {
 
     this.room.onMessage(MSG_PROFILE, (profile: ProfilePayload) => {
       gameStore.setProfile(profile);
+      this.checkLevelUp();
     });
 
     this.room.onMessage(MSG_NODES, (payload: NodesPayload) => {
@@ -382,7 +401,11 @@ export class HubScene extends Phaser.Scene {
   /** The callbacks every stage of the mini-game reports back through. */
   private kitchenCallbacks(): KitchenCallbacks {
     return {
-      onCook: (recipeId) => this.room.send(MSG_COOK_START, { recipeId }),
+      onCook: (recipeId) => {
+        const profile = gameStore.profile;
+        this.beforeCook = profile ? { coins: profile.coins, chefXp: profile.chefXp } : null;
+        this.room.send(MSG_COOK_START, { recipeId });
+      },
       onPrepDone: (cookId) => this.room.send(MSG_COOK_PREP, { cookId }),
       onStop: (cookId, elapsedMs) => this.room.send(MSG_COOK_STOP, { cookId, elapsedMs }),
       onCancel: () => this.room.send(MSG_COOK_CANCEL, {}),
@@ -418,11 +441,15 @@ export class HubScene extends Phaser.Scene {
     this.room.onMessage(MSG_HEAT_BAR, (payload: HeatBarPayload) => {
       this.cookModal?.close();
       this.cookModal = runHeatBar(payload, this.kitchenCallbacks());
+      this.startSizzle(payload.durationMs);
     });
 
     this.room.onMessage(MSG_COOK_RESULT, (result: CookResultPayload) => {
       this.cookModal?.close();
-      this.cookModal = showCookResult(result, gameStore.profile);
+      this.celebrateCook(result);
+      // The profile arrives just after this, so the card reads the gain from
+      // what was true before the cook rather than from a value already updated.
+      this.cookModal = showCookResult(result, gameStore.profile, this.beforeCook);
     });
 
     this.room.onMessage(MSG_SOLD, (sold: SoldPayload) => {
@@ -494,6 +521,65 @@ export class HubScene extends Phaser.Scene {
     const scale = labelScale(this.zoom);
     const resolution = Math.max(1, Math.ceil(this.zoom));
     for (const entry of this.avatars.values()) entry.avatar.setLabelScale(scale, resolution);
+  }
+
+  // --- feel ----------------------------------------------------------------
+
+  /** A puff over the kitchen, whenever the player can see it. */
+  private steamOverKitchen() {
+    if (this.currentSection !== HUB_MAP) return;
+    const kitchen = this.map.features.find((f) => f.id === "kitchen");
+    if (!kitchen) return;
+
+    const at = this.map.tileCentre(kitchen.tile.tileX, kitchen.tile.tileY);
+    this.fx.steam(at.x, at.y - 26, "common", kitchen.tile.tileX + kitchen.tile.tileY + 1);
+  }
+
+  /** Sparks off the pan while the heat bar runs. */
+  private startSizzle(durationMs: number) {
+    const kitchen = this.map.features.find((f) => f.id === "kitchen");
+    if (!kitchen) return;
+    const at = this.map.tileCentre(kitchen.tile.tileX, kitchen.tile.tileY);
+
+    const timer = this.time.addEvent({
+      delay: 90,
+      loop: true,
+      callback: () => this.fx.spark(at.x + Phaser.Math.Between(-6, 6), at.y - 20, 10000),
+    });
+    this.time.delayedCall(durationMs, () => timer.remove());
+  }
+
+  /** Steam in the dish's colour, then the knock and chime if it was Superb. */
+  private celebrateCook(result: CookResultPayload) {
+    const kitchen = this.map.features.find((f) => f.id === "kitchen");
+    if (kitchen) {
+      const at = this.map.tileCentre(kitchen.tile.tileX, kitchen.tile.tileY);
+      for (let i = 0; i < 6; i += 1) {
+        this.time.delayedCall(i * 110, () => this.fx.steam(at.x, at.y - 24, result.quality));
+      }
+    }
+
+    if (result.quality === "superb") {
+      this.fx.shake();
+      this.fx.chime();
+    }
+  }
+
+  /** A burst over the player whenever the Chef level ticks up. */
+  private checkLevelUp() {
+    const profile = gameStore.profile;
+    if (!profile) return;
+
+    if (this.lastChefLevel === 0) {
+      this.lastChefLevel = profile.chefLevel;
+      return;
+    }
+    if (profile.chefLevel <= this.lastChefLevel) return;
+
+    this.lastChefLevel = profile.chefLevel;
+    const self = this.avatars.get(this.room.sessionId)?.avatar;
+    if (self) this.fx.burst(self.container.x, self.container.y - 24);
+    toast(`Chef Level ${profile.chefLevel}.`);
   }
 
   /** Redraws node sprites from whatever the server last said about them. */
@@ -646,6 +732,7 @@ export class HubScene extends Phaser.Scene {
   private teardown() {
     this.input.removeAllListeners();
     this.cooldownTimer?.remove();
+    this.steamTimer?.remove();
     this.progress?.done();
     this.cookModal?.close();
     this.dock?.destroy();
