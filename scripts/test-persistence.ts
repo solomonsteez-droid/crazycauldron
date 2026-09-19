@@ -82,11 +82,22 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 let server: ChildProcess | null = null;
 
 async function startServer(label: string): Promise<void> {
+  /*
+   * Started from the server workspace, exactly as "npm run dev" does.
+   *
+   * Running "tsx server/src/index.ts" from the repo root instead picks up the
+   * root tsconfig, which does not set experimentalDecorators - and the Colyseus
+   * schema decorators then fail at import time with an error that has nothing
+   * to do with what is being tested.
+   */
   server = spawn(
     process.platform === "win32" ? "npx.cmd" : "npx",
-    ["tsx", "server/src/index.ts"],
+    ["tsx", "src/index.ts"],
     {
-      cwd: ROOT,
+      cwd: path.join(ROOT, "server"),
+      // Windows refuses to spawn a .cmd directly since Node 20; the shell is
+      // what resolves it. taskkill /T below then takes the whole tree.
+      shell: process.platform === "win32",
       env: {
         ...process.env,
         NODE_ENV: "development",
@@ -241,6 +252,16 @@ function beside(mapId: number, tile: TilePos): TilePos {
   return tile;
 }
 
+/** Polls until something becomes true, or gives up. */
+async function waitFor(predicate: () => boolean, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) return true;
+    await sleep(200);
+  }
+  return false;
+}
+
 async function walkTo(s: Seat, target: TilePos, timeoutMs = 25000): Promise<boolean> {
   s.room.send(MSG_MOVE, target);
   const deadline = Date.now() + timeoutMs;
@@ -325,7 +346,18 @@ async function main() {
       const at = bar.durationMs / 2;
       await sleep(at);
       player.room.send(MSG_COOK_STOP, { cookId: bar.cookId, elapsedMs: Math.round(at) });
-      await sleep(900);
+      /*
+       * Wait for the dish, not for a guess at how long it takes.
+       *
+       * Stopping the bar early does not end the cook early - the server
+       * resolves it on its own clock - and the result and the profile that
+       * follows are two separate messages. A fixed sleep either races them or
+       * makes the test slow for everybody.
+       */
+      await waitFor(
+        () => (player.profile()?.inventory ?? []).some((i) => i.kind === "dish"),
+        15000,
+      );
     }
     const dishes = player.profile()?.inventory.filter((s) => s.kind === "dish") ?? [];
     check("it cooked a dish", dishes.length > 0, dishes.map((s) => s.id).join(", "));

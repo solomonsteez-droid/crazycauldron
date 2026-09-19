@@ -9,6 +9,8 @@ import { config } from "./config.js";
 import { closeDatabase, databaseHealth } from "./db/index.js";
 import { log } from "./logger.js";
 import { snapshot } from "./metrics.js";
+import { alert, closeLog, logFile } from "./monitoring.js";
+import { startSchedules } from "./schedule.js";
 import { capacity } from "./matchmaking/index.js";
 import { matchmakeRouter } from "./matchmaking/routes.js";
 import { HubRoom } from "./rooms/HubRoom.js";
@@ -86,7 +88,12 @@ app.use("/play", matchmakeRouter);
 
 // Last-resort handler: log the detail, tell the client nothing useful.
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  log.error("http.unhandled", { message: err.message });
+  log.error("http.unhandled", { message: err.message, stack: err.stack });
+  void alert({
+    kind: "unhandled_error",
+    message: "An unhandled error reached the HTTP layer.",
+    detail: { error: err.message },
+  });
   res.status(500).json({ error: "internal_error", message: "Something went wrong." });
 });
 
@@ -103,16 +110,48 @@ log.info("server.listening", {
   hubMax: config.hubMaxPlayers,
   globalMax: config.globalMaxPlayers,
   bypassHold: config.testBypassHold,
+  logFile: logFile(),
+});
+
+const schedules = startSchedules();
+
+/*
+ * Nothing is allowed to die quietly.
+ *
+ * An unhandled rejection in a hot path is exactly the failure that gets
+ * noticed a week later in a support ticket, so both of these are logged with
+ * their stack and raise an alert. Neither exits: a single bad promise is not a
+ * reason to drop three hundred connected players.
+ */
+process.on("uncaughtException", (err: Error) => {
+  log.error("process.uncaught_exception", { message: err.message, stack: err.stack });
+  void alert({
+    kind: "unhandled_error",
+    message: "An uncaught exception reached the top of the process.",
+    detail: { error: err.message },
+  });
+});
+
+process.on("unhandledRejection", (reason: unknown) => {
+  const error = reason instanceof Error ? reason : new Error(String(reason));
+  log.error("process.unhandled_rejection", { message: error.message, stack: error.stack });
+  void alert({
+    kind: "unhandled_rejection",
+    message: "A promise rejected with nothing to catch it.",
+    detail: { error: error.message },
+  });
 });
 
 async function shutdown(signal: string) {
   log.info("server.shutdown", { signal });
+  schedules.stop();
   try {
     await gameServer.gracefullyShutdown(false);
   } catch (err) {
     log.error("server.shutdown_failed", { message: (err as Error).message });
   }
   closeDatabase();
+  closeLog();
   process.exit(0);
 }
 

@@ -35,11 +35,61 @@ const nodeEnv = str("NODE_ENV", "development");
 const isProduction = nodeEnv === "production";
 const testBypassHold = bool("TEST_BYPASS_HOLD", false);
 
-// Hard stop: the dev-only gate bypass must never be reachable in production.
-if (isProduction && testBypassHold) {
+/*
+ * Production refuses to start rather than starting badly.
+ *
+ * Every one of these is a setting that is exactly right for a laptop and
+ * exactly wrong on the internet, and every one of them is the kind of thing
+ * that gets noticed after the fact. A server that will not boot is a bad
+ * afternoon; a server that boots with the token gate disabled and the
+ * development signing key is a different sort of day.
+ */
+const refusals: string[] = [];
+
+if (isProduction) {
+  if (testBypassHold) {
+    refusals.push(
+      "TEST_BYPASS_HOLD=true - the token gate bypass is a development-only switch",
+    );
+  }
+
+  const secret = process.env.JWT_SECRET ?? "";
+  if (secret.length < 32) {
+    refusals.push("JWT_SECRET is shorter than 32 characters");
+  }
+  if (secret.includes("dev-only") || secret.includes("change-me")) {
+    refusals.push("JWT_SECRET is still the example value from .env.example");
+  }
+
+  const origins = (process.env.CORS_ORIGIN ?? "")
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean);
+  if (origins.length === 0) {
+    refusals.push("CORS_ORIGIN is not set - every browser origin would be refused");
+  }
+  if (origins.some((o) => o.includes("localhost") || o.includes("127.0.0.1"))) {
+    refusals.push(`CORS_ORIGIN still allows a local origin (${origins.join(", ")})`);
+  }
+  if (origins.includes("*")) {
+    refusals.push('CORS_ORIGIN is "*" - name the origins that may call this server');
+  }
+
+  if ((process.env.SIWS_DOMAIN ?? "").includes("localhost")) {
+    refusals.push("SIWS_DOMAIN is localhost - wallets would be asked to sign for the wrong site");
+  }
+  if ((process.env.RPC_URL ?? "").includes("devnet")) {
+    refusals.push("RPC_URL points at devnet - balances would be checked on the wrong chain");
+  }
+  if (!process.env.COOK_MINT) {
+    refusals.push("COOK_MINT is not set");
+  }
+}
+
+if (refusals.length > 0) {
   throw new Error(
-    "Refusing to start: TEST_BYPASS_HOLD=true with NODE_ENV=production. " +
-      "The token gate bypass is a development-only switch.",
+    `Refusing to start with NODE_ENV=production:\n  - ${refusals.join("\n  - ")}\n` +
+      "See DEPLOY.md.",
   );
 }
 

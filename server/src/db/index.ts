@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import type Database from "better-sqlite3";
 import { config } from "../config.js";
 import { SqliteGameRepository } from "./gameRepo.js";
 import { openDatabase, SqlitePlayerRepository } from "./sqlite.js";
@@ -25,7 +26,7 @@ export function closeDatabase() {
  * reach past the repository interfaces. Nothing else should: the two
  * repositories are the only way game code touches the database.
  */
-export function rawDatabase() {
+export function rawDatabase(): Database.Database {
   return db;
 }
 
