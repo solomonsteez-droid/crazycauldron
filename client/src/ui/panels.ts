@@ -84,11 +84,20 @@ export function icon(key: string, size = 28): HTMLCanvasElement {
  * hat. The body is the idle front pose and the garment sits at its saved
  * offset, so the preview is exactly what the player will be wearing.
  */
+/**
+ * Headroom above the body in the preview.
+ *
+ * A hat is fitted so its brim lands on the crown at row 9, which puts a tall
+ * toque fifteen rows above the top of the 48px frame. Without room to draw
+ * into, the preview clips exactly the part of the hat worth looking at.
+ */
+const PREVIEW_HEADROOM = 18;
+
 function wardrobePreview(kind: "hat" | "apron", id: string, size = 48): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
   const scale = Math.max(1, Math.floor(size / 48));
   canvas.width = 32 * scale;
-  canvas.height = 48 * scale;
+  canvas.height = (48 + PREVIEW_HEADROOM) * scale;
 
   const context = canvas.getContext("2d");
   const game = (window as unknown as { __ccGame?: Phaser.Game }).__ccGame;
@@ -102,7 +111,7 @@ function wardrobePreview(kind: "hat" | "apron", id: string, size = 48): HTMLCanv
     if (!source) return;
     const w = texture.source[0]?.width ?? 0;
     const h = texture.source[0]?.height ?? 0;
-    context.drawImage(source, dx * scale, dy * scale, w * scale, h * scale);
+    context.drawImage(source, dx * scale, (dy + PREVIEW_HEADROOM) * scale, w * scale, h * scale);
   };
 
   // The body frame is a cell inside the atlas, so it is drawn by hand.
@@ -121,7 +130,7 @@ function wardrobePreview(kind: "hat" | "apron", id: string, size = 48): HTMLCanv
       frame.width,
       frame.height,
       0,
-      0,
+      PREVIEW_HEADROOM * scale,
       frame.width * scale,
       frame.height * scale,
     );

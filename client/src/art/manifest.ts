@@ -17,8 +17,10 @@ export interface OverlayEntry {
   id: string;
   width: number;
   height: number;
-  /** The pipeline's guess, used until the alignment tool overrides it. */
+  /** Where the pipeline fitted it, used until the alignment tool overrides it. */
   offset: Vec2;
+  /** True when an <id>_back.png was processed for the up direction. */
+  back?: boolean;
 }
 
 /** Scenery the pipeline cut for one map, with the size each piece came out. */

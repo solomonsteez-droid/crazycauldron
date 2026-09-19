@@ -256,75 +256,61 @@ interface OverlayResult {
   height: number;
   /** Where the overlay sits relative to the body frame, top-left to top-left. */
   offset: { x: number; y: number };
+  /** True when an <id>_back.png was processed alongside it. */
+  back?: boolean;
   /** Finished width as a fraction of the body figure's own width. */
   widthPct: number;
 }
 
-/** One authored cut, in fractions of the drop's own bounding box. */
-interface Band {
-  top: number;
-  bottom: number;
-  left: number;
-  right: number;
-  widthPct: number;
-  anchorY: number;
+/** How one cosmetic is fitted to the body. */
+interface Fit {
+  widthPx: number;
+  /** Hats: the row the brim lands on. */
+  bottomRow?: number;
+  /** Aprons: the row the garment is centred on. */
+  centreRow?: number;
 }
 
-interface BandFile {
-  defaults: Record<"hat" | "apron", Band>;
-  items: Record<string, Partial<Band>>;
+interface FitFile {
+  defaults: Record<"hat" | "apron", Fit>;
+  items: Record<string, Partial<Fit>>;
 }
 
-const BANDS = JSON.parse(
+const FITS = JSON.parse(
   fs.readFileSync(path.join(here, "overlay-bands.json"), "utf8"),
-) as BandFile;
+) as FitFile;
 
-function bandFor(kind: "hat" | "apron", id: string): Band {
-  return { ...BANDS.defaults[kind], ...(BANDS.items[id] ?? {}) };
+function fitFor(kind: "hat" | "apron", id: string): Fit {
+  return { ...FITS.defaults[kind], ...(FITS.items[id] ?? {}) };
 }
 
-/** The base figure every overlay is sized against, in its own tight pixels. */
+/** The body an overlay is fitted to, measured once from the finished sheet. */
 interface OverlayBase {
-  /** The male front idle drawing, cropped to the figure. */
-  img: Img;
-  /**
-   * The scale this exact frame received in per-frame body scaling.
-   *
-   * Per-frame scaling normalises every drawing to 48px tall, so "the body
-   * scale" is no longer one number - it is one per frame. An overlay sized
-   * against the front idle pose has to use *that* frame's factor and no other,
-   * or it comes out sized for whichever drawing happened to be processed last.
-   * That was the bug behind aprons wider than the body.
-   */
-  frameScale: number;
   /** The figure's own width inside the 32px frame; the audit denominator. */
   figureWidth: number;
+  /** Horizontal centre of the figure, in frame pixels. */
+  centreX: number;
 }
 
-/** Fragments smaller than this are speckle, not garment. */
+/** Fragments smaller than this are speckle left by the chroma key. */
 const MIN_ISLAND_PX = 6;
-/** A blob this much smaller than the biggest one is a leftover, not a part. */
-const KEEP_BLOB_FRACTION = 0.18;
 
 /**
- * Cuts a garment out of a character drawing.
+ * Fits one cosmetic to the body.
  *
- * Subtracting the base body was the plan and it cannot work, for a reason the
- * measurements make plain: the drops are not one figure re-dressed. The body
- * sheet is a full-length figure of aspect 0.53; the hat drops are
- * head-and-shoulders portraits of aspect 0.68 to 1.03, widest at 30-50% of
- * their height; the apron drops are full-length but in another pose, aspect
- * 0.36 to 0.56, widest at 20-30%. Registering three different compositions on
- * shoulders, head boxes, jaws, feet or total height was each tried in turn and
- * each put the garment somewhere different. There is no alignment to diff
- * against.
+ * The items arrive as standalone art on magenta - a hat, an apron, nothing
+ * else - so there is no character to subtract and no band to guess at. Three
+ * steps: key the magenta, drop the speckle it leaves behind, and scale what is
+ * left to a stated width.
  *
- * What does work is an authored band per item - overlay-bands.json - tightened
- * by three automatic passes: trim to the pixels that are actually there, keep
- * only the substantial connected blobs, and drop islands under six pixels.
- * The result is sized so its width is a stated fraction of the body's own
- * width, which is the measurement the audit then checks. Whatever the passes
- * leave behind is removed by hand with the eraser in /dev/align.
+ * Where it sits comes from the body's own rows rather than from a fraction. A
+ * hat's brim lands on the crown at row 9; an apron is centred on the torso at
+ * row 31. Those are measured numbers, written down in overlay-bands.json next
+ * to the row profile they came from.
+ *
+ * An <id>_back.png, if one exists, is fitted identically and used for the up
+ * direction - which is the honest answer for anything with a face, a bow or a
+ * brooch that a mirrored front view would put on backwards.
  */
 function buildOverlay(
   file: string,
@@ -332,73 +318,105 @@ function buildOverlay(
   kind: "hat" | "apron",
   base: OverlayBase,
 ): OverlayResult | null {
+  const cut = cutItem(file, kind, id, base);
+  if (!cut) return null;
+
+  save(path.join(OUT, kind === "hat" ? "hats" : "aprons", id + ".png"), cut.image);
+
+  // The same item drawn from behind, when the artist has provided one.
+  const backFile = file.replace(/\.png$/i, "_back.png");
+  let back = false;
+  if (exists(backFile)) {
+    const rear = cutItem(backFile, kind, id, base);
+    if (rear) {
+      save(path.join(OUT, kind === "hat" ? "hats" : "aprons", id + "_back.png"), rear.image);
+      note("found", path.relative(ASSETS, backFile));
+      back = true;
+    }
+  }
+
+  const widthPct = cut.width / base.figureWidth;
+  note(
+    "made",
+    "generated/" + kind + "s/" + id + ".png " + cut.width + "x" + cut.height +
+      " at (" + cut.offset.x + "," + cut.offset.y + ") - " +
+      Math.round(widthPct * 100) + "% of body width" +
+      (back ? ", with a back view" : "") +
+      (cut.dropped > 0 ? ", " + cut.dropped + " speckle(s) dropped" : ""),
+  );
+
+  return {
+    id,
+    width: cut.width,
+    height: cut.height,
+    offset: cut.offset,
+    widthPct,
+    ...(back ? { back: true } : {}),
+  };
+}
+
+interface Cut {
+  image: Img;
+  width: number;
+  height: number;
+  offset: { x: number; y: number };
+  dropped: number;
+}
+
+function cutItem(
+  file: string,
+  kind: "hat" | "apron",
+  id: string,
+  base: OverlayBase,
+): Cut | null {
   const keyed = denoise(removeChroma(load(file)));
-  const keyedBounds = alphaBounds(keyed);
-  if (!keyedBounds) {
+
+  /*
+   * A chroma key on a 2048px drawing leaves a scatter of single pixels around
+   * the edge. Left in, they widen the bounding box and the whole item is
+   * scaled down to make room for dust.
+   */
+  let dropped = 0;
+  for (const blob of labelBlobs(keyed)) {
+    if (blob.pixels.length >= MIN_ISLAND_PX * 40) continue;
+    for (const pixel of blob.pixels) clearPixel(keyed, pixel);
+    dropped += 1;
+  }
+
+  const bounds = alphaBounds(keyed);
+  if (!bounds || bounds.width < 8 || bounds.height < 8) {
     note("skipped", path.basename(file) + " - nothing left after keying");
     return null;
   }
 
-  const drop = crop(keyed, keyedBounds);
-  const band = bandFor(kind, id);
-
-  const cut = crop(denoise(drop, 4), {
-    x: Math.round(drop.width * band.left),
-    y: Math.round(drop.height * band.top),
-    width: Math.max(1, Math.round(drop.width * (band.right - band.left))),
-    height: Math.max(1, Math.round(drop.height * (band.bottom - band.top))),
-  });
-
-  // --- keep only the substantial lumps -------------------------------------
-  const blobs = labelBlobs(cut);
-  const biggest = blobs[0]?.pixels.length ?? 0;
-  const floor = Math.max(MIN_ISLAND_PX, Math.round(biggest * KEEP_BLOB_FRACTION));
-  let dropped = 0;
-  for (const blob of blobs) {
-    if (blob.pixels.length >= floor) continue;
-    for (const pixel of blob.pixels) clearPixel(cut, pixel);
-    dropped += 1;
-  }
-
-  const trimmed = alphaBounds(cut);
-  if (!trimmed || trimmed.width < 8 || trimmed.height < 4) {
-    note("skipped", path.basename(file) + " - no " + kind + " pixels in its band");
-    return null;
-  }
-
-  const tight = crop(cut, trimmed);
-
-  // --- size it against the body -------------------------------------------
-  const w = Math.max(1, Math.round(base.figureWidth * band.widthPct));
+  const tight = crop(keyed, bounds);
+  const fit = fitFor(kind, id);
+  const w = Math.max(1, fit.widthPx);
   const h = Math.max(1, Math.round((tight.height / tight.width) * w));
-  const small = scaleNearest(tight, w, h);
 
-  const canvas = blank(w, h);
-  blit(canvas, small, 0, 0);
-  save(path.join(OUT, kind === "hat" ? "hats" : "aprons", id + ".png"), canvas);
+  // Averaged down, not nearest: these are 2048px drawings going to 20px, and
+  // nearest at that ratio throws away nine pixels in ten and shimmers.
+  const small = downscaleAveraged(tight, w, h);
+  const palette = [...QUANTISE_RAMP, ...dominantColours(small, 10)];
+  const image = quantise(small, palette);
 
-  const offsetX = Math.round((BODY_W - w) / 2);
-  const offsetY = Math.round(band.anchorY * BODY_H);
-  const widthPct = w / base.figureWidth;
+  const offsetX = Math.round(base.centreX - w / 2);
+  const offsetY =
+    kind === "hat"
+      ? (fit.bottomRow ?? 9) - h
+      : Math.round((fit.centreRow ?? 31) - h / 2);
 
-  note(
-    "made",
-    "generated/" + kind + "s/" + id + ".png " + w + "x" + h +
-      " at (" + offsetX + "," + offsetY + ") - " +
-      Math.round(widthPct * 100) + "% of body width, " + dropped + " island(s) dropped",
-  );
-
-  return { id, width: w, height: h, offset: { x: offsetX, y: offsetY }, widthPct };
+  return { image, width: w, height: h, offset: { x: offsetX, y: offsetY }, dropped };
 }
 
 /**
- * The audit the brief asks for: every finished overlay measured against the
+ * The audit the brief asks for: every finished cosmetic measured against the
  * body it will sit on, with anything outside the plausible range named.
  */
 function auditOverlays(overlays: { hats: OverlayResult[]; aprons: OverlayResult[] }): void {
-  const ranges = { hat: [0.6, 1.2], apron: [0.7, 1.1] } as const;
+  const ranges = { hat: [0.6, 1.2], apron: [0.55, 1.1] } as const;
 
-  console.log("\n  overlay width against the body figure:");
+  console.log("\n  cosmetic width against the body figure:");
   for (const [kind, list] of [
     ["hat", overlays.hats],
     ["apron", overlays.aprons],
@@ -409,7 +427,8 @@ function auditOverlays(overlays: { hats: OverlayResult[]; aprons: OverlayResult[
       const ok = pct >= low && pct <= high;
       console.log(
         "    " + (ok ? "ok  " : "FLAG") + " " + item.id.padEnd(20) +
-          String(Math.round(pct * 100)).padStart(4) + "%  " + item.width + "x" + item.height,
+          String(Math.round(pct * 100)).padStart(4) + "%  " + item.width + "x" + item.height +
+          " at y" + item.offset.y + (item.back ? "  +back" : ""),
       );
       if (!ok) {
         suspect.push(
@@ -829,14 +848,20 @@ function main() {
       if (grid) {
         // The front idle cell, cropped exactly as buildBody crops it, so the
         // overlay is cut in the same pixels and scaled by the same factor.
-        // The front idle cell, cropped exactly as buildBody crops it, so an
-        // overlay is sized against the same pixels the frame was built from.
+        /*
+         * Measured off the finished frame, not the source drawing.
+         *
+         * The body sheet is what a cosmetic actually sits on, so the figure's
+         * width and centre are read from the frame the pipeline just wrote -
+         * 25px wide, centred on x=16 - rather than derived from the 2048px
+         * drawing it came from.
+         */
         const front = crop(grid.clean, grid.cells[0]!);
         const frameScale = BODY_H / front.height;
+        const figureWidth = Math.max(1, Math.round(front.width * frameScale));
         baseForOverlays = {
-          img: front,
-          frameScale,
-          figureWidth: Math.max(1, Math.round(front.width * frameScale)),
+          figureWidth,
+          centreX: Math.round(BODY_W / 2),
         };
       }
     }
@@ -847,15 +872,16 @@ function main() {
 
   if (baseForOverlays) {
     console.log(
-      "  base front pose: " + baseForOverlays.img.width + "x" + baseForOverlays.img.height +
-        ", frame scale " + baseForOverlays.frameScale.toFixed(4) + ", figure " +
-        baseForOverlays.figureWidth + "px wide in a " + BODY_W + "px frame",
+      "  body: figure " + baseForOverlays.figureWidth + "px wide in a " + BODY_W + "x" +
+        BODY_H + " frame, centred on x" + baseForOverlays.centreX,
     );
     for (const [folder, kind] of [
       ["hats", "hat"],
       ["aprons", "apron"],
     ] as const) {
       for (const file of listPngs(path.join(SRC, folder))) {
+        // A back view belongs to the item in front of it, not to itself.
+        if (/_back\.png$/i.test(file)) continue;
         const id = file.replace(/\.png$/i, "");
         if (only && id !== only) continue;
         note("found", `sprites/${folder}/${file}`);

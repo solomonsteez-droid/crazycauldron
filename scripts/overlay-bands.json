@@ -1,29 +1,24 @@
 {
-  "_comment": "How to cut each garment out of its drop, as fractions of that drop's own bounding box. Per item because the drops are not one figure re-dressed: the hat drops are head-and-shoulders portraits (aspect 0.68 to 1.03, widest at 30-50% of height) and the apron drops are full-length figures (aspect 0.36 to 0.56, widest at 20-30%), while the body sheet is 0.53. No single registration fits all three, so the band is authored and /dev/align's eraser finishes the job.",
+  "_comment": "How each cosmetic is fitted to the 32x48 body. The items are now drawn standalone on magenta, so there is nothing to cut them out of a character - the pipeline keys the magenta, trims to what is left, and scales to a stated width. These are the numbers that decide how big a hat looks and where it sits.",
+  "_measured": "The male idle front frame, row by row: the figure is 25px wide, centred on x=16. The skull crown is rows 2-10, the head widest at row 11, the neck pinches to 9px at row 23, the torso runs rows 24-38 at 21px wide, and the legs take rows 39-47. Every default below comes from those rows.",
   "_fields": {
-    "top": "band starts here, as a fraction of the drop's height",
-    "bottom": "band ends here",
-    "left": "band starts here across the drop's width",
-    "right": "band ends here",
-    "widthPct": "finished width as a fraction of the body figure's own width",
-    "anchorY": "where the overlay's top sits, as a fraction of the 48px body frame"
+    "widthPx": "finished width on the 32px body canvas; height follows the art",
+    "bottomRow": "hats: the row the brim lands on. The skull crown is rows 2-10 but the hair sits a little proud of it, so 11 is where a hat looks worn rather than hovering",
+    "centreRow": "aprons: the row the garment is centred on",
+    "flip": "false for anything asymmetric, which then needs its own _back.png"
   },
   "defaults": {
-    "hat": { "top": 0.0, "bottom": 0.42, "left": 0.0, "right": 1.0, "widthPct": 0.88, "anchorY": 0.0 },
-    "apron": { "top": 0.44, "bottom": 0.78, "left": 0.12, "right": 0.88, "widthPct": 0.9, "anchorY": 0.38 }
+    "hat": { "widthPx": 20, "bottomRow": 11 },
+    "apron": { "widthPx": 16, "centreRow": 31 }
   },
   "items": {
-    "hat_01_chef": { "bottom": 0.36, "widthPct": 0.84 },
-    "hat_02_straw": { "bottom": 0.52, "widthPct": 1.1 },
-    "hat_03_mushroom": { "bottom": 0.5, "widthPct": 1.05 },
-    "hat_04_acorn": { "bottom": 0.44, "widthPct": 0.9 },
-    "hat_05_circlet": { "top": 0.14, "bottom": 0.4, "widthPct": 0.86 },
-    "hat_06_dragonscale": { "bottom": 0.46, "widthPct": 0.95, "anchorY": -0.06 },
-    "hat_07_moonpetal": { "bottom": 0.5, "widthPct": 1.0, "anchorY": -0.08 },
-    "hat_08_bronze": { "bottom": 0.4, "widthPct": 0.88 },
-    "hat_09_gold": { "bottom": 0.4, "widthPct": 0.92 },
-    "apron_04_rugged": { "top": 0.44, "bottom": 0.7 },
-    "apron_06_silver": { "top": 0.44, "bottom": 0.7 },
-    "apron_07_gold": { "top": 0.44, "bottom": 0.7 }
+    "hat_02_straw": { "widthPx": 24, "bottomRow": 10 },
+    "hat_03_mushroom": { "widthPx": 22, "bottomRow": 10 },
+    "hat_06_dragonscale": { "widthPx": 18, "bottomRow": 12 },
+    "hat_07_moonpetal": { "widthPx": 22, "bottomRow": 11 },
+    "hat_09_gold": { "widthPx": 21, "bottomRow": 12 },
+    "apron_04_rugged": { "widthPx": 18 },
+    "apron_06_silver": { "widthPx": 17 },
+    "apron_07_gold": { "widthPx": 18 }
   }
 }

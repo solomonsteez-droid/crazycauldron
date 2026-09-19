@@ -23,8 +23,15 @@ import { GENERATED, type Manifest } from "./manifest.js";
 export const BODY_FRAME = { width: 32, height: 48 };
 
 export const bodyKey = (body: string) => `body:${body}`;
-export const hatKey = (id: string) => `hat:${id}`;
-export const apronKey = (id: string) => `apron:${id}`;
+/**
+ * A cosmetic, front or back.
+ *
+ * Most items are symmetric enough that the front art mirrored is a fair side
+ * view and an honest back. Anything with a face, a bow or a brooch is not, and
+ * the artist supplies an <id>_back.png; the manifest says which have one.
+ */
+export const hatKey = (id: string, back = false) => `hat:${id}${back ? ":back" : ""}`;
+export const apronKey = (id: string, back = false) => `apron:${id}${back ? ":back" : ""}`;
 export const propKey = (id: string) => `prop:${id}`;
 export const ingredientKey = (id: string) => `ingredient:${id}`;
 export const dishKey = (recipeId: string) => `dish:${recipeId}`;
@@ -113,9 +120,15 @@ export function queueArt(scene: Phaser.Scene, manifest: Manifest): void {
     );
   }
 
-  for (const hat of manifest.hats) scene.load.image(hatKey(hat.id), `${GENERATED}/hats/${hat.id}.png`);
+  for (const hat of manifest.hats) {
+    scene.load.image(hatKey(hat.id), `${GENERATED}/hats/${hat.id}.png`);
+    if (hat.back) scene.load.image(hatKey(hat.id, true), `${GENERATED}/hats/${hat.id}_back.png`);
+  }
   for (const apron of manifest.aprons) {
     scene.load.image(apronKey(apron.id), `${GENERATED}/aprons/${apron.id}.png`);
+    if (apron.back) {
+      scene.load.image(apronKey(apron.id, true), `${GENERATED}/aprons/${apron.id}_back.png`);
+    }
   }
   for (const prop of manifest.props) scene.load.image(propKey(prop), `${GENERATED}/props/${prop}.png`);
 

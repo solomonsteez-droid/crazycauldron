@@ -116,10 +116,14 @@ export class Avatar {
 
   setDirection(direction: Direction, moving: boolean) {
     if (direction === this.direction && moving === this.moving) return;
+    const turned = direction !== this.direction;
     this.direction = direction;
     this.moving = moving;
     this.playBody();
-    this.placeOverlays();
+    // Turning to or from "up" can change which art a garment uses, so the
+    // texture is re-picked rather than only re-placed.
+    if (turned) this.apply();
+    else this.placeOverlays();
   }
 
   /** Cooking replaces the idle motion with a little two-step. */
@@ -178,8 +182,18 @@ export class Avatar {
   // --- internals ----------------------------------------------------------
 
   private apply() {
-    const hatTexture = hatKey(this.look.hatId);
-    const apronTexture = apronKey(this.look.apronId);
+    /*
+     * Facing away uses the back art when the artist drew one. Without it the
+     * front is mirrored, which is fine for a toque and wrong for anything with
+     * a brooch on it - so which items have a back view is recorded by the
+     * pipeline rather than assumed here.
+     */
+    const facingAway = this.direction === "up";
+    const hatEntry = this.manifest.hats.find((e) => e.id === this.look.hatId);
+    const apronEntry = this.manifest.aprons.find((e) => e.id === this.look.apronId);
+
+    const hatTexture = hatKey(this.look.hatId, facingAway && hatEntry?.back === true);
+    const apronTexture = apronKey(this.look.apronId, facingAway && apronEntry?.back === true);
 
     this.hat.setVisible(Boolean(this.look.hatId) && this.scene.textures.exists(hatTexture));
     if (this.hat.visible) this.hat.setTexture(hatTexture);
