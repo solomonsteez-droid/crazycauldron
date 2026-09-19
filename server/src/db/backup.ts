@@ -57,6 +57,13 @@ export async function takeBackup(db: Database.Database): Promise<BackupResult> {
 
   const bytes = fs.statSync(file).size;
 
+  /*
+   * The backup API may leave a -wal and a -shm beside the copy. They belong to
+   * the connection that wrote it, not to the backup, and a self-contained file
+   * is the whole point of taking one.
+   */
+  for (const suffix of ["-wal", "-shm"]) fs.rmSync(`${file}${suffix}`, { force: true });
+
   let copiedTo: string | null = null;
   const destination = process.env.BACKUP_DEST;
   if (destination) {

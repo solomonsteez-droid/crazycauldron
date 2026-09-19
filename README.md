@@ -233,7 +233,7 @@ AUTH_RATE_LIMIT=1000 npm run dev
 - **Reconnection.** A dropped socket returns to sign-in; there is no
   `allowReconnection` grace window.
 - **Tests.** No unit-test runner, and no assertion library. What exists are the
-  scripts above - about 180 checks across content, maths, layout, the mobile
+  scripts above - close to 300 checks across content, maths, layout, the mobile
   rules, the whole game loop end to end, two suites that attack the server, and
   two that start and kill their own. They are integration tests by preference:
   the interesting failures in this codebase have all been between parts, not

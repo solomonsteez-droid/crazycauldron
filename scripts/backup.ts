@@ -99,6 +99,14 @@ async function take(): Promise<void> {
   } finally {
     check.close();
   }
+
+  /*
+   * Opening it created a -wal and a -shm beside it. They belong to that open
+   * handle, not to the backup, and leaving them next to a copy that is
+   * supposed to be self-contained is how somebody later restores a database
+   * with a journal from a different moment attached to it.
+   */
+  for (const suffix of ["-wal", "-shm"]) fs.rmSync(`${file}${suffix}`, { force: true });
 }
 
 if (process.argv.includes("--list")) list();
