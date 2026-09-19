@@ -40,6 +40,10 @@ const CSS = `
 .cc-btn:disabled { opacity: 0.5; cursor: progress; }
 .cc-btn.cc-secondary { color: #f3e9d2; background: transparent; border: 1px solid #3a3050; }
 .cc-meta { margin-top: 14px; font-size: 12px; color: #6f6656; }
+/* Official / Rules / Roadmap, on the login panel and in settings. */
+.cc-links { display: flex; gap: 14px; justify-content: center; margin-top: 16px; font-size: 12px; }
+.cc-links a { color: #6f6656; text-decoration: none; }
+.cc-links a:hover { color: #7ce08a; }
 
 /* In-hub HUD, pinned rather than centred like the panels. */
 .cc-hud {
@@ -506,6 +510,8 @@ export interface PanelOptions {
   error?: string;
   meta?: string;
   actions?: Action[];
+  /** Adds the Official / Rules / Roadmap row beneath the panel. */
+  links?: boolean;
 }
 
 export interface PanelHandle {
@@ -515,6 +521,29 @@ export interface PanelHandle {
   setMeta(text: string): void;
   /** Disables every button, e.g. while a wallet popup is open. */
   setBusy(busy: boolean): void;
+}
+
+/**
+ * Links to the pages that are not the game.
+ *
+ * On the login screen especially: somebody who is about to connect a wallet
+ * should be one click from the page that tells them the real contract address
+ * and the page that says what $COOK is not.
+ */
+export function pageLinks(): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "cc-links";
+  for (const [href, label] of [
+    ["/official", "Official"],
+    ["/rules", "Rules"],
+    ["/roadmap", "Roadmap"],
+  ] as const) {
+    const link = document.createElement("a");
+    link.href = href;
+    link.textContent = label;
+    row.append(link);
+  }
+  return row;
 }
 
 export function showPanel(options: PanelOptions): PanelHandle {
@@ -554,6 +583,7 @@ export function showPanel(options: PanelOptions): PanelHandle {
   meta.hidden = !options.meta;
 
   panel.append(heading, body, error, actions, meta);
+  if (options.links) panel.append(pageLinks());
   uiRoot().append(panel);
 
   return {

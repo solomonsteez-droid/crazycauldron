@@ -158,6 +158,19 @@ export const config = {
   /** Empty means SQLite. Anything else is a Postgres connection string. */
   databaseUrl,
 
+  /*
+   * The public face of the project, for the /official page.
+   *
+   * These are read rather than baked into the client bundle so that the
+   * contract address a player copies comes from the running deployment, not
+   * from whatever was in a .env the day the bundle was built. "none" is a real
+   * answer: there is no account yet, and saying so is better than a dead link
+   * somebody else could register.
+   */
+  publicDomain: process.env.PUBLIC_DOMAIN?.trim() || "crazycauldron.art",
+  socialX: process.env.SOCIAL_X?.trim() || "none",
+  socialTelegram: process.env.SOCIAL_TELEGRAM?.trim() || "none",
+
   hubMaxPlayers: num("HUB_MAX_PLAYERS", 30),
   globalMaxPlayers: num("GLOBAL_MAX_PLAYERS", 300),
 } as const;

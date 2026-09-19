@@ -14,6 +14,7 @@ import { startSchedules } from "./schedule.js";
 import { capacity } from "./matchmaking/index.js";
 import { matchmakeRouter } from "./matchmaking/routes.js";
 import { shopRouter } from "./shop/routes.js";
+import { publicRouter } from "./web/publicConfig.js";
 import { serveClient } from "./web/static.js";
 import { HubRoom } from "./rooms/HubRoom.js";
 import { WaitingRoom } from "./rooms/WaitingRoom.js";
@@ -114,6 +115,8 @@ function routes(app: express.Application): void {
   app.use("/play", matchmakeRouter);
   // Dormant unless SHOP_ENABLED is true; every route inside checks for itself.
   app.use("/shop", shopRouter);
+  // Facts the public pages need, including the contract address players copy.
+  app.use("/public", publicRouter);
 
   /*
    * The built client, mounted after the API.

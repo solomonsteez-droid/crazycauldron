@@ -34,6 +34,9 @@ export class LoginScene extends Phaser.Scene {
         : "No Solana wallet detected. Install Phantom and reload this page.",
       error: data.error,
       actions: [{ label: "Connect wallet", onClick: () => this.signIn() }],
+      // Before connecting a wallet is exactly when somebody should be able to
+      // check the contract address and read what the token is not.
+      links: true,
     });
 
     void this.showCapacity();

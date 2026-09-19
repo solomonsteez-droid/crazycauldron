@@ -591,6 +591,24 @@ export function openSettings(): ModalHandle {
     modal.body.append(row);
   }
 
+  const links = document.createElement("p");
+  links.className = "cc-links";
+  for (const [href, label] of [
+    ["/official", "Official"],
+    ["/rules", "Rules"],
+    ["/roadmap", "Roadmap"],
+  ] as const) {
+    const link = document.createElement("a");
+    link.href = href;
+    // A new tab: leaving the page mid-session would drop the room and send
+    // the player back through sign-in to read a page.
+    link.target = "_blank";
+    link.rel = "noreferrer";
+    link.textContent = label;
+    links.append(link);
+  }
+  modal.body.append(links);
+
   return modal;
 }
 

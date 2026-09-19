@@ -96,6 +96,7 @@ npx tsx scripts/test-persistence.ts        # SIGKILL mid-session, then restart
 npx tsx scripts/test-production.ts         # what NODE_ENV=production changes
 npx tsx scripts/test-postgres.ts           # the Postgres backend, on a real one
 npx tsx scripts/test-shop.ts               # the $COOK shop, against devnet
+npx tsx scripts/test-pages.ts              # /official, /rules, /roadmap
 
 # Operations
 npx tsx scripts/backup.ts                  # take one now; --list shows the rest
