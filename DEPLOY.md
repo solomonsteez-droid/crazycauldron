@@ -106,7 +106,7 @@ holds deployment credentials, so treat it accordingly. Useful flags:
 Cloud runs the root `build` script, which is:
 
 ```
-npm run build -w shared && npm run build -w server && npm run build -w client
+npm run build -w shared && npm run build -w server && node scripts/build-client.mjs
 ```
 
 and then starts `ecosystem.config.js`, which runs `server/dist/index.js` in
@@ -114,6 +114,71 @@ pm2 **fork** mode, one process per core. Not cluster mode: Colyseus assigns
 each process its own port and its own rooms, and a shared listening socket
 would hand a websocket to whichever process answered first, which is usually
 not the one holding the room that reserved the seat.
+
+### The client is committed, not built here
+
+**`client/dist` is in git, and the host checks it rather than building it.**
+That is unusual and it is deliberate.
+
+Bundling the client needs about 1 GB and this host has 1 GB in total. A deploy
+has already been killed for it - "JavaScript heap out of memory", 108 modules
+in. Measured on a 16-core Windows box with the same scripts:
+
+| Build | Peak, largest process | Peak, whole tree |
+|---|---|---|
+| Client, as it was (source maps on) | 1897 MB | 2130 MB |
+| Client, after the fixes below | 779 MB | 1045 MB |
+| **shared + server only** | **324 MB** | **564 MB** |
+
+The middle row would *probably* fit. "Probably", on a box that has already
+died once, is not a good enough reason to spend another failed deploy finding
+out - so the host builds the bottom row and uses a client that was built here.
+
+What made the difference, in order of how much each bought:
+
+- **No source map in production.** It was 11.6 MB against a 1.8 MB bundle, and
+  rollup holds the whole mapping in memory while it renders. This one line is
+  1897 MB → 782 MB on its own. `npm run build -w client -- --sourcemap` still
+  makes one when something needs debugging against the built bundle.
+- **Source art moved out of `client/public`.** Everything under that directory
+  is copied verbatim into the build, and 306 MB of 2048px drawings were living
+  there - so every build copied them and every deploy shipped them. They are
+  inputs to `npm run sprites`, not files any browser asks for, and they now
+  live in `art/` at the repo root. `client/dist` went from **342 MB to 27 MB**.
+- **`assetsInlineLimit: 0`.** Nothing imports an image today; this is a guard
+  against the first one that does, because an inlined asset is base64 in the
+  bundle rather than a cached file.
+- **`NODE_OPTIONS=--max-old-space-size=768` on the client build script only.**
+  Below the host's 1 GB, and explicit: left to itself V8 sizes the heap from
+  the machine's memory, which in a container is frequently not the container's.
+
+**When you change client or shared code, rebuild and commit the bundle:**
+
+```bash
+npm run build -w client
+git add client/dist && git commit -m "client: rebuild"
+```
+
+You will not forget silently. `npm run build` writes `client/dist/.build-stamp`
+- a hash of `client/src`, `shared/src`, `client/index.html`, the client's
+config and `package-lock.json` - and on the host a stamp that does not match
+the source **fails the deploy** and prints the two commands above. It fails
+rather than building, because building is the thing that runs out of memory,
+and a deploy that stops immediately beats one that dies halfway through a
+bundle. Line endings are normalised before hashing, so a bundle built on
+Windows still matches a Linux checkout.
+
+Locally nothing changed: `npm run build` with no `NODE_ENV=production` builds
+the client as it always did.
+
+**To go back to building on the host** - if it is moved to a larger box - put
+`client/dist` back in `.gitignore`, `git rm -r --cached client/dist`, and
+change the root `build` script's last step to `npm run build -w client`.
+`scripts/measure-build.ts` is how to check it fits first:
+
+```bash
+npx tsx scripts/measure-build.ts --cap 768
+```
 
 ### 3. Environment variables
 
@@ -203,7 +268,7 @@ to. An untested backup is a belief.
 
 ```bash
 npm ci
-npm run sprites          # only if the art drops have changed
+npm run sprites          # only if the art drops in art/ have changed
 npm run build            # shared -> server -> client
 NODE_ENV=production npm start
 ```

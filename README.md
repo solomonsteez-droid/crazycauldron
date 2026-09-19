@@ -14,6 +14,7 @@ static files at `/`. One deploy, one origin, no second host to keep in step.
 ## Layout
 
 ```
+art/       every drawing the sprite pipeline reads. Nothing here is served
 shared/    content JSON, progression maths, the map grids, pathfinding, SIWS
 server/    Express + Colyseus: auth, token gate, matchmaking, rooms, storage
 client/    Vite + Phaser: sign-in, the world scene, the panels, the pages
@@ -284,7 +285,7 @@ AUTH_RATE_LIMIT=1000 npm run dev
 ## What is deliberately left open
 
 - **Art that has not landed yet.** `npm run sprites` turns whatever is in
-  `client/public/assets/sprites/` into game-ready output, and anything still
+  `art/sprites/` into game-ready output, and anything still
   missing is drawn as a lettered placeholder at boot — so no lookup in the game
   ever has to ask whether the art exists.
 - **Spawning.** Everyone still lands on the same hub tile.

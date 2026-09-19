@@ -234,7 +234,31 @@ export default defineConfig(({ command }) => ({
   },
   build: {
     outDir: "dist",
-    sourcemap: true,
+
+    /*
+     * No source map in production, and the reason is the deploy host rather
+     * than taste.
+     *
+     * The map was 11.6 MB against a 1.8 MB bundle, and building it took the
+     * client build to a 1.9 GB peak - on a box with 1 GB. Rollup holds the
+     * whole mapping in memory while it renders, so this single line is most
+     * of the difference between a build that fits and one that is killed.
+     * `npm run build -w client -- --sourcemap` still produces one when
+     * something needs debugging against the built bundle.
+     */
+    sourcemap: false,
+
+    /*
+     * Never inline an asset into the JavaScript.
+     *
+     * Vite base64s anything under 4 KB by default, which costs a third more
+     * bytes than the file and puts them in the bundle, where they are parsed
+     * on every load instead of cached as a file. Nothing here imports an
+     * image anyway - everything the game draws is fetched by URL from
+     * /assets - so this is a guard against the first one that does.
+     */
+    assetsInlineLimit: 0,
+
     // Phaser alone is ~1.2MB; warning about it on every build is just noise.
     chunkSizeWarningLimit: 2000,
     rollupOptions: {

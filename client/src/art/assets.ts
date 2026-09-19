@@ -160,10 +160,10 @@ export function queueArt(scene: Phaser.Scene, manifest: Manifest): void {
 
   const optional = manifest.optional ?? {};
   for (const file of optional.ui ?? []) {
-    scene.load.image(uiKey(file.replace(/\.png$/, "")), `/assets/sprites/ui/${file}`);
+    scene.load.image(uiKey(file.replace(/\.png$/, "")), `${GENERATED}/ui/${file}`);
   }
   for (const file of optional.effects ?? []) {
-    scene.load.image(effectKey(file.replace(/\.png$/, "")), `/assets/sprites/effects/${file}`);
+    scene.load.image(effectKey(file.replace(/\.png$/, "")), `${GENERATED}/effects/${file}`);
   }
 
   // A failed load must not stall boot; the placeholder pass covers it.

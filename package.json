@@ -13,12 +13,13 @@
   ],
   "scripts": {
     "dev": "npm run build -w shared && concurrently -n shared,server,client -c gray,magenta,cyan \"npm run watch -w shared\" \"npm run dev -w server\" \"npm run dev -w client\"",
-    "build": "npm run build -w shared && npm run build -w server && npm run build -w client",
+    "build": "npm run build -w shared && npm run build -w server && node scripts/build-client.mjs",
     "typecheck": "npm run build -w shared && npm run typecheck -w server && npm run typecheck -w client",
     "start": "npm run start -w server",
     "loadtest": "tsx scripts/loadtest.ts",
     "sprites": "tsx scripts/process-sprites.ts",
-    "areas": "tsx scripts/build-areas.ts"
+    "areas": "tsx scripts/build-areas.ts",
+    "build:server": "npm run build -w shared && npm run build -w server"
   },
   "devDependencies": {
     "@colyseus/sdk": "^0.18.2",

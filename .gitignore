@@ -1,5 +1,9 @@
-﻿node_modules/
+node_modules/
 dist/
+# The built client is committed. Bundling it needs about 1 GB and the deploy
+# host has that in total, so the host checks the committed build instead of
+# making one - see scripts/build-client.mjs and DEPLOY.md.
+!/client/dist/
 .env
 *.db
 *.log

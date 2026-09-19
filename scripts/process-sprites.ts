@@ -3,12 +3,13 @@
  *
  *   npm run sprites
  *
- * Reads client/public/assets/sprites/** and writes client/public/assets/
+ * Reads art/** and writes client/public/assets/
  * generated/**. Source files are never touched. Anything missing is reported
  * and skipped, not treated as an error - most of the folders are still empty.
  *
  * The three interesting jobs:
  *
+ *   art/        every drop the pipeline reads. Nothing here is served.
  *   characters  each drop is a 2x2 grid of separate drawings. The frames are
  *               found as connected blobs rather than by cutting the image in
  *               quarters, because the drawings do not sit in exact quadrants.
@@ -58,9 +59,22 @@ import {
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(here, "..");
-const ASSETS = path.join(ROOT, "client", "public", "assets");
+
+/*
+ * Source art lives outside the client, and that is the whole point.
+ *
+ * Everything under client/public is copied verbatim into the build, so while
+ * the drops lived there every build shipped 306 MB of 2048px drawings that no
+ * browser ever asks for - and the deploy host has 1 GB. The drops are inputs
+ * to a build step; they belong beside the script that reads them, not beside
+ * the files that are served.
+ *
+ * The rule is now one sentence: art/ is read by the pipeline, and
+ * client/public/assets is served to browsers.
+ */
+const ASSETS = path.join(ROOT, "art");
 const SRC = path.join(ASSETS, "sprites");
-const OUT = path.join(ASSETS, "generated");
+const OUT = path.join(ROOT, "client", "public", "assets", "generated");
 
 /** Body frames are this size; 48 tall is the figure, 32 wide fits the widest pose. */
 const BODY_W = 32;
@@ -1019,6 +1033,14 @@ function buildCompanions(): { id: string; width: number; height: number }[] {
   return made;
 }
 
+/**
+ * UI chrome and effect frames, which are used exactly as drawn.
+ *
+ * Unlike everything else here there is nothing to cut: these are already the
+ * right size, so they are copied rather than processed. They are still copied
+ * rather than served from where they sit, because the drops now live outside
+ * the client and only generated/ is published.
+ */
 function surveyOptional(): Record<string, string[]> {
   const wanted: Record<string, string[]> = {
     ui: ["scroll_card", "ribbon", "button", "slot", "xp_bar", "heat_bar"].map((n) => `${n}.png`),
@@ -1030,7 +1052,12 @@ function surveyOptional(): Record<string, string[]> {
     const have = new Set(listPngs(path.join(SRC, folder)));
     const hits = names.filter((n) => have.has(n));
     present[folder] = hits;
-    for (const hit of hits) note("found", `sprites/${folder}/${hit}`);
+
+    for (const hit of hits) {
+      fs.mkdirSync(path.join(OUT, folder), { recursive: true });
+      fs.copyFileSync(path.join(SRC, folder, hit), path.join(OUT, folder, hit));
+      note("found", `sprites/${folder}/${hit}`);
+    }
     if (hits.length === 0) {
       note("skipped", `sprites/${folder}/ - empty, the game will draw placeholders`);
     }

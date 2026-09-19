@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "build": "cross-env NODE_OPTIONS=--max-old-space-size=768 tsc -p tsconfig.json --noEmit && cross-env NODE_OPTIONS=--max-old-space-size=768 vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
@@ -17,6 +17,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.16.15",
+    "cross-env": "^7.0.3",
     "typescript": "^5.6.3",
     "vite": "^5.4.10"
   }
