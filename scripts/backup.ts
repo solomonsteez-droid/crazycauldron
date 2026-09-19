@@ -5,11 +5,13 @@
  *   npx tsx scripts/backup.ts --list     show what is already there
  *
  * The server takes one every night on its own; this is for the times you want
- * one before doing something you are not sure about. Both go through the same
- * code, so a hand-made backup and a scheduled one are the same thing.
+ * one before doing something you are not sure about.
  *
- * Safe to run against a server that is up: SQLite's backup API copies a live
- * database consistently, page by page, rather than snatching the file.
+ * Which database it backs up is decided the same way the server decides:
+ * DATABASE_URL means Postgres, its absence means the SQLite file. Safe to run
+ * against a server that is up - SQLite's backup API copies a live database
+ * consistently page by page, and the Postgres dump reads inside a read-only
+ * transaction.
  */
 
 import Database from "better-sqlite3";
@@ -17,10 +19,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { config as loadEnv } from "dotenv";
+import pg from "pg";
+import { DUMP_SUFFIX, dumpPostgres } from "../server/src/db/pgdump.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(here, "..");
 loadEnv({ path: path.join(ROOT, ".env") });
+
+const databaseUrl = process.env.DATABASE_URL?.trim() ?? "";
+const usingPostgres = databaseUrl !== "";
 
 const databasePath = (() => {
   const raw = process.env.DATABASE_PATH ?? "./data/crazycauldron.db";
@@ -33,16 +40,16 @@ const directory = path.resolve(
 
 const mb = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 
+/** Either shape of backup: a SQLite file, or a gzipped logical dump. */
+const isBackup = (name: string) =>
+  name.startsWith("crazycauldron-") && (name.endsWith(".db") || name.endsWith(DUMP_SUFFIX));
+
 function list(): void {
   if (!fs.existsSync(directory)) {
     console.log(`no backups yet (${directory} does not exist)`);
     return;
   }
-  const files = fs
-    .readdirSync(directory)
-    .filter((name) => name.startsWith("crazycauldron-") && name.endsWith(".db"))
-    .sort()
-    .reverse();
+  const files = fs.readdirSync(directory).filter(isBackup).sort().reverse();
 
   if (files.length === 0) {
     console.log(`no backups in ${directory}`);
@@ -59,14 +66,44 @@ function list(): void {
   console.log(`\n  total ${mb(total)}`);
 }
 
-async function take(): Promise<void> {
+function stamp(): string {
+  return new Date().toISOString().replace(/[:.]/g, "-");
+}
+
+async function takePostgres(): Promise<void> {
+  const pool = new pg.Pool({
+    connectionString: databaseUrl,
+    ssl:
+      databaseUrl.includes("localhost") || databaseUrl.includes("127.0.0.1")
+        ? undefined
+        : { rejectUnauthorized: false },
+  });
+
+  fs.mkdirSync(directory, { recursive: true });
+  const name = `crazycauldron-${stamp()}${DUMP_SUFFIX}`;
+  const file = path.join(directory, name);
+
+  const startedAt = Date.now();
+  try {
+    const { rows } = await dumpPostgres(pool, file);
+    const bytes = fs.statSync(file).size;
+    console.log("backed up the Postgres database");
+    console.log(`        -> ${file}`);
+    console.log(`   ${mb(bytes)}, ${rows} row(s), in ${Date.now() - startedAt}ms`);
+    copyToDestination(file, name);
+  } finally {
+    await pool.end();
+  }
+}
+
+async function takeSqlite(): Promise<void> {
   if (!fs.existsSync(databasePath)) {
     console.error(`No database at ${databasePath} - nothing to back up.`);
     process.exit(1);
   }
 
   fs.mkdirSync(directory, { recursive: true });
-  const name = `crazycauldron-${new Date().toISOString().replace(/[:.]/g, "-")}.db`;
+  const name = `crazycauldron-${stamp()}.db`;
   const file = path.join(directory, name);
 
   const startedAt = Date.now();
@@ -83,13 +120,7 @@ async function take(): Promise<void> {
   console.log(`        -> ${file}`);
   console.log(`   ${mb(bytes)} in ${Date.now() - startedAt}ms`);
 
-  const destination = process.env.BACKUP_DEST;
-  if (destination) {
-    fs.mkdirSync(destination, { recursive: true });
-    const copy = path.join(destination, name);
-    fs.copyFileSync(file, copy);
-    console.log(`        -> ${copy} (BACKUP_DEST)`);
-  }
+  copyToDestination(file, name);
 
   // Sanity: a backup nobody can open is not a backup.
   const check = new Database(file, { readonly: true });
@@ -109,5 +140,16 @@ async function take(): Promise<void> {
   for (const suffix of ["-wal", "-shm"]) fs.rmSync(`${file}${suffix}`, { force: true });
 }
 
+/** The second copy, when BACKUP_DEST names somewhere to put one. */
+function copyToDestination(file: string, name: string): void {
+  const destination = process.env.BACKUP_DEST;
+  if (!destination) return;
+  fs.mkdirSync(destination, { recursive: true });
+  const copy = path.join(destination, name);
+  fs.copyFileSync(file, copy);
+  console.log(`        -> ${copy} (BACKUP_DEST)`);
+}
+
 if (process.argv.includes("--list")) list();
-else await take();
+else if (usingPostgres) await takePostgres();
+else await takeSqlite();

@@ -1,6 +1,12 @@
 /**
  * Copying the database while it is being written to.
  *
+ * Two backends, two shapes of backup. SQLite gets a real SQLite file taken
+ * through the backup API; Postgres gets a gzipped logical dump, because
+ * pg_dump is not in the image the server runs in. Both land in the same
+ * directory, are pruned by the same rule, and are named the same way apart
+ * from the extension - which is what a restore reads to know which it has.
+ *
  * A plain file copy of an open SQLite database is a gamble: in WAL mode the
  * newest committed transactions live in the -wal file, so copying only the .db
  * can hand back a backup that is missing the last few minutes, and copying all
@@ -16,8 +22,9 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import type Database from "better-sqlite3";
 import { config } from "../config.js";
+import { backend, rawDatabase, rawPool } from "./index.js";
+import { DUMP_SUFFIX, dumpPostgres } from "./pgdump.js";
 import { log } from "../logger.js";
 
 /** How many timestamped copies to keep in the local directory. */
@@ -31,9 +38,12 @@ export interface BackupResult {
   pruned: string[];
 }
 
+/** The extension a backup of this backend carries. */
+export const BACKUP_SUFFIX = backend === "postgres" ? DUMP_SUFFIX : ".db";
+
 /** A file name that sorts chronologically and is legal on every filesystem. */
 export function backupName(at = new Date()): string {
-  return `crazycauldron-${at.toISOString().replace(/[:.]/g, "-")}.db`;
+  return `crazycauldron-${at.toISOString().replace(/[:.]/g, "-")}${BACKUP_SUFFIX}`;
 }
 
 export function backupDirectory(): string {
@@ -43,26 +53,34 @@ export function backupDirectory(): string {
 /**
  * Takes one backup. Returns where it went and how big it was.
  *
- * `db.backup()` is asynchronous and copies in pages, so the server keeps
- * serving while it runs - which matters at 4am only in the sense that it means
- * nobody has to schedule downtime for it.
+ * Neither path stops the server. SQLite's `db.backup()` copies in pages from a
+ * live connection; the Postgres dump reads inside a read-only transaction. It
+ * matters at 4am only in the sense that nobody has to schedule downtime.
  */
-export async function takeBackup(db: Database.Database): Promise<BackupResult> {
+export async function takeBackup(): Promise<BackupResult> {
   const startedAt = Date.now();
   const directory = path.resolve(backupDirectory());
   fs.mkdirSync(directory, { recursive: true });
 
   const file = path.join(directory, backupName());
-  await db.backup(file);
+
+  const pool = rawPool();
+  if (pool) {
+    await dumpPostgres(pool, file);
+  } else {
+    const db = rawDatabase();
+    if (!db) throw new Error("No database is open, so there is nothing to back up.");
+    await db.backup(file);
+
+    /*
+     * The backup API may leave a -wal and a -shm beside the copy. They belong
+     * to the connection that wrote it, not to the backup, and a
+     * self-contained file is the whole point of taking one.
+     */
+    for (const suffix of ["-wal", "-shm"]) fs.rmSync(`${file}${suffix}`, { force: true });
+  }
 
   const bytes = fs.statSync(file).size;
-
-  /*
-   * The backup API may leave a -wal and a -shm beside the copy. They belong to
-   * the connection that wrote it, not to the backup, and a self-contained file
-   * is the whole point of taking one.
-   */
-  for (const suffix of ["-wal", "-shm"]) fs.rmSync(`${file}${suffix}`, { force: true });
 
   let copiedTo: string | null = null;
   const destination = process.env.BACKUP_DEST;
@@ -85,13 +103,18 @@ export async function takeBackup(db: Database.Database): Promise<BackupResult> {
   return { file, bytes, ms: Date.now() - startedAt, copiedTo, pruned };
 }
 
+/** Either shape of backup, and nothing else that happens to be in there. */
+function isBackup(name: string): boolean {
+  return name.startsWith("crazycauldron-") && (name.endsWith(".db") || name.endsWith(DUMP_SUFFIX));
+}
+
 /** Keeps the newest KEEP_BACKUPS files and deletes the rest. */
 export function prune(directory: string, keep = KEEP_BACKUPS): string[] {
   if (!fs.existsSync(directory)) return [];
 
   const files = fs
     .readdirSync(directory)
-    .filter((name) => name.startsWith("crazycauldron-") && name.endsWith(".db"))
+    .filter(isBackup)
     .sort();
 
   const doomed = files.slice(0, Math.max(0, files.length - keep));
@@ -112,7 +135,7 @@ export function listBackups(directory = backupDirectory()): { file: string; byte
 
   return fs
     .readdirSync(resolved)
-    .filter((name) => name.startsWith("crazycauldron-") && name.endsWith(".db"))
+    .filter(isBackup)
     .sort()
     .reverse()
     .map((name) => {
@@ -120,7 +143,7 @@ export function listBackups(directory = backupDirectory()): { file: string; byte
       return {
         file,
         bytes: fs.statSync(file).size,
-        at: name.replace("crazycauldron-", "").replace(/\.db$/, ""),
+        at: name.replace("crazycauldron-", "").replace(/\.db$|\.json\.gz$/, ""),
       };
     });
 }

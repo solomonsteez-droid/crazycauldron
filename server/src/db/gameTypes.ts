@@ -50,7 +50,7 @@ export interface LeaderboardEntry {
 }
 
 export interface GameRepository {
-  load(wallet: string): GameStateRecord;
-  save(state: GameStateRecord): void;
-  topByChefXp(limit: number): LeaderboardEntry[];
+  load(wallet: string): Promise<GameStateRecord>;
+  save(state: GameStateRecord): Promise<void>;
+  topByChefXp(limit: number): Promise<LeaderboardEntry[]>;
 }

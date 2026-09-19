@@ -85,7 +85,7 @@ function routes(app: express.Application): void {
    * polls it; so does anything watching the deployment.
    */
   app.get("/health", async (_req, res) => {
-    const [rooms, db] = [await capacity(), databaseHealth()];
+    const [rooms, db] = await Promise.all([capacity(), databaseHealth()]);
     const metrics = snapshot();
     res.status(db.ok ? 200 : 503).json({
       ok: db.ok,

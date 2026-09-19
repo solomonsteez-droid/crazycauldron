@@ -46,8 +46,8 @@ matchmakeRouter.get("/capacity", async (_req, res) => {
  * Wallets are already public in the room state, so naming them here leaks
  * nothing new; coins, inventories and balances are not included.
  */
-matchmakeRouter.get("/leaderboard", (_req, res) => {
-  const rows = gameStore.topByChefXp(LEADERBOARD_SIZE).map((entry, index) => ({
+matchmakeRouter.get("/leaderboard", async (_req, res) => {
+  const rows = (await gameStore.topByChefXp(LEADERBOARD_SIZE)).map((entry, index) => ({
     rank: index + 1,
     wallet: entry.wallet,
     displayName: entry.displayName,

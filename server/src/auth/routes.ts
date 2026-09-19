@@ -90,7 +90,7 @@ authRouter.post("/verify", limiter, async (req, res) => {
     });
   }
 
-  const player = players.upsertOnLogin(address, shortenAddress(address));
+  const player = await players.upsertOnLogin(address, shortenAddress(address));
   const body: VerifyResponse = {
     token: issueToken(player.wallet, player.displayName),
     wallet: player.wallet,

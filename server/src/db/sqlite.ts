@@ -57,12 +57,17 @@ export class SqlitePlayerRepository implements PlayerRepository {
     this.touchStmt = db.prepare("UPDATE players SET last_seen_at = ? WHERE wallet = ?");
   }
 
-  findByWallet(wallet: string): PlayerRecord | null {
+  /*
+   * These are synchronous underneath - better-sqlite3 has no other mode - and
+   * declared async only so that both backends answer the same way. Nothing is
+   * actually deferred; the promise resolves before the caller can look at it.
+   */
+  async findByWallet(wallet: string): Promise<PlayerRecord | null> {
     const row = this.selectStmt.get(wallet);
     return row ? toRecord(row) : null;
   }
 
-  upsertOnLogin(wallet: string, defaultDisplayName: string): PlayerRecord {
+  async upsertOnLogin(wallet: string, defaultDisplayName: string): Promise<PlayerRecord> {
     const now = new Date().toISOString();
     this.insertStmt.run({ wallet, displayName: defaultDisplayName, now });
     const row = this.selectStmt.get(wallet);
@@ -70,7 +75,7 @@ export class SqlitePlayerRepository implements PlayerRepository {
     return toRecord(row);
   }
 
-  touchLastSeen(wallet: string): void {
+  async touchLastSeen(wallet: string): Promise<void> {
     this.touchStmt.run(new Date().toISOString(), wallet);
   }
 }

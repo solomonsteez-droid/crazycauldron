@@ -23,6 +23,8 @@
   "devDependencies": {
     "@colyseus/sdk": "^0.18.2",
     "@crazycauldron/shared": "*",
+    "@electric-sql/pglite": "^0.5.8",
+    "@electric-sql/pglite-socket": "^0.2.11",
     "@solana/web3.js": "^1.95.4",
     "@types/pngjs": "^6.0.5",
     "bs58": "^6.0.0",

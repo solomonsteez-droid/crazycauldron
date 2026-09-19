@@ -272,7 +272,7 @@ export class SqliteGameRepository implements GameRepository {
     });
   }
 
-  load(wallet: string): GameStateRecord {
+  async load(wallet: string): Promise<GameStateRecord> {
     const row = this.selectGame.get(wallet);
 
     const skillXp = emptyXp();
@@ -326,11 +326,11 @@ export class SqliteGameRepository implements GameRepository {
     };
   }
 
-  save(state: GameStateRecord): void {
+  async save(state: GameStateRecord): Promise<void> {
     this.saveTx(state);
   }
 
-  topByChefXp(limit: number): LeaderboardEntry[] {
+  async topByChefXp(limit: number): Promise<LeaderboardEntry[]> {
     const rows = this.selectTop.all(limit);
     if (rows.length === 0) return [];
 

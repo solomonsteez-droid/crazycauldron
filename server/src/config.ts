@@ -95,6 +95,16 @@ if (refusals.length > 0) {
 
 const databasePath = str("DATABASE_PATH", "./data/crazycauldron.db");
 
+/*
+ * Which database, decided by whether a Postgres URL was given.
+ *
+ * Nothing else chooses. A deployment that sets DATABASE_URL is on Postgres; a
+ * developer's machine, which sets nothing, is on the SQLite file. There is no
+ * third setting to get wrong and no way to be on one while configured for the
+ * other.
+ */
+const databaseUrl = process.env.DATABASE_URL?.trim() ?? "";
+
 export const config = {
   nodeEnv,
   isProduction,
@@ -122,6 +132,8 @@ export const config = {
   testBypassHold,
 
   databasePath: path.isAbsolute(databasePath) ? databasePath : path.join(REPO_ROOT, databasePath),
+  /** Empty means SQLite. Anything else is a Postgres connection string. */
+  databaseUrl,
 
   hubMaxPlayers: num("HUB_MAX_PLAYERS", 30),
   globalMaxPlayers: num("GLOBAL_MAX_PLAYERS", 300),

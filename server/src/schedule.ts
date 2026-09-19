@@ -10,7 +10,7 @@
 
 import cron from "node-cron";
 import { config } from "./config.js";
-import { databaseHealth, rawDatabase } from "./db/index.js";
+import { databaseHealth } from "./db/index.js";
 import { takeBackup } from "./db/backup.js";
 import { log } from "./logger.js";
 import { capacity } from "./matchmaking/index.js";
@@ -27,7 +27,7 @@ export interface Scheduled {
 
 export async function runBackupNow(reason: string): Promise<boolean> {
   try {
-    const result = await takeBackup(rawDatabase());
+    const result = await takeBackup();
     log.info("backup.done", {
       reason,
       file: result.file,
@@ -63,7 +63,7 @@ export function startSchedules(): Scheduled {
   let lastHealthy = true;
   const health = setInterval(() => {
     void (async () => {
-      const db = databaseHealth();
+      const db = await databaseHealth();
       if (!db.ok) {
         log.error("health.failed", { database: db.error });
         await alert({

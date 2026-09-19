@@ -40,19 +40,40 @@ export class Session {
   ) {}
 
   /**
+   * Writes still owed to the database, in the order they were asked for.
+   *
+   * Saves are fired off rather than waited on, so two can be in flight at
+   * once - and against Postgres the second could then land before the first,
+   * writing an older state over a newer one. Chaining them costs nothing on
+   * SQLite, where each finishes before the next is asked for, and on Postgres
+   * it is the difference between a correct save and a lost gather.
+   */
+  private writes: Promise<void> = Promise.resolve();
+
+  /**
    * Persist. Called after every state-changing action rather than on a timer:
    * a crash between a gather and a save would otherwise hand back ingredients
    * the player already spent.
+   *
+   * The snapshot is taken now, synchronously, so what is queued is the state
+   * as it was when the action finished rather than whatever it has become by
+   * the time the write runs.
    */
   save(): void {
-    try {
-      gameStore.save(this.state.toRecord());
-    } catch (err) {
-      log.error("game.save_failed", {
-        wallet: this.state.wallet,
-        message: (err as Error).message,
+    const record = this.state.toRecord();
+    this.writes = this.writes
+      .then(() => gameStore.save(record))
+      .catch((err: unknown) => {
+        log.error("game.save_failed", {
+          wallet: this.state.wallet,
+          message: (err as Error).message,
+        });
       });
-    }
+  }
+
+  /** Waits for anything still owed. Used when a room is shutting down. */
+  async flush(): Promise<void> {
+    await this.writes;
   }
 
   clearTimer(): void {
@@ -66,7 +87,11 @@ export class Session {
   }
 }
 
-export function loadSession(client: Client, wallet: string, displayName: string): Session {
-  const record = gameStore.load(wallet);
+export async function loadSession(
+  client: Client,
+  wallet: string,
+  displayName: string,
+): Promise<Session> {
+  const record = await gameStore.load(wallet);
   return new Session(client, new PlayerState(record, displayName));
 }

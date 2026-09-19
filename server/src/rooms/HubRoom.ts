@@ -191,7 +191,7 @@ export class HubRoom extends Room<{ state: HubState; client: Client<{ auth: Join
     return authenticateJoin(options);
   }
 
-  override onJoin(client: Client) {
+  override async onJoin(client: Client) {
     const { claims } = client.auth as JoinAuth;
 
     const player = new Player();
@@ -204,7 +204,7 @@ export class HubRoom extends Room<{ state: HubState; client: Client<{ auth: Join
     player.tileY = HUB_SPAWN.tileY;
     player.facing = "s";
 
-    const session = loadSession(client, claims.wallet, claims.displayName);
+    const session = await loadSession(client, claims.wallet, claims.displayName);
     player.chefLevel = session.state.chefLevel;
     player.section = HUB_MAP;
 
@@ -220,7 +220,7 @@ export class HubRoom extends Room<{ state: HubState; client: Client<{ auth: Join
     this.state.players.set(client.sessionId, player);
     this.expiries.set(client.sessionId, claims.exp);
     this.sessions.set(client.sessionId, session);
-    playerRepo.touchLastSeen(claims.wallet);
+    void playerRepo.touchLastSeen(claims.wallet);
 
     // Perishables rot while offline; sweep before the first profile is sent so
     // the player is never shown a stack that is already gone.
