@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-19T23:13:35.730Z",
+  "generatedAt": "2026-09-19T23:29:26.209Z",
   "bodyFrame": {
     "width": 32,
     "height": 48
@@ -555,7 +555,78 @@
       "widthPct": 0.84
     }
   ],
-  "cloaks": [],
+  "cloaks": [
+    {
+      "id": "cloak_01_wool",
+      "width": 26,
+      "height": 22,
+      "offset": {
+        "x": 3,
+        "y": 22
+      },
+      "widthPct": 1.04
+    },
+    {
+      "id": "cloak_02_patched",
+      "width": 26,
+      "height": 22,
+      "offset": {
+        "x": 3,
+        "y": 22
+      },
+      "widthPct": 1.04
+    },
+    {
+      "id": "cloak_03_berry",
+      "width": 26,
+      "height": 22,
+      "offset": {
+        "x": 3,
+        "y": 22
+      },
+      "widthPct": 1.04
+    },
+    {
+      "id": "cloak_04_rugged",
+      "width": 26,
+      "height": 22,
+      "offset": {
+        "x": 3,
+        "y": 22
+      },
+      "widthPct": 1.04
+    },
+    {
+      "id": "cloak_05_midnight",
+      "width": 26,
+      "height": 22,
+      "offset": {
+        "x": 3,
+        "y": 22
+      },
+      "widthPct": 1.04
+    },
+    {
+      "id": "cloak_06_silver",
+      "width": 26,
+      "height": 22,
+      "offset": {
+        "x": 3,
+        "y": 22
+      },
+      "widthPct": 1.04
+    },
+    {
+      "id": "cloak_07_gold",
+      "width": 26,
+      "height": 22,
+      "offset": {
+        "x": 3,
+        "y": 22
+      },
+      "widthPct": 1.04
+    }
+  ],
   "companions": [
     {
       "id": "companion_01_hen",
