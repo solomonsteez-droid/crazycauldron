@@ -220,3 +220,21 @@ export interface SkillsFile {
   };
   unlocks: Record<SkillId, Unlock[]>;
 }
+
+export interface TerrainPack {
+  atlas: string;
+  tileSize: number;
+}
+
+export interface TerrainMap {
+  map: number;
+  name: string;
+  pack: string;
+  tint: string;
+  tiles: { grass: number; path: number; rock: number };
+}
+
+export interface TerrainFile {
+  packs: Record<string, TerrainPack>;
+  maps: TerrainMap[];
+}

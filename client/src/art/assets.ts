@@ -29,6 +29,30 @@ export const dishKey = (recipeId: string) => `dish:${recipeId}`;
 export const nodeKey = (id: string, empty = false) => `node:${id}${empty ? ":empty" : ""}`;
 export const uiKey = (name: string) => `ui:${name}`;
 export const effectKey = (name: string) => `fx:${name}`;
+export const terrainKey = (mapId: number) => `terrain:${mapId}`;
+
+/** Side of one tile cell in the packs. */
+export const TERRAIN_TILE = 32;
+
+/**
+ * Section index to the prop drawn at its gate, and station id to its building.
+ *
+ * Defined once here because both the real art and the placeholders are keyed by
+ * it - deriving the name from the section id instead produced "portal_deep"
+ * against art called "portal_forest", which only showed up when the art was
+ * missing.
+ */
+export const PORTAL_PROP: Record<number, string> = {
+  1: "portal_meadows",
+  2: "portal_forest",
+  3: "portal_caves",
+};
+
+export const STATION_PROP: Record<string, string> = {
+  kitchen: "kitchen",
+  tavern: "tavern",
+  outfitter: "shop",
+};
 
 /** Recipe ids in authoring order, so dishes/recipe_NN.png maps to a recipe. */
 const RECIPE_BY_INDEX = RECIPES.map((r) => r.id);
@@ -54,6 +78,13 @@ export function queueArt(scene: Phaser.Scene, manifest: Manifest): void {
     scene.load.image(apronKey(apron.id), `${GENERATED}/aprons/${apron.id}.png`);
   }
   for (const prop of manifest.props) scene.load.image(propKey(prop), `${GENERATED}/props/${prop}.png`);
+
+  for (const terrain of manifest.terrain ?? []) {
+    scene.load.spritesheet(terrainKey(terrain.map), `${GENERATED}/terrain/map${terrain.map}.png`, {
+      frameWidth: TERRAIN_TILE,
+      frameHeight: TERRAIN_TILE,
+    });
+  }
 
   const optional = manifest.optional ?? {};
   for (const file of optional.ingredients ?? []) {
@@ -178,11 +209,12 @@ export function drawPlaceholders(scene: Phaser.Scene): void {
     effectStrip(scene, effectKey(name), name);
   }
 
-  for (const id of ["kitchen", "tavern", "shop"]) {
+  for (const id of Object.values(STATION_PROP)) {
     buildingChip(scene, propKey(id), id);
   }
   for (const section of SECTIONS) {
-    portalChip(scene, propKey(`portal_${section.id.split("_")[0]}`), section.accentColor);
+    const id = PORTAL_PROP[section.index];
+    if (id) portalChip(scene, propKey(id), section.accentColor);
   }
 }
 

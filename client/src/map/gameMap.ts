@@ -17,24 +17,18 @@ import {
 } from "@crazycauldron/shared";
 import { LABEL_SCREEN_PX, MAP_WORLD_BOUNDS, SMALL_LABEL_SCREEN_PX, labelScale, type Rect } from "./camera.js";
 import { TEX_CAULDRON, TEX_GLOW, TEX_NODE, TEX_NODE_SPENT, TEX_TILE } from "./textures.js";
-import { propKey } from "../art/assets.js";
+import { PORTAL_PROP, STATION_PROP, propKey, terrainKey } from "../art/assets.js";
+import { loadArt, type TerrainEntry } from "../art/manifest.js";
 
 /**
- * Station ids are gameplay names; the art is named after the building. The
- * outfitter trades out of the shop, which is why the two differ.
+ * Headroom above and below the logical grid.
+ *
+ * Pack tiles are 32px tall against a 16px slot, and a tile whose diamond sits
+ * low in its cell is drawn well above its slot - so the baked floor needs room
+ * on both sides that the grid itself does not use.
  */
-const STATION_PROP: Record<string, string> = {
-  kitchen: "kitchen",
-  tavern: "tavern",
-  outfitter: "shop",
-};
+const TERRAIN_PAD = 24;
 
-/** Section index to the portal art drawn at its gate. */
-const PORTAL_PROP: Record<number, string> = {
-  1: "portal_meadows",
-  2: "portal_forest",
-  3: "portal_caves",
-};
 
 /**
  * Renders whichever map the player is standing on.
@@ -68,13 +62,18 @@ export class GameMap {
     readonly mapId: number,
   ) {
     const width = MAP_SIZE * TILE_WIDTH;
-    const height = MAP_SIZE * TILE_HEIGHT + TILE_HEIGHT;
+    const height = MAP_SIZE * TILE_HEIGHT + TILE_HEIGHT + TERRAIN_PAD * 2;
     const tiles = mapId === HUB_MAP ? HUB_TILES : sectionTiles(mapId);
 
     this.floor = scene.add
-      .renderTexture(-this.offsetX, 0, width, height)
+      .renderTexture(-this.offsetX, -TERRAIN_PAD, width, height)
       .setOrigin(0, 0)
       .setDepth(-1);
+
+    // The pack tiles if the pipeline produced them, the generated diamonds if
+    // not. Either way the floor is one baked texture and one draw call.
+    const terrain = this.terrainFor(mapId);
+    const usePack = terrain !== null && scene.textures.exists(terrainKey(mapId));
 
     this.floor.beginDraw();
     for (let y = 0; y < MAP_SIZE; y += 1) {
@@ -82,23 +81,40 @@ export class GameMap {
         const id = tiles[y]?.[x];
         if (id === undefined) continue;
         const world = tileToWorld(x, y);
-        this.floor.batchDrawFrame(
-          TEX_TILE[id],
-          undefined,
-          world.x + this.offsetX - TILE_WIDTH / 2,
-          world.y,
-        );
+        const drawX = world.x + this.offsetX - TILE_WIDTH / 2;
+
+        if (usePack && terrain) {
+          // Seat the tile by its measured diamond centre, not its top edge,
+          // so tall and flat tiles from the same pack sit level.
+          const anchor = terrain.anchors[id] ?? TILE_HEIGHT / 2;
+          const drawY = world.y + TILE_HEIGHT / 2 - anchor + TERRAIN_PAD;
+          this.floor.batchDrawFrame(terrainKey(mapId), id, drawX, drawY);
+        } else {
+          this.floor.batchDrawFrame(TEX_TILE[id], undefined, drawX, world.y + TERRAIN_PAD);
+        }
       }
     }
     this.floor.endDraw();
 
-    // One tint per section rather than a tile set per section: the palette
-    // accent is the whole visual difference between the three maps today.
-    const section = findSection(mapId);
-    if (section) this.floor.setTint(Phaser.Display.Color.HexStringToColor(section.groundColor).color);
+    // One tint per map: the packs are shared, so the palette is what makes the
+    // Meadows warm, the Deep Forest cool and the Caves cold.
+    const tint = terrain?.tint ?? findSection(mapId)?.groundColor;
+    if (tint) this.floor.setTint(Phaser.Display.Color.HexStringToColor(tint).color);
 
     if (mapId === HUB_MAP) this.buildHub();
     else this.buildSection(mapId);
+  }
+
+  /** Terrain settings for this map, if the manifest has been read. */
+  private terrainFor(mapId: number): TerrainEntry | null {
+    return GameMap.terrain.find((t) => t.map === mapId) ?? null;
+  }
+
+  /** Filled once at boot; the constructor is synchronous and cannot await. */
+  private static terrain: TerrainEntry[] = [];
+
+  static useTerrain(entries: TerrainEntry[]) {
+    GameMap.terrain = entries;
   }
 
   private buildHub() {

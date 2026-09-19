@@ -1,0 +1,19 @@
+{
+  "_comment": "Which tiles from the Kipperfalcon CC0 packs each map is built from. Indices are into the pack atlas, read left to right, top to bottom. The pipeline measures each tile's diamond centre so the client can seat it correctly; only the choice of tile lives here.",
+  "packs": {
+    "forest": {
+      "atlas": "terrain/forest/Forest Isometric Pack Free/Atlas_files/Tileset_Atlas.png",
+      "tileSize": 32
+    },
+    "cave": {
+      "atlas": "terrain/cave/Free/Atlas/Tileset_cave.png",
+      "tileSize": 32
+    }
+  },
+  "maps": [
+    { "map": 0, "name": "hub", "pack": "forest", "tint": "#ffffff", "tiles": { "grass": 0, "path": 74, "rock": 30 } },
+    { "map": 1, "name": "meadows", "pack": "forest", "tint": "#fff0cc", "tiles": { "grass": 3, "path": 74, "rock": 30 } },
+    { "map": 2, "name": "deep_forest", "pack": "forest", "tint": "#8fae9c", "tiles": { "grass": 2, "path": 5, "rock": 31 } },
+    { "map": 3, "name": "mystical_caves", "pack": "cave", "tint": "#a6bce4", "tiles": { "grass": 25, "path": 0, "rock": 29 } }
+  ]
+}

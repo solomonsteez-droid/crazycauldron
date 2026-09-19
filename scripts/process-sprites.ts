@@ -24,7 +24,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { QUANTISE_RAMP, RECIPES, INGREDIENTS } from "@crazycauldron/shared";
+import { QUANTISE_RAMP, RECIPES, INGREDIENTS, TERRAIN } from "@crazycauldron/shared";
 import {
   alphaBounds,
   bestAlignment,
@@ -377,6 +377,101 @@ function buildProp(file: string, id: string, footprint: "building" | "portal"): 
   note("made", `generated/props/${id}.png ${targetW}x${height}`);
 }
 
+
+// --------------------------------------------------------------------------
+// Terrain
+// --------------------------------------------------------------------------
+
+interface TerrainOut {
+  map: number;
+  name: string;
+  tint: string;
+  /** Rows in each 32px cell where the diamond is widest - its visual centre. */
+  anchors: number[];
+}
+
+/**
+ * The row where a tile's diamond is widest.
+ *
+ * The packs mix tiles whose top face sits high in the cell (with a tall side
+ * skirt below) and flat ones where it sits near the bottom. Drawing both at the
+ * same offset leaves the floor visibly stepped, so the centre is measured here
+ * and the client seats each tile by it.
+ */
+function diamondCentre(tile: Img): number {
+  let widest = 0;
+  let at = Math.floor(tile.height / 2);
+  for (let y = 0; y < tile.height; y += 1) {
+    let span = 0;
+    for (let x = 0; x < tile.width; x += 1) {
+      if (tile.data[idxOf(tile, x, y) + 3]! > 128) span += 1;
+    }
+    if (span > widest) {
+      widest = span;
+      at = y;
+    }
+  }
+  return at;
+}
+
+const idxOf = (img: Img, x: number, y: number) => (y * img.width + x) * 4;
+
+/**
+ * Builds a three-tile strip per map - grass, path, rock - from the CC0 packs.
+ *
+ * One strip rather than the whole pack: the maps only use three tiles each, and
+ * a 96x32 image costs nothing to load next to a 320x320 atlas.
+ */
+function buildTerrain(): TerrainOut[] {
+  const out: TerrainOut[] = [];
+
+  for (const map of TERRAIN.maps) {
+    const pack = TERRAIN.packs[map.pack];
+    if (!pack) {
+      note("skipped", `terrain ${map.name} - no pack named "${map.pack}"`);
+      continue;
+    }
+
+    const atlasFile = path.join(ASSETS, pack.atlas);
+    if (!exists(atlasFile)) {
+      note("skipped", `terrain ${map.name} - ${pack.atlas} is missing`);
+      continue;
+    }
+
+    const atlas = load(atlasFile);
+    const size = pack.tileSize;
+    const columns = Math.floor(atlas.width / size);
+
+    const order: (keyof typeof map.tiles)[] = ["grass", "path", "rock"];
+    const strip = blank(size * order.length, size);
+    const anchors: number[] = [];
+
+    for (let i = 0; i < order.length; i += 1) {
+      const index = map.tiles[order[i]!];
+      const cut = crop(atlas, {
+        x: (index % columns) * size,
+        y: Math.floor(index / columns) * size,
+        width: size,
+        height: size,
+      });
+      anchors.push(diamondCentre(cut));
+      blit(strip, cut, i * size, 0);
+    }
+
+    save(path.join(OUT, "terrain", `map${map.map}.png`), strip);
+    note("found", pack.atlas);
+    note(
+      "made",
+      `generated/terrain/map${map.map}.png (${map.name}: ${order
+        .map((k, i) => `${k} #${map.tiles[k]} @y${anchors[i]}`)
+        .join(", ")})`,
+    );
+    out.push({ map: map.map, name: map.name, tint: map.tint, anchors });
+  }
+
+  return out;
+}
+
 // --------------------------------------------------------------------------
 // Optional art
 // --------------------------------------------------------------------------
@@ -502,6 +597,9 @@ function main() {
     props.push(id);
   }
 
+  // --- terrain ------------------------------------------------------------
+  const terrain = buildTerrain();
+
   // --- manifest -----------------------------------------------------------
   const optional = surveyOptional();
   const manifest = {
@@ -511,6 +609,7 @@ function main() {
     hats: overlays.hats,
     aprons: overlays.aprons,
     props,
+    terrain,
     optional,
   };
   fs.writeFileSync(path.join(OUT, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);

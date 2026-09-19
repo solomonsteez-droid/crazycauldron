@@ -11,8 +11,10 @@ import ingredientsJson from "./ingredients.json" with { type: "json" };
 import recipesJson from "./recipes.json" with { type: "json" };
 import sectionsJson from "./sections.json" with { type: "json" };
 import skillsJson from "./skills.json" with { type: "json" };
+import terrainJson from "./terrain.json" with { type: "json" };
 import type {
   GatherNodeDef,
+  TerrainFile,
   Ingredient,
   Recipe,
   Section,
@@ -33,6 +35,13 @@ export const HUB_STATIONS = sectionsFile.hub.stations;
 export const HUB_PORTALS = sectionsFile.hub.portals;
 
 export const SKILL_IDS = CONFIG.skills.list;
+
+export const TERRAIN = terrainJson as unknown as TerrainFile;
+
+/** Terrain settings for a map id, falling back to the hub's. */
+export function terrainFor(mapId: number) {
+  return TERRAIN.maps.find((m) => m.map === mapId) ?? TERRAIN.maps[0]!;
+}
 
 const ingredientById = new Map(INGREDIENTS.map((i) => [i.id, i]));
 const recipeById = new Map(RECIPES.map((r) => [r.id, r]));

@@ -21,6 +21,14 @@ export interface OverlayEntry {
   offset: Vec2;
 }
 
+export interface TerrainEntry {
+  map: number;
+  name: string;
+  tint: string;
+  /** Row of each tile's widest span - where its diamond actually sits. */
+  anchors: number[];
+}
+
 export interface Manifest {
   generatedAt: string;
   bodyFrame: { width: number; height: number };
@@ -28,6 +36,7 @@ export interface Manifest {
   hats: OverlayEntry[];
   aprons: OverlayEntry[];
   props: string[];
+  terrain: TerrainEntry[];
   optional: Record<string, string[]>;
 }
 
@@ -58,6 +67,7 @@ const EMPTY_MANIFEST: Manifest = {
   hats: [],
   aprons: [],
   props: [],
+  terrain: [],
   optional: {},
 };
 

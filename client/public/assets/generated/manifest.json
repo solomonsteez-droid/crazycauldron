@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-09-19T07:36:18.232Z",
+  "generatedAt": "2026-09-19T08:05:21.214Z",
   "bodyFrame": {
     "width": 32,
     "height": 48
   },
   "bodies": {
     "male": {
-      "scale": 0.0547945205479452,
+      "scale": 0.058394160583941604,
       "frames": [
         "male_idle_down",
         "male_idle_up",
@@ -31,7 +31,7 @@
       ]
     },
     "female": {
-      "scale": 0.05491990846681922,
+      "scale": 0.05417607223476298,
       "frames": [
         "female_idle_down",
         "female_idle_up",
@@ -59,65 +59,65 @@
   "hats": [
     {
       "id": "hat_01_chef",
-      "width": 82,
+      "width": 75,
       "height": 28,
       "offset": {
-        "x": 1,
-        "y": -2
+        "x": 8,
+        "y": -3
       }
     },
     {
       "id": "hat_02_straw",
-      "width": 85,
+      "width": 91,
       "height": 28,
       "offset": {
-        "x": -1,
-        "y": -2
+        "x": -4,
+        "y": -3
       }
     },
     {
       "id": "hat_03_mushroom",
-      "width": 50,
+      "width": 52,
       "height": 28,
       "offset": {
         "x": 11,
-        "y": -2
+        "y": -3
       }
     },
     {
       "id": "hat_04_acorn",
-      "width": 59,
+      "width": 61,
       "height": 28,
       "offset": {
-        "x": 11,
-        "y": -2
+        "x": 10,
+        "y": -3
       }
     },
     {
       "id": "hat_05_circlet",
-      "width": 84,
-      "height": 28,
+      "width": 90,
+      "height": 29,
       "offset": {
-        "x": -16,
-        "y": -2
+        "x": 6,
+        "y": -4
       }
     },
     {
       "id": "hat_06_dragonscale",
-      "width": 54,
+      "width": 59,
       "height": 40,
       "offset": {
-        "x": 12,
-        "y": -14
+        "x": 10,
+        "y": -16
       }
     },
     {
       "id": "hat_07_moonpetal",
-      "width": 61,
+      "width": 65,
       "height": 40,
       "offset": {
         "x": 10,
-        "y": -14
+        "y": -15
       }
     },
     {
@@ -125,82 +125,82 @@
       "width": 59,
       "height": 28,
       "offset": {
-        "x": 12,
-        "y": -2
+        "x": 10,
+        "y": -4
       }
     },
     {
       "id": "hat_09_gold",
-      "width": 51,
+      "width": 48,
       "height": 28,
       "offset": {
-        "x": 3,
-        "y": -2
+        "x": 8,
+        "y": -4
       }
     }
   ],
   "aprons": [
     {
       "id": "apron_01_linen",
-      "width": 55,
-      "height": 86,
+      "width": 58,
+      "height": 93,
       "offset": {
-        "x": 1,
-        "y": 21
+        "x": -1,
+        "y": 19
       }
     },
     {
       "id": "apron_02_patched",
-      "width": 50,
-      "height": 90,
+      "width": 53,
+      "height": 96,
       "offset": {
-        "x": 2,
-        "y": 21
+        "x": -1,
+        "y": 19
       }
     },
     {
       "id": "apron_03_berry",
-      "width": 50,
-      "height": 90,
+      "width": 53,
+      "height": 96,
       "offset": {
-        "x": 6,
-        "y": 21
+        "x": 5,
+        "y": 19
       }
     },
     {
       "id": "apron_04_rugged",
-      "width": 39,
-      "height": 90,
+      "width": 42,
+      "height": 96,
       "offset": {
-        "x": 2,
-        "y": 21
+        "x": 3,
+        "y": 19
       }
     },
     {
       "id": "apron_05_midnight",
-      "width": 46,
-      "height": 85,
+      "width": 49,
+      "height": 92,
       "offset": {
-        "x": 4,
-        "y": 21
+        "x": 5,
+        "y": 19
       }
     },
     {
       "id": "apron_06_silver",
       "width": 32,
-      "height": 70,
+      "height": 73,
       "offset": {
         "x": 5,
-        "y": 21
+        "y": 19
       }
     },
     {
       "id": "apron_07_gold",
       "width": 32,
-      "height": 70,
+      "height": 72,
       "offset": {
-        "x": 5,
-        "y": 21
+        "x": 6,
+        "y": 19
       }
     }
   ],
@@ -211,6 +211,48 @@
     "portal_meadows",
     "portal_forest",
     "portal_caves"
+  ],
+  "terrain": [
+    {
+      "map": 0,
+      "name": "hub",
+      "tint": "#ffffff",
+      "anchors": [
+        8,
+        20,
+        7
+      ]
+    },
+    {
+      "map": 1,
+      "name": "meadows",
+      "tint": "#fff0cc",
+      "anchors": [
+        9,
+        20,
+        7
+      ]
+    },
+    {
+      "map": 2,
+      "name": "deep_forest",
+      "tint": "#8fae9c",
+      "anchors": [
+        8,
+        9,
+        7
+      ]
+    },
+    {
+      "map": 3,
+      "name": "mystical_caves",
+      "tint": "#a6bce4",
+      "anchors": [
+        20,
+        22,
+        7
+      ]
+    }
   ],
   "optional": {
     "ingredients": [],

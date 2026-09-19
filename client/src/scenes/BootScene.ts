@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { createBodyAnimations, drawPlaceholders, queueArt } from "../art/assets.js";
 import { loadArt } from "../art/manifest.js";
+import { GameMap } from "../map/gameMap.js";
 import { createPlaceholderArt } from "../map/textures.js";
 import { SCENE_BOOT, SCENE_LOGIN } from "./keys.js";
 
@@ -25,6 +26,7 @@ export class BootScene extends Phaser.Scene {
 
       const finish = () => {
         drawPlaceholders(this);
+        GameMap.useTerrain(manifest.terrain ?? []);
         createBodyAnimations(this, manifest);
         this.scene.start(SCENE_LOGIN);
       };
