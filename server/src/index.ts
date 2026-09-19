@@ -13,6 +13,7 @@ import { alert, closeLog, logFile } from "./monitoring.js";
 import { startSchedules } from "./schedule.js";
 import { capacity } from "./matchmaking/index.js";
 import { matchmakeRouter } from "./matchmaking/routes.js";
+import { serveClient } from "./web/static.js";
 import { HubRoom } from "./rooms/HubRoom.js";
 import { WaitingRoom } from "./rooms/WaitingRoom.js";
 
@@ -56,7 +57,14 @@ function routes(app: express.Application): void {
    */
   app.use((req, res, next) => {
     const origin = req.headers.origin;
-    if (origin && !config.corsOrigins.includes(origin)) {
+    /*
+     * A request from the page this server itself served is always allowed,
+     * whatever the allowlist says. Since the client is hosted here, the
+     * alternative is a deployment that refuses its own front end because
+     * somebody forgot to add its domain to CORS_ORIGIN.
+     */
+    const ownOrigin = origin !== undefined && origin.endsWith(`//${req.headers.host}`);
+    if (origin && !ownOrigin && !config.corsOrigins.includes(origin)) {
       log.warn("cors.refused", { origin, path: req.path });
       return res.status(403).json({
         error: "origin_not_allowed",
@@ -103,6 +111,15 @@ function routes(app: express.Application): void {
   // so an Express router mounted there is never reached - /capacity would answer
   // with Colyseus's room list and /enter with a JSON parse error.
   app.use("/play", matchmakeRouter);
+
+  /*
+   * The built client, mounted after the API.
+   *
+   * Order matters here and nowhere else: the static handler ends in a
+   * catch-all that answers index.html, so anything mounted after it would
+   * never be reached.
+   */
+  serveClient(app);
 
   // Last-resort handler: log the detail, tell the client nothing useful.
   app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
