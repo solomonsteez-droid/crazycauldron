@@ -22,10 +22,17 @@ const key = (x: number, y: number) => y * 4096 + x;
  * Shortest walkable route from `from` to `to`, excluding the start tile and
  * including the destination. Returns [] when unreachable, when the destination
  * is blocked, or when the shortest route is longer than MAX_PATH_TILES.
+ *
+ * `walkable` defaults to the hub grid; the sections pass their own predicate so
+ * one search serves every map.
  */
-export function findPath(from: TilePos, to: TilePos): TilePos[] {
-  if (!isWalkable(from.tileX, from.tileY)) return [];
-  if (!isWalkable(to.tileX, to.tileY)) return [];
+export function findPath(
+  from: TilePos,
+  to: TilePos,
+  walkable: (tileX: number, tileY: number) => boolean = isWalkable,
+): TilePos[] {
+  if (!walkable(from.tileX, from.tileY)) return [];
+  if (!walkable(to.tileX, to.tileY)) return [];
   if (from.tileX === to.tileX && from.tileY === to.tileY) return [];
 
   const cameFrom = new Map<number, number>();
@@ -44,7 +51,7 @@ export function findPath(from: TilePos, to: TilePos): TilePos[] {
       for (const [dx, dy] of STEPS) {
         const tileX = tile.tileX + dx;
         const tileY = tile.tileY + dy;
-        if (!isWalkable(tileX, tileY)) continue;
+        if (!walkable(tileX, tileY)) continue;
 
         const id = key(tileX, tileY);
         if (cameFrom.has(id)) continue;

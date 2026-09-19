@@ -1,0 +1,61 @@
+[
+  { "id": "meadow_flatbread", "name": "Meadow flatbread", "section": 1, "technique": "bake", "chefXp": 10, "sellCoins": 5,
+    "ingredients": [{ "id": "sunwheat", "qty": 2 }, { "id": "rock_salt", "qty": 1 }], "requirements": {} },
+
+  { "id": "berry_porridge", "name": "Berry porridge", "section": 1, "technique": "simmer", "chefXp": 12, "sellCoins": 6,
+    "ingredients": [{ "id": "sunwheat", "qty": 1 }, { "id": "meadow_berries", "qty": 2 }], "requirements": {} },
+
+  { "id": "honeycap_saute", "name": "Honeycap saute", "section": 1, "technique": "pan_fry", "chefXp": 15, "sellCoins": 8,
+    "ingredients": [{ "id": "honeycap", "qty": 2 }, { "id": "wild_thyme", "qty": 1 }], "requirements": { "knifework": 2 } },
+
+  { "id": "cress_salad", "name": "Cress salad", "section": 1, "technique": "raw", "chefXp": 15, "sellCoins": 8,
+    "ingredients": [{ "id": "brook_cress", "qty": 2 }, { "id": "meadow_berries", "qty": 1 }, { "id": "clover_honey", "qty": 1 }], "requirements": { "knifework": 3 } },
+
+  { "id": "honey_drizzle_cake", "name": "Honey drizzle cake", "section": 1, "technique": "bake", "chefXp": 22, "sellCoins": 12,
+    "ingredients": [{ "id": "sunwheat", "qty": 2 }, { "id": "clover_honey", "qty": 2 }, { "id": "meadow_berries", "qty": 1 }], "requirements": { "firecraft": 3, "knifework": 2 } },
+
+  { "id": "thyme_mushroom_soup", "name": "Thyme mushroom soup", "section": 1, "technique": "simmer", "chefXp": 25, "sellCoins": 14,
+    "ingredients": [{ "id": "honeycap", "qty": 2 }, { "id": "wild_thyme", "qty": 1 }, { "id": "rock_salt", "qty": 1 }], "requirements": { "firecraft": 4, "spicecraft": 2 } },
+
+  { "id": "clay_baked_roots", "name": "Clay-baked roots", "section": 1, "technique": "clay_bake", "chefXp": 30, "sellCoins": 18,
+    "ingredients": [{ "id": "brook_cress", "qty": 1 }, { "id": "sunwheat", "qty": 1 }, { "id": "clay", "qty": 1 }, { "id": "rock_salt", "qty": 1 }], "requirements": { "firecraft": 5 } },
+
+  { "id": "roast_chestnuts", "name": "Roast chestnuts", "section": 2, "technique": "roast", "chefXp": 35, "sellCoins": 20,
+    "ingredients": [{ "id": "giant_chestnuts", "qty": 3 }, { "id": "smoke_salt", "qty": 1 }], "requirements": { "firecraft": 6 } },
+
+  { "id": "marsh_rice_bowl", "name": "Marsh rice bowl", "section": 2, "technique": "simmer", "chefXp": 40, "sellCoins": 24,
+    "ingredients": [{ "id": "marsh_rice", "qty": 2 }, { "id": "bog_garlic", "qty": 1 }, { "id": "kingcap", "qty": 1 }], "requirements": { "firecraft": 7, "knifework": 5 } },
+
+  { "id": "kingcap_stew", "name": "Kingcap stew", "section": 2, "technique": "simmer", "chefXp": 45, "sellCoins": 28,
+    "ingredients": [{ "id": "kingcap", "qty": 2 }, { "id": "bog_garlic", "qty": 1 }, { "id": "rock_salt", "qty": 1 }, { "id": "sunwheat", "qty": 1 }], "requirements": { "firecraft": 8, "spicecraft": 4 } },
+
+  { "id": "amber_glazed_flatbread", "name": "Amber-glazed flatbread", "section": 2, "technique": "bake", "chefXp": 45, "sellCoins": 28,
+    "ingredients": [{ "id": "sunwheat", "qty": 2 }, { "id": "sap_amber", "qty": 1 }, { "id": "smoke_salt", "qty": 1 }], "requirements": { "firecraft": 8, "spicecraft": 5 } },
+
+  { "id": "nightshade_chili_pot", "name": "Nightshade chili pot", "section": 2, "technique": "simmer", "chefXp": 55, "sellCoins": 34,
+    "ingredients": [{ "id": "nightshade_pepper", "qty": 1 }, { "id": "marsh_rice", "qty": 1 }, { "id": "kingcap", "qty": 1 }, { "id": "bog_garlic", "qty": 1 }], "requirements": { "spicecraft": 7, "firecraft": 9 } },
+
+  { "id": "chestnut_stuffing", "name": "Chestnut stuffing", "section": 2, "technique": "bake", "chefXp": 55, "sellCoins": 34,
+    "ingredients": [{ "id": "giant_chestnuts", "qty": 2 }, { "id": "sunwheat", "qty": 1 }, { "id": "wild_thyme", "qty": 1 }, { "id": "sap_amber", "qty": 1 }], "requirements": { "knifework": 8, "firecraft": 9 } },
+
+  { "id": "smoked_forest_platter", "name": "Smoked forest platter", "section": 2, "technique": "smoke", "chefXp": 70, "sellCoins": 45,
+    "ingredients": [{ "id": "kingcap", "qty": 1 }, { "id": "giant_chestnuts", "qty": 1 }, { "id": "smoke_salt", "qty": 1 }, { "id": "bog_garlic", "qty": 1 }, { "id": "sap_amber", "qty": 1 }], "requirements": { "firecraft": 10, "knifework": 9, "spicecraft": 8 } },
+
+  { "id": "glowcap_broth", "name": "Glowcap broth", "section": 3, "technique": "simmer", "chefXp": 80, "sellCoins": 55,
+    "ingredients": [{ "id": "glowcap", "qty": 2 }, { "id": "cave_pearls", "qty": 1 }, { "id": "starlight_salt", "qty": 1 }], "requirements": { "firecraft": 11, "spicecraft": 9 } },
+
+  { "id": "ember_root_tea_cake", "name": "Ember root tea cake", "section": 3, "technique": "bake", "chefXp": 85, "sellCoins": 58,
+    "ingredients": [{ "id": "ember_root", "qty": 1 }, { "id": "crystal_sugar", "qty": 1 }, { "id": "sunwheat", "qty": 2 }], "requirements": { "firecraft": 12, "knifework": 10 } },
+
+  { "id": "cave_pearl_risotto", "name": "Cave pearl risotto", "section": 3, "technique": "simmer", "chefXp": 95, "sellCoins": 65,
+    "ingredients": [{ "id": "cave_pearls", "qty": 2 }, { "id": "glowcap", "qty": 1 }, { "id": "bog_garlic", "qty": 1 }, { "id": "starlight_salt", "qty": 1 }], "requirements": { "firecraft": 13, "knifework": 12 } },
+
+  { "id": "frost_quartz_sorbet", "name": "Frost quartz sorbet", "section": 3, "technique": "chill", "chefXp": 100, "sellCoins": 70,
+    "ingredients": [{ "id": "frost_quartz", "qty": 1 }, { "id": "meadow_berries", "qty": 2 }, { "id": "crystal_sugar", "qty": 1 }], "requirements": { "knifework": 14, "spicecraft": 11 } },
+
+  { "id": "moonpetal_saffron_rice", "name": "Moonpetal saffron rice", "section": 3, "technique": "simmer", "chefXp": 130, "sellCoins": 90,
+    "ingredients": [{ "id": "moonpetal", "qty": 1 }, { "id": "cave_pearls", "qty": 2 }, { "id": "ember_root", "qty": 1 }, { "id": "starlight_salt", "qty": 1 }], "requirements": { "firecraft": 15, "spicecraft": 14 } },
+
+  { "id": "dragons_breath_feast_pot", "name": "Dragon's breath feast pot", "section": 3, "technique": "simmer", "chefXp": 200, "sellCoins": 150,
+    "ingredients": [{ "id": "dragons_breath_chili", "qty": 1 }, { "id": "kingcap", "qty": 2 }, { "id": "marsh_rice", "qty": 1 }, { "id": "glowcap", "qty": 1 }, { "id": "starlight_salt", "qty": 1 }], "requirements": { "firecraft": 18, "spicecraft": 17, "knifework": 15 } }
+]

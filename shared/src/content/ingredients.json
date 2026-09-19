@@ -1,0 +1,28 @@
+[
+  { "id": "sunwheat",             "name": "Sunwheat",              "section": 1, "skill": "foraging",    "rarity": "common",   "edible": true },
+  { "id": "meadow_berries",       "name": "Meadow berries",        "section": 1, "skill": "foraging",    "rarity": "common",   "edible": true },
+  { "id": "honeycap",             "name": "Honeycap",              "section": 1, "skill": "foraging",    "rarity": "common",   "edible": true },
+  { "id": "wild_thyme",           "name": "Wild thyme",            "section": 1, "skill": "foraging",    "rarity": "common",   "edible": true },
+  { "id": "clover_honey",         "name": "Clover honey",          "section": 1, "skill": "foraging",    "rarity": "uncommon", "edible": true, "honey": true },
+  { "id": "brook_cress",          "name": "Brook cress",           "section": 1, "skill": "foraging",    "rarity": "common",   "edible": true },
+  { "id": "rock_salt",            "name": "Rock salt",             "section": 1, "skill": "prospecting", "rarity": "common",   "edible": true, "salt": true },
+  { "id": "clay",                 "name": "Clay",                  "section": 1, "skill": "prospecting", "rarity": "common",   "edible": true },
+
+  { "id": "giant_chestnuts",      "name": "Giant chestnuts",       "section": 2, "skill": "foraging",    "rarity": "common",   "edible": true },
+  { "id": "kingcap",              "name": "Kingcap",               "section": 2, "skill": "foraging",    "rarity": "common",   "edible": true },
+  { "id": "marsh_rice",           "name": "Marsh rice",            "section": 2, "skill": "foraging",    "rarity": "common",   "edible": true },
+  { "id": "bog_garlic",           "name": "Bog garlic",            "section": 2, "skill": "foraging",    "rarity": "common",   "edible": true },
+  { "id": "nightshade_pepper",    "name": "Nightshade pepper",     "section": 2, "skill": "foraging",    "rarity": "uncommon", "edible": true, "spiced": true, "safeSpicecraft": 4 },
+  { "id": "sap_amber",            "name": "Sap amber",             "section": 2, "skill": "foraging",    "rarity": "uncommon", "edible": true },
+  { "id": "smoke_salt",           "name": "Smoke salt",            "section": 2, "skill": "prospecting", "rarity": "common",   "edible": true, "salt": true },
+  { "id": "iron_flake",           "name": "Iron flake",            "section": 2, "skill": "prospecting", "rarity": "uncommon", "edible": false, "note": "Pan upgrade material - not edible." },
+
+  { "id": "glowcap",              "name": "Glowcap",               "section": 3, "skill": "foraging",    "rarity": "common",   "edible": true },
+  { "id": "moonpetal",            "name": "Moonpetal",             "section": 3, "skill": "foraging",    "rarity": "rare",     "edible": true },
+  { "id": "cave_pearls",          "name": "Cave pearls",           "section": 3, "skill": "foraging",    "rarity": "common",   "edible": true },
+  { "id": "ember_root",           "name": "Ember root",            "section": 3, "skill": "foraging",    "rarity": "common",   "edible": true },
+  { "id": "crystal_sugar",        "name": "Crystal sugar",         "section": 3, "skill": "prospecting", "rarity": "common",   "edible": true, "sugar": true },
+  { "id": "starlight_salt",       "name": "Starlight salt",        "section": 3, "skill": "prospecting", "rarity": "uncommon", "edible": true, "salt": true, "starlight": true },
+  { "id": "frost_quartz",         "name": "Frost quartz",          "section": 3, "skill": "prospecting", "rarity": "uncommon", "edible": true, "expiresMs": 600000, "note": "Melts 10 minutes after gathering." },
+  { "id": "dragons_breath_chili", "name": "Dragon's breath chili", "section": 3, "skill": "foraging",    "rarity": "rare",     "edible": true, "spiced": true, "safeSpicecraft": 17 }
+]

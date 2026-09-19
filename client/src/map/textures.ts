@@ -10,6 +10,7 @@ import { TILE_HEIGHT, TILE_WIDTH, TileId } from "@crazycauldron/shared";
 export const TEX_TILE: Record<TileId, string> = {
   [TileId.Grass]: "tile-grass",
   [TileId.Path]: "tile-path",
+  [TileId.Rock]: "tile-rock",
 };
 export const TEX_PLAYER_FRONT = "player-front";
 export const TEX_PLAYER_BACK = "player-back";
@@ -44,6 +45,12 @@ export function createPlaceholderArt(scene: Phaser.Scene) {
 
   diamond(g, 0x6b5b45, 0x4b3f2f);
   g.generateTexture(TEX_TILE[TileId.Path], TILE_WIDTH, TILE_HEIGHT);
+  g.clear();
+
+  // Blocked tiles in the sections: darker and cooler, so an obstacle reads as
+  // solid rather than as another shade of ground.
+  diamond(g, 0x4a4652, 0x322f3a);
+  g.generateTexture(TEX_TILE[TileId.Rock], TILE_WIDTH, TILE_HEIGHT);
   g.clear();
 
   // Move marker: a hollow diamond that sits on the destination tile.

@@ -57,8 +57,9 @@ export interface SessionClaims {
   exp: number;
 }
 
-/** Tile ids of the placeholder hub map. Index into the generated tileset. */
+/** Tile ids of the placeholder maps. Index into the generated tileset. */
 export enum TileId {
   Grass = 0,
   Path = 1,
+  Rock = 2,
 }

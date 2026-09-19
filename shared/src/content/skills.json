@@ -1,0 +1,154 @@
+{
+  "_comment": "All progression tuning lives here. scripts/simulate-progression.ts reads these values and reports hours-to-level; chef.baseXp and chef.growth are the two dials tuned against the 2.5h / 10h / 25h targets.",
+
+  "chef": {
+    "maxLevel": 30,
+    "baseXp": 120,
+    "growth": 1.18,
+    "targetHours": { "10": 2.5, "20": 10, "30": 25 }
+  },
+
+  "skills": {
+    "maxLevel": 20,
+    "baseXp": 100,
+    "growth": 1.1,
+    "list": ["foraging", "prospecting", "knifework", "firecraft", "spicecraft"],
+    "names": {
+      "foraging": "Foraging",
+      "prospecting": "Prospecting",
+      "knifework": "Knifework",
+      "firecraft": "Firecraft",
+      "spicecraft": "Spicecraft"
+    },
+    "titles": {
+      "foraging": "Master Forager",
+      "prospecting": "Master Prospector",
+      "knifework": "Master of the Blade",
+      "firecraft": "Master of Flame",
+      "spicecraft": "Master Spicer"
+    },
+    "coreStat": {
+      "foraging": { "id": "gatherSpeed", "label": "foraging speed", "perLevelPct": 2 },
+      "prospecting": { "id": "gatherSpeed", "label": "prospecting speed", "perLevelPct": 2 },
+      "knifework": { "id": "timingWindow", "label": "timing window", "perLevelPct": 2 },
+      "firecraft": { "id": "cookSpeed", "label": "cooking speed", "perLevelPct": 2 },
+      "spicecraft": { "id": "dishValue", "label": "dish value", "perLevelPct": 2 }
+    }
+  },
+
+  "gathering": {
+    "baseMs": { "foraging": 3000, "prospecting": 4000 },
+    "yieldMin": 1,
+    "yieldMax": 2,
+    "respawnMs": { "common": 60000, "uncommon": 180000, "rare": 900000 },
+    "xpMin": 5,
+    "xpMax": 15,
+    "sectionMultiplier": { "1": 1, "2": 2, "3": 4 },
+    "maxRareNodesPerSection": 2,
+    "doubleDropChance": 0.1
+  },
+
+  "cooking": {
+    "prepMs": 1500,
+    "barMs": 3000,
+    "cookMs": 3000,
+    "windowPctAtLevel1": 12,
+    "windowPctAtLevel20": 40,
+    "fineWindowMultiplier": 1.5,
+    "nightshadeDowngradeChance": 0.3,
+    "qualitySteps": ["common", "fine", "superb"],
+    "quality": {
+      "common": { "xp": 1, "coins": 1 },
+      "fine": { "xp": 1.5, "coins": 1.3 },
+      "superb": { "xp": 2, "coins": 1.6 }
+    },
+    "cookXp": {
+      "_comment": "Firecraft gets the recipe's chefXp; knifework and spicecraft get half each when the recipe requires them. Chef XP always equals the total skill XP awarded.",
+      "firecraftShare": 1,
+      "knifeworkShare": 0.5,
+      "spicecraftShare": 0.5
+    }
+  },
+
+  "economy": {
+    "inventory": { "baseSlots": 16, "stackMax": 99 },
+    "pan": [
+      { "tier": 0, "id": "wood", "name": "Wooden pan", "coins": 0, "windowBonusPct": 0, "items": [] },
+      { "tier": 1, "id": "stone", "name": "Stone pan", "coins": 200, "windowBonusPct": 3, "items": [] },
+      { "tier": 2, "id": "iron", "name": "Iron pan", "coins": 800, "windowBonusPct": 6, "items": [{ "id": "iron_flake", "qty": 3 }] }
+    ],
+    "bag": [
+      { "tier": 0, "name": "Satchel", "coins": 0, "slots": 0 },
+      { "tier": 1, "name": "Field bag", "coins": 150, "slots": 6 },
+      { "tier": 2, "name": "Forager pack", "coins": 500, "slots": 6 },
+      { "tier": 3, "name": "Cauldron-keeper pack", "coins": 1500, "slots": 6 }
+    ],
+    "buff": { "id": "well_fed", "label": "Well fed", "gatherSpeedPct": 10, "durationMs": 300000 }
+  },
+
+  "unlocks": {
+    "firecraft": [
+      { "level": 1, "kind": "technique", "value": "raw", "label": "Raw prep" },
+      { "level": 1, "kind": "technique", "value": "pan_fry", "label": "Pan-frying" },
+      { "level": 2, "kind": "technique", "value": "simmer", "label": "Simmer" },
+      { "level": 3, "kind": "technique", "value": "bake", "label": "Bake" },
+      { "level": 5, "kind": "technique", "value": "clay_bake", "label": "Clay baking" },
+      { "level": 6, "kind": "technique", "value": "roast", "label": "Roasting" },
+      { "level": 8, "kind": "pots", "value": 2, "label": "Two-pot cooking" },
+      { "level": 10, "kind": "technique", "value": "smoke", "label": "Smoking" },
+      { "level": 16, "kind": "pots", "value": 3, "label": "Three-pot cooking" },
+      { "level": 20, "kind": "title", "value": "firecraft", "label": "Master of Flame" }
+    ],
+    "knifework": [
+      { "level": 1, "kind": "slots", "value": 2, "label": "2 ingredient slots" },
+      { "level": 3, "kind": "slots", "value": 3, "label": "3 ingredient slots" },
+      { "level": 4, "kind": "prepQuality", "value": "fine", "label": "Fine prep" },
+      { "level": 7, "kind": "slots", "value": 4, "label": "4 ingredient slots" },
+      { "level": 9, "kind": "prepQuality", "value": "superb", "label": "Superb prep" },
+      { "level": 10, "kind": "slots", "value": 5, "label": "5 ingredient slots", "requires": { "spicecraft": 10 } },
+      { "level": 14, "kind": "technique", "value": "chill", "label": "Chilling" },
+      { "level": 15, "kind": "autoPrep", "value": 1, "label": "Auto-prep for Meadows recipes" },
+      { "level": 17, "kind": "slots", "value": 6, "label": "6 ingredient slots" },
+      { "level": 18, "kind": "autoPrep", "value": 2, "label": "Auto-prep for Deep Forest recipes" },
+      { "level": 20, "kind": "title", "value": "knifework", "label": "Master of the Blade" }
+    ],
+    "foraging": [
+      { "level": 2, "kind": "gatherSpeed", "value": 10, "label": "+10% foraging speed" },
+      { "level": 5, "kind": "carrySlots", "value": 4, "label": "+4 carry slots" },
+      { "level": 6, "kind": "sectionAccess", "value": 2, "label": "Deep Forest plants" },
+      { "level": 7, "kind": "revealRare", "value": true, "label": "Rare nodes on the minimap" },
+      { "level": 9, "kind": "gatherSpeed", "value": 10, "label": "+10% foraging speed" },
+      { "level": 11, "kind": "sectionAccess", "value": 3, "label": "Mystical Caves plants" },
+      { "level": 13, "kind": "carrySlots", "value": 4, "label": "+4 carry slots" },
+      { "level": 14, "kind": "reveal", "value": "moonpetal", "label": "Moonpetal becomes visible" },
+      { "level": 16, "kind": "gatherSpeed", "value": 10, "label": "+10% foraging speed" },
+      { "level": 17, "kind": "reveal", "value": "dragons_breath_chili", "label": "Dragon breath chili becomes visible" },
+      { "level": 19, "kind": "carrySlots", "value": 4, "label": "+4 carry slots" },
+      { "level": 20, "kind": "title", "value": "foraging", "label": "Master Forager" }
+    ],
+    "prospecting": [
+      { "level": 4, "kind": "doubleDrop", "value": "salt", "label": "10% double salt" },
+      { "level": 5, "kind": "sectionAccess", "value": 2, "label": "Deep Forest minerals" },
+      { "level": 7, "kind": "gatherSpeed", "value": 10, "label": "+10% prospecting speed" },
+      { "level": 8, "kind": "doubleDrop", "value": "iron", "label": "10% double iron" },
+      { "level": 9, "kind": "carrySlots", "value": 4, "label": "+4 carry slots" },
+      { "level": 10, "kind": "sectionAccess", "value": 3, "label": "Mystical Caves minerals" },
+      { "level": 13, "kind": "gatherSpeed", "value": 10, "label": "+10% prospecting speed" },
+      { "level": 14, "kind": "doubleDrop", "value": "sugar", "label": "10% double sugar" },
+      { "level": 15, "kind": "doubleDrop", "value": "starlight", "label": "10% double starlight salt" },
+      { "level": 16, "kind": "carrySlots", "value": 4, "label": "+4 carry slots" },
+      { "level": 17, "kind": "gatherSpeed", "value": 10, "label": "+10% prospecting speed" },
+      { "level": 18, "kind": "doubleDrop", "value": "all", "label": "10% double on every mineral" },
+      { "level": 20, "kind": "title", "value": "prospecting", "label": "Master Prospector" }
+    ],
+    "spicecraft": [
+      { "level": 3, "kind": "qualityChance", "value": "honey", "label": "+1 quality step chance on honey dishes" },
+      { "level": 4, "kind": "safeIngredient", "value": "nightshade_pepper", "label": "Nightshade pepper handled safely" },
+      { "level": 11, "kind": "qualityChance", "value": "cave", "label": "+1 quality step chance on cave dishes" },
+      { "level": 17, "kind": "safeIngredient", "value": "dragons_breath_chili", "label": "Dragon breath chili handled safely" },
+      { "level": 19, "kind": "xpBonus", "value": "spiced", "pct": 10, "label": "+10% XP on spiced dishes" },
+      { "level": 20, "kind": "qualityStep", "value": "all", "label": "+1 quality step on every dish" },
+      { "level": 20, "kind": "title", "value": "spicecraft", "label": "Master Spicer" }
+    ]
+  }
+}
