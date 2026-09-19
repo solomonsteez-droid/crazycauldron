@@ -337,6 +337,157 @@ export function findBlobs(img: Img, minPixels = 400, threshold = 24): Rect[] {
   return blobs.sort((a, b) => b.width * b.height - a.width * a.height);
 }
 
+/** One connected region, with the pixels that belong to it. */
+export interface Blob {
+  rect: Rect;
+  /** Flat pixel indices, so a caller can keep or erase exactly this region. */
+  pixels: number[];
+}
+
+/**
+ * Every connected region, largest first, with its membership.
+ *
+ * findBlobs answers "where are the drawings"; this answers "which pixels are
+ * this lump", which is what cleaning an overlay needs - a stray jaw fragment
+ * has to be erased, not merely measured.
+ */
+export function labelBlobs(img: Img, threshold = 24): Blob[] {
+  const { width, height } = img;
+  const seen = new Uint8Array(width * height);
+  const blobs: Blob[] = [];
+  const stack: number[] = [];
+
+  for (let start = 0; start < seen.length; start += 1) {
+    if (seen[start]) continue;
+    if (img.data[start * 4 + 3]! < threshold) {
+      seen[start] = 1;
+      continue;
+    }
+
+    let minX = width;
+    let minY = height;
+    let maxX = -1;
+    let maxY = -1;
+    const pixels: number[] = [];
+
+    stack.push(start);
+    seen[start] = 1;
+
+    while (stack.length > 0) {
+      const p = stack.pop()!;
+      const x = p % width;
+      const y = (p - x) / width;
+      pixels.push(p);
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+
+      for (let dy = -1; dy <= 1; dy += 1) {
+        for (let dx = -1; dx <= 1; dx += 1) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+          const q = ny * width + nx;
+          if (seen[q]) continue;
+          seen[q] = 1;
+          if (img.data[q * 4 + 3]! >= threshold) stack.push(q);
+        }
+      }
+    }
+
+    blobs.push({
+      rect: { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 },
+      pixels,
+    });
+  }
+
+  return blobs.sort((a, b) => b.pixels.length - a.pixels.length);
+}
+
+/** The widest opaque row in a band - a measurement two drawings can share. */
+export function bandWidth(img: Img, fromRow: number, toRow: number, threshold = 24): number {
+  let widest = 1;
+  for (let y = Math.max(0, Math.round(fromRow)); y < Math.min(img.height, Math.round(toRow)); y += 1) {
+    let span = 0;
+    for (let x = 0; x < img.width; x += 1) {
+      if (img.data[idx(img, x, y) + 3]! >= threshold) span += 1;
+    }
+    widest = Math.max(widest, span);
+  }
+  return widest;
+}
+
+/**
+ * The horizontal centre of the opaque pixels in a band of rows.
+ *
+ * Used to register two drawings of the same figure against each other. The
+ * band matters: measuring the whole silhouette lets a wide-brimmed hat or a
+ * raised arm drag the centre sideways, while a band across the legs is the
+ * same place in every drop.
+ */
+export function bandCentre(img: Img, fromRow: number, toRow: number, threshold = 24): number {
+  let sum = 0;
+  let count = 0;
+  for (let y = Math.max(0, Math.round(fromRow)); y < Math.min(img.height, Math.round(toRow)); y += 1) {
+    for (let x = 0; x < img.width; x += 1) {
+      if (img.data[idx(img, x, y) + 3]! >= threshold) {
+        sum += x;
+        count += 1;
+      }
+    }
+  }
+  return count === 0 ? img.width / 2 : sum / count;
+}
+
+/** Squared distance between two pixels in RGB. Cheap, and good enough here. */
+export function colourDistance(
+  a: Img,
+  ai: number,
+  b: Img,
+  bi: number,
+): number {
+  const dr = a.data[ai]! - b.data[bi]!;
+  const dg = a.data[ai + 1]! - b.data[bi + 1]!;
+  const db = a.data[ai + 2]! - b.data[bi + 2]!;
+  return Math.sqrt(dr * dr + dg * dg + db * db);
+}
+
+/** Clears one pixel in place. */
+export function clearPixel(img: Img, index: number): void {
+  img.data[index * 4] = 0;
+  img.data[index * 4 + 1] = 0;
+  img.data[index * 4 + 2] = 0;
+  img.data[index * 4 + 3] = 0;
+}
+
+/**
+ * The head's bounding box: the top of the figure down to the shoulder seam.
+ *
+ * Measured rather than assumed, because it is the one landmark a bust portrait
+ * and a full-body pose both have, and aligning on it is what lets a hat drawn
+ * at 4x be laid over a body drawn at 2x.
+ */
+export function headBox(img: Img, bounds: Rect, shoulderRow: number): Rect {
+  let minX = img.width;
+  let maxX = -1;
+  for (let y = bounds.y; y < shoulderRow && y < bounds.y + bounds.height; y += 1) {
+    for (let x = bounds.x; x < bounds.x + bounds.width; x += 1) {
+      if (img.data[idx(img, x, y) + 3]! >= 24) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+      }
+    }
+  }
+  if (maxX < 0) return { x: bounds.x, y: bounds.y, width: bounds.width, height: 1 };
+  return {
+    x: minX,
+    y: bounds.y,
+    width: maxX - minX + 1,
+    height: Math.max(1, shoulderRow - bounds.y),
+  };
+}
+
 /**
  * Orders four blobs into reading order: top-left, top-right, bottom-left,
  * bottom-right. Split by the midpoint of the centroids rather than of the

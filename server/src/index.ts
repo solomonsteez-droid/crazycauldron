@@ -3,7 +3,7 @@ import { Server } from "@colyseus/core";
 import cors from "cors";
 import express from "express";
 import http from "node:http";
-import { ROOM_HUB, ROOM_WAITING } from "@crazycauldron/shared";
+import { ROOM_HUB, ROOM_WAITING, validateAllLayouts } from "@crazycauldron/shared";
 import { authRouter } from "./auth/routes.js";
 import { config } from "./config.js";
 import { closeDatabase } from "./db/index.js";
@@ -12,6 +12,26 @@ import { capacity } from "./matchmaking/index.js";
 import { matchmakeRouter } from "./matchmaking/routes.js";
 import { HubRoom } from "./rooms/HubRoom.js";
 import { WaitingRoom } from "./rooms/WaitingRoom.js";
+
+/*
+ * The world is checked before anything is served.
+ *
+ * Every building, gate, prop and gather node is authored by hand in JSON, and
+ * the ways that goes wrong are quiet: a shrub on a doorstep, two nodes on one
+ * tile, a well in the middle of a path. None of them throw. Refusing to start
+ * turns "somebody will notice eventually" into "nobody can deploy it".
+ */
+const layoutProblems = validateAllLayouts();
+if (layoutProblems.length > 0) {
+  for (const problem of layoutProblems) {
+    log.error("layout.invalid", { map: problem.map, problem: problem.message });
+  }
+  throw new Error(
+    `Refusing to start: ${layoutProblems.length} map layout problem(s). ` +
+      "Fix the placements in shared/src/content/ and try again.",
+  );
+}
+log.info("layout.ok", { maps: 4 });
 
 const app = express();
 

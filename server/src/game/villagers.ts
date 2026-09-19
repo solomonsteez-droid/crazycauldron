@@ -15,17 +15,30 @@ import { MapSchema } from "@colyseus/schema";
 import {
   AMBIENCE,
   HUB_MAP,
-  MAP_SIZE,
   facingFor,
   findPath,
   isWalkableOn,
   seededRandom,
+  villagerTiles,
   type TilePos,
   type VillagerDef,
 } from "@crazycauldron/shared";
 import { Villager } from "../rooms/schema.js";
 
 const SETTINGS = AMBIENCE.villagers;
+
+/**
+ * The tiles a villager is allowed to be on.
+ *
+ * Computed once from the layout rules rather than "anywhere walkable": a
+ * villager loitering on the kitchen doorstep or circling the cauldron is
+ * exactly the kind of charm that turns into an obstacle. The set keeps them
+ * three tiles clear of the cauldron and of all three shop fronts, and off
+ * every doorway and placed object.
+ */
+const ALLOWED = villagerTiles();
+const ALLOWED_KEYS = new Set(ALLOWED.map((t) => `${t.tileX},${t.tileY}`));
+const allowed = (tileX: number, tileY: number) => ALLOWED_KEYS.has(`${tileX},${tileY}`);
 
 interface Walk {
   route: TilePos[];
@@ -144,19 +157,20 @@ export class VillagerCrowd {
     return copy;
   }
 
+  /** Somewhere on the outer ring to start from, drawn from the legal set. */
   private randomWalkableTile(): TilePos | null {
-    // Bounded rather than exhaustive: the hub is mostly walkable, so a handful
-    // of tries always lands, and a hypothetical sealed map ends the search
-    // instead of spinning.
-    for (let attempt = 0; attempt < 200; attempt += 1) {
-      const tileX = Math.floor(this.random() * MAP_SIZE);
-      const tileY = Math.floor(this.random() * MAP_SIZE);
-      if (isWalkableOn(HUB_MAP, tileX, tileY)) return { tileX, tileY };
-    }
-    return null;
+    if (ALLOWED.length === 0) return null;
+    return ALLOWED[Math.floor(this.random() * ALLOWED.length)] ?? null;
   }
 
-  /** A short walk to somewhere nearby, or nothing if the dice pick a wall. */
+  /**
+   * A short walk to somewhere nearby, or nothing if the dice pick a wall.
+   *
+   * Both the destination and every step of the route are drawn from the legal
+   * set, not merely the destination - a route that cut across the plaza to
+   * reach a legal tile would still put a villager in front of the cauldron
+   * half the time.
+   */
   private strollFrom(villager: Villager): TilePos[] {
     const { strollTilesMin, strollTilesMax } = SETTINGS;
     const reach = strollTilesMin + Math.floor(this.random() * (strollTilesMax - strollTilesMin + 1));
@@ -165,10 +179,12 @@ export class VillagerCrowd {
       const dx = Math.round((this.random() * 2 - 1) * reach);
       const dy = Math.round((this.random() * 2 - 1) * reach);
       const target = { tileX: villager.tileX + dx, tileY: villager.tileY + dy };
-      if (!isWalkableOn(HUB_MAP, target.tileX, target.tileY)) continue;
+      if (!allowed(target.tileX, target.tileY)) continue;
 
-      const route = findPath({ tileX: villager.tileX, tileY: villager.tileY }, target, (x, y) =>
-        isWalkableOn(HUB_MAP, x, y),
+      const route = findPath(
+        { tileX: villager.tileX, tileY: villager.tileY },
+        target,
+        (x, y) => isWalkableOn(HUB_MAP, x, y) && allowed(x, y),
       );
       if (route.length > 0) return route;
     }

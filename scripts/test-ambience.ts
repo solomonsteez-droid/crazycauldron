@@ -25,6 +25,12 @@ import {
   dressingKeepClear,
   hashSeed,
   hubTileId,
+  HUB_STATIONS,
+  BUILDING_CLEARANCE,
+  doorwaysFor,
+  placementsFor,
+  validateAllLayouts,
+  villagerTiles,
   isWalkableOn,
   mixTint,
   planDressing,
@@ -170,7 +176,7 @@ console.log("\n-- day and night --");
 console.log("\n-- villagers --");
 {
   const crowd = AMBIENCE.villagers;
-  check("six to eight are wanted", crowd.min === 6 && crowd.max === 8, `${crowd.min}-${crowd.max}`);
+  check("four to six are wanted", crowd.min === 4 && crowd.max === 6, `${crowd.min}-${crowd.max}`);
   check("there are enough authored to fill a hub", crowd.roster.length >= crowd.max);
   check(
     "they walk slower than a player",
@@ -184,6 +190,82 @@ console.log("\n-- villagers --");
   check(
     "each greeting is a single short line",
     crowd.roster.every((v) => v.lines.every((line) => line.length <= 60 && !line.includes("\n"))),
+  );
+}
+
+// --- where villagers may walk ----------------------------------------------
+console.log("\n-- villager ground --");
+{
+  const crowd = AMBIENCE.villagers;
+  const tiles = villagerTiles();
+  const keepAway = crowd.keepAwayTiles;
+  const buildings = HUB_STATIONS.map((s) => ({ tileX: s.tileX, tileY: s.tileY }));
+  const middle = (MAP_SIZE - 1) / 2;
+
+  check("they have room to wander", tiles.length > crowd.max * 10, `${tiles.length} tiles`);
+  check(
+    `they stay ${keepAway} tiles clear of the cauldron`,
+    tiles.every(
+      (t) => Math.max(Math.abs(t.tileX - middle), Math.abs(t.tileY - middle)) > keepAway + 1,
+    ),
+  );
+  check(
+    `and ${keepAway} tiles clear of every shop front`,
+    tiles.every((t) =>
+      buildings.every(
+        (b) => Math.max(Math.abs(b.tileX - t.tileX), Math.abs(b.tileY - t.tileY)) > keepAway,
+      ),
+    ),
+  );
+  const doorways = new Set(doorwaysFor(HUB_MAP).map((d) => `${d.tileX},${d.tileY}`));
+  check(
+    "and never stand in a doorway",
+    tiles.every((t) => !doorways.has(`${t.tileX},${t.tileY}`)),
+  );
+}
+
+// --- layout ----------------------------------------------------------------
+console.log("\n-- layout --");
+{
+  const problems = validateAllLayouts();
+  check(
+    "every map lays out legally",
+    problems.length === 0,
+    problems.map((p) => `map ${p.map}: ${p.message}`).join(" | "),
+  );
+
+  const hub = placementsFor(HUB_MAP);
+  const onEdge = (t: { tileX: number; tileY: number }) =>
+    t.tileX <= 2 || t.tileY <= 2 || t.tileX >= MAP_SIZE - 3 || t.tileY >= MAP_SIZE - 3;
+  const onRing = (t: { tileX: number; tileY: number }) =>
+    t.tileX <= 3 || t.tileY <= 3 || t.tileX >= MAP_SIZE - 4 || t.tileY >= MAP_SIZE - 4;
+
+  const buildings = hub.filter((p) => p.kind === "building");
+  const props = hub.filter((p) => p.kind === "prop");
+
+  check(
+    "the three buildings stand on the grid edge",
+    buildings.length === 3 && buildings.every(onEdge),
+    buildings.map((p) => `${p.id}@${p.tileX},${p.tileY}`).join(" "),
+  );
+  check(
+    "the plaza props are out on the ring",
+    props.length === 6 && props.every(onRing),
+    props.map((p) => `${p.id}@${p.tileX},${p.tileY}`).join(" "),
+  );
+  check(
+    `each building keeps its ${BUILDING_CLEARANCE}-tile ring`,
+    buildings.every((b) =>
+      hub.every(
+        (o) =>
+          o === b ||
+          Math.max(Math.abs(o.tileX - b.tileX), Math.abs(o.tileY - b.tileY)) > BUILDING_CLEARANCE,
+      ),
+    ),
+  );
+  check(
+    "nothing anywhere stands on a path",
+    hub.every((p) => hubTileId(p.tileX, p.tileY) !== TileId.Path),
   );
 }
 

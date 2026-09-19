@@ -27,6 +27,7 @@ import {
   hubTileId,
   lifeFor,
   TERRAIN,
+  validateAllLayouts,
   TileId,
   WARDROBE_ITEMS,
   isWalkable,
@@ -381,6 +382,16 @@ for (const cue of AMBIENCE.sound.cues) {
 }
 for (const [channel, level] of Object.entries(AMBIENCE.sound.defaults)) {
   if (level < 0 || level > 1) note(`default ${channel} volume ${level} is outside 0..1`);
+}
+
+// --- layout ----------------------------------------------------------------
+
+/*
+ * The same check the server runs before it will start. Here too, so a bad
+ * placement is caught by the content pass rather than by a failed deploy.
+ */
+for (const problem of validateAllLayouts()) {
+  note(`map ${problem.map}: ${problem.message}`);
 }
 
 // --- report ----------------------------------------------------------------

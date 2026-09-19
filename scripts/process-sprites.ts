@@ -29,16 +29,17 @@ import {
   alphaBounds,
   blank,
   blit,
+  clearPixel,
   crop,
   denoise,
   dominantColours,
   downscaleAveraged,
   findBlobs,
+  labelBlobs,
   load,
   quantise,
   readingOrder,
   removeChroma,
-  rowWidths,
   save,
   scaleNearest,
   type Img,
@@ -54,26 +55,6 @@ const OUT = path.join(ASSETS, "generated");
 /** Body frames are this size; 48 tall is the figure, 32 wide fits the widest pose. */
 const BODY_W = 32;
 const BODY_H = 48;
-
-/** Hats that reach well past the head outline and must not be clipped. */
-const TALL_HATS = new Set(["hat_06_dragonscale", "hat_07_moonpetal"]);
-const HAT_W = 32;
-const HAT_H = 28;
-const TALL_HAT_W = 44;
-const TALL_HAT_H = 40;
-const APRON_W = 32;
-const APRON_H = 30;
-
-/**
- * How much of each figure a garment band covers, as fractions.
- *
- * HAT_BAND is measured down from the top of the head: 0.62 stops at the brow,
- * keeping hat and hairline but not the face. The apron band runs from just
- * below the shoulders to the hip.
- */
-const HAT_BAND = 0.62;
-const APRON_TOP = 0.1;
-const APRON_BOTTOM = 0.62;
 
 const DIRECTIONS = ["down", "up", "left", "right"] as const;
 type Direction = (typeof DIRECTIONS)[number];
@@ -259,157 +240,175 @@ function writeSheet(name: string, frames: Frame[]): void {
 // Overlays
 // --------------------------------------------------------------------------
 
-/**
- * Where the shoulders start, as a row index into the body drawing.
- *
- * Walking down the figure, the silhouette is narrow through the hat and head
- * and then widens sharply at the shoulders. The first row past the halfway
- * mark of the head that is much wider than the head is a good enough seam, and
- * it is what keeps a neckerchief out of a hat overlay.
- */
-function shoulderRow(body: Img, bounds: Rect): number {
-  const widths = rowWidths(body);
-  const headBand = widths.slice(bounds.y, bounds.y + Math.round(bounds.height * 0.35));
-  const headWidth = Math.max(1, Math.max(...headBand));
-
-  for (let y = bounds.y + Math.round(bounds.height * 0.15); y < bounds.y + bounds.height; y += 1) {
-    if ((widths[y] ?? 0) > headWidth * 1.25) return y;
-  }
-  return bounds.y + Math.round(bounds.height * 0.42);
-}
-
 interface OverlayResult {
   id: string;
   width: number;
   height: number;
   /** Where the overlay sits relative to the body frame, top-left to top-left. */
   offset: { x: number; y: number };
+  /** Finished width as a fraction of the body figure's own width. */
+  widthPct: number;
 }
 
-/**
- * Widest row in the lower half of a figure - its shoulders.
- *
- * Used as the scale reference between drawings, because it is the one
- * measurement both a bust and a full-body pose share, whatever is on the head.
- */
-function torsoWidth(img: Img, bounds: Rect): number {
-  const widths = rowWidths(img);
-  const from = bounds.y + Math.round(bounds.height * 0.4);
-  let widest = 1;
-  for (let y = from; y < bounds.y + bounds.height; y += 1) {
-    widest = Math.max(widest, widths[y] ?? 0);
-  }
-  return widest;
+/** One authored cut, in fractions of the drop's own bounding box. */
+interface Band {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+  widthPct: number;
+  anchorY: number;
 }
 
+interface BandFile {
+  defaults: Record<"hat" | "apron", Band>;
+  items: Record<string, Partial<Band>>;
+}
+
+const BANDS = JSON.parse(
+  fs.readFileSync(path.join(here, "overlay-bands.json"), "utf8"),
+) as BandFile;
+
+function bandFor(kind: "hat" | "apron", id: string): Band {
+  return { ...BANDS.defaults[kind], ...(BANDS.items[id] ?? {}) };
+}
+
+/** The base figure every overlay is sized against, in its own tight pixels. */
+interface OverlayBase {
+  /** The male front idle drawing, cropped to the figure. */
+  img: Img;
+  /**
+   * The scale this exact frame received in per-frame body scaling.
+   *
+   * Per-frame scaling normalises every drawing to 48px tall, so "the body
+   * scale" is no longer one number - it is one per frame. An overlay sized
+   * against the front idle pose has to use *that* frame's factor and no other,
+   * or it comes out sized for whichever drawing happened to be processed last.
+   * That was the bug behind aprons wider than the body.
+   */
+  frameScale: number;
+  /** The figure's own width inside the 32px frame; the audit denominator. */
+  figureWidth: number;
+}
+
+/** Fragments smaller than this are speckle, not garment. */
+const MIN_ISLAND_PX = 6;
+/** A blob this much smaller than the biggest one is a leftover, not a part. */
+const KEEP_BLOB_FRACTION = 0.18;
+
 /**
- * Cuts a garment out of a character drawing by anatomy rather than by
- * subtraction.
+ * Cuts a garment out of a character drawing.
  *
- * Subtracting the base body was the plan, and it cannot work with these drops:
- * they are not the same figure re-dressed. The hats are head-and-shoulders
- * portraits, the aprons are full-body but in a different pose holding a spoon,
- * and both have different hair - so after scaling and aligning, fewer than one
- * pixel in five of the shared torso agrees, and the difference keeps the whole
- * character. scripts/debug-overlay.ts renders the evidence.
+ * Subtracting the base body was the plan and it cannot work, for a reason the
+ * measurements make plain: the drops are not one figure re-dressed. The body
+ * sheet is a full-length figure of aspect 0.53; the hat drops are
+ * head-and-shoulders portraits of aspect 0.68 to 1.03, widest at 30-50% of
+ * their height; the apron drops are full-length but in another pose, aspect
+ * 0.36 to 0.56, widest at 20-30%. Registering three different compositions on
+ * shoulders, head boxes, jaws, feet or total height was each tried in turn and
+ * each put the garment somewhere different. There is no alignment to diff
+ * against.
  *
- * What does work is cutting the band the garment lives in: the top of the head
- * for a hat, the chest-to-hip for an apron. The hairline comes along with a
- * hat, which composites acceptably because it is the same character design,
- * and /dev/align exists to put the result exactly where it belongs.
+ * What does work is an authored band per item - overlay-bands.json - tightened
+ * by three automatic passes: trim to the pixels that are actually there, keep
+ * only the substantial connected blobs, and drop islands under six pixels.
+ * The result is sized so its width is a stated fraction of the body's own
+ * width, which is the measurement the audit then checks. Whatever the passes
+ * leave behind is removed by hand with the eraser in /dev/align.
  */
 function buildOverlay(
   file: string,
   id: string,
   kind: "hat" | "apron",
-  base: { img: Img; bounds: Rect; shoulder: number },
-  bodyScale: number,
+  base: OverlayBase,
 ): OverlayResult | null {
-  const dressed = denoise(removeChroma(load(file)));
-  const bounds = alphaBounds(dressed);
-  if (!bounds) {
-    note("skipped", `${path.basename(file)} - nothing left after keying`);
+  const keyed = denoise(removeChroma(load(file)));
+  const keyedBounds = alphaBounds(keyed);
+  if (!keyedBounds) {
+    note("skipped", path.basename(file) + " - nothing left after keying");
     return null;
   }
 
-  /*
-   * Two factors, both needed. The first matches the drawings to each other by
-   * shoulder width - the drops are drawn far larger than the 2x2 idle sheet,
-   * roughly 4x for a bust and 2x for a full body. The second takes the base
-   * drawing down to the 32x48 body frame. Applying only the first leaves a hat
-   * ten times too big, which is exactly what it did.
-   */
-  const matchBase = torsoWidth(base.img, base.bounds) / torsoWidth(dressed, bounds);
-  const scale = matchBase * bodyScale;
-  const shoulder = shoulderRow(dressed, bounds);
+  const drop = crop(keyed, keyedBounds);
+  const band = bandFor(kind, id);
 
-  const headHeight = Math.max(1, shoulder - bounds.y);
-  const bodyHeight = Math.max(1, bounds.y + bounds.height - shoulder);
+  const cut = crop(denoise(drop, 4), {
+    x: Math.round(drop.width * band.left),
+    y: Math.round(drop.height * band.top),
+    width: Math.max(1, Math.round(drop.width * (band.right - band.left))),
+    height: Math.max(1, Math.round(drop.height * (band.bottom - band.top))),
+  });
 
-  // The band the garment occupies, as rows of the source drawing.
-  const band: Rect =
-    kind === "hat"
-      ? {
-          x: bounds.x,
-          y: bounds.y,
-          width: bounds.width,
-          // Down to the brow: everything above the eyes is hat and hairline.
-          height: Math.round(headHeight * HAT_BAND),
-        }
-      : {
-          x: bounds.x,
-          y: shoulder + Math.round(bodyHeight * APRON_TOP),
-          width: bounds.width,
-          height: Math.round(bodyHeight * (APRON_BOTTOM - APRON_TOP)),
-        };
+  // --- keep only the substantial lumps -------------------------------------
+  const blobs = labelBlobs(cut);
+  const biggest = blobs[0]?.pixels.length ?? 0;
+  const floor = Math.max(MIN_ISLAND_PX, Math.round(biggest * KEEP_BLOB_FRACTION));
+  let dropped = 0;
+  for (const blob of blobs) {
+    if (blob.pixels.length >= floor) continue;
+    for (const pixel of blob.pixels) clearPixel(cut, pixel);
+    dropped += 1;
+  }
 
-  const cut = crop(denoise(dressed, 4), band);
   const trimmed = alphaBounds(cut);
   if (!trimmed || trimmed.width < 8 || trimmed.height < 4) {
-    note("skipped", `${path.basename(file)} - no ${kind} pixels in the expected band`);
+    note("skipped", path.basename(file) + " - no " + kind + " pixels in its band");
     return null;
   }
 
   const tight = crop(cut, trimmed);
-  const w = Math.max(1, Math.round(tight.width * scale));
-  const h = Math.max(1, Math.round(tight.height * scale));
+
+  // --- size it against the body -------------------------------------------
+  const w = Math.max(1, Math.round(base.figureWidth * band.widthPct));
+  const h = Math.max(1, Math.round((tight.height / tight.width) * w));
   const small = scaleNearest(tight, w, h);
 
   const canvas = blank(w, h);
   blit(canvas, small, 0, 0);
+  save(path.join(OUT, kind === "hat" ? "hats" : "aprons", id + ".png"), canvas);
 
-  /*
-   * Default placement, in body-frame pixels. A hat hangs from the brow line, an
-   * apron from the shoulder line - both measured on the base figure, so the
-   * defaults are already close and the alignment tool only has to nudge.
-   */
-  const baseHead = Math.max(1, base.shoulder - base.bounds.y);
-  const frameOf = (rows: number) => Math.round((rows / base.bounds.height) * BODY_H);
+  const offsetX = Math.round((BODY_W - w) / 2);
+  const offsetY = Math.round(band.anchorY * BODY_H);
+  const widthPct = w / base.figureWidth;
 
-  const offsetY =
-    kind === "hat"
-      ? frameOf(baseHead * HAT_BAND) - h
-      : frameOf(base.shoulder - base.bounds.y + baseHead * 0.1);
+  note(
+    "made",
+    "generated/" + kind + "s/" + id + ".png " + w + "x" + h +
+      " at (" + offsetX + "," + offsetY + ") - " +
+      Math.round(widthPct * 100) + "% of body width, " + dropped + " island(s) dropped",
+  );
 
-  save(path.join(OUT, kind === "hat" ? "hats" : "aprons", `${id}.png`), canvas);
-  note("made", `generated/${kind}s/${id}.png ${w}x${h}`);
+  return { id, width: w, height: h, offset: { x: offsetX, y: offsetY }, widthPct };
+}
 
-  const plausibleW = kind === "hat" ? HAT_W * 1.5 : APRON_W * 1.5;
-  const plausibleH = kind === "hat" ? TALL_HAT_H : APRON_H * 1.6;
-  if (w > plausibleW || h > plausibleH) {
-    suspect.push(
-      `${id} came out ${w}x${h}, expected about ${
-        kind === "hat" ? `${HAT_W}x${HAT_H}` : `${APRON_W}x${APRON_H}`
-      } - the band kept more than the ${kind}`,
-    );
+/**
+ * The audit the brief asks for: every finished overlay measured against the
+ * body it will sit on, with anything outside the plausible range named.
+ */
+function auditOverlays(overlays: { hats: OverlayResult[]; aprons: OverlayResult[] }): void {
+  const ranges = { hat: [0.6, 1.2], apron: [0.7, 1.1] } as const;
+
+  console.log("\n  overlay width against the body figure:");
+  for (const [kind, list] of [
+    ["hat", overlays.hats],
+    ["apron", overlays.aprons],
+  ] as const) {
+    const [low, high] = ranges[kind];
+    for (const item of list) {
+      const pct = item.widthPct;
+      const ok = pct >= low && pct <= high;
+      console.log(
+        "    " + (ok ? "ok  " : "FLAG") + " " + item.id.padEnd(20) +
+          String(Math.round(pct * 100)).padStart(4) + "%  " + item.width + "x" + item.height,
+      );
+      if (!ok) {
+        suspect.push(
+          item.id + " is " + Math.round(pct * 100) + "% of the body's width, outside the " +
+            Math.round(low * 100) + "-" + Math.round(high * 100) + "% a " + kind + " should be",
+        );
+      }
+    }
   }
-
-  return {
-    id,
-    width: w,
-    height: h,
-    offset: { x: Math.round((BODY_W - w) / 2), y: offsetY },
-  };
 }
 
 // --------------------------------------------------------------------------
@@ -789,13 +788,23 @@ function surveyOptional(): Record<string, string[]> {
 // Pipeline
 // --------------------------------------------------------------------------
 
+/**
+ * Re-cut one item only.
+ *
+ * The alignment workbench's Reset button uses this: an overlay that has been
+ * erased by hand has no undo beyond going back to the source, and re-running
+ * the whole pipeline to recover one hat would also overwrite the other fifteen
+ * a user may have already cleaned.
+ */
+const only = process.argv.find((a) => a.startsWith("--only="))?.slice("--only=".length) ?? null;
+
 function main() {
-  console.log("process-sprites\n");
+  console.log("process-sprites" + (only ? " (only " + only + ")" : "") + "\n");
   fs.mkdirSync(OUT, { recursive: true });
 
   // --- bodies -------------------------------------------------------------
   const bodies: Record<string, { scale: number; frames: string[] }> = {};
-  let baseForOverlays: { img: Img; bounds: Rect; shoulder: number; scale: number } | null = null;
+  let baseForOverlays: OverlayBase | null = null;
 
   for (const body of ["male", "female"] as const) {
     const built = buildBody(body);
@@ -808,15 +817,16 @@ function main() {
     if (body === "male" && !baseForOverlays) {
       const grid = readGrid(path.join(SRC, "characters", "male_idle.png"));
       if (grid) {
-        const frontCell = grid.cells[0]!;
-        const front = blank(grid.clean.width, grid.clean.height);
-        blit(front, crop(grid.clean, frontCell), frontCell.x, frontCell.y);
-        const bounds = alphaBounds(front)!;
+        // The front idle cell, cropped exactly as buildBody crops it, so the
+        // overlay is cut in the same pixels and scaled by the same factor.
+        // The front idle cell, cropped exactly as buildBody crops it, so an
+        // overlay is sized against the same pixels the frame was built from.
+        const front = crop(grid.clean, grid.cells[0]!);
+        const frameScale = BODY_H / front.height;
         baseForOverlays = {
           img: front,
-          bounds,
-          shoulder: shoulderRow(front, bounds),
-          scale: built.scale,
+          frameScale,
+          figureWidth: Math.max(1, Math.round(front.width * frameScale)),
         };
       }
     }
@@ -826,27 +836,29 @@ function main() {
   const overlays: { hats: OverlayResult[]; aprons: OverlayResult[] } = { hats: [], aprons: [] };
 
   if (baseForOverlays) {
-    console.log(`  base front pose: shoulder seam at row ${baseForOverlays.shoulder}\n`);
+    console.log(
+      "  base front pose: " + baseForOverlays.img.width + "x" + baseForOverlays.img.height +
+        ", frame scale " + baseForOverlays.frameScale.toFixed(4) + ", figure " +
+        baseForOverlays.figureWidth + "px wide in a " + BODY_W + "px frame",
+    );
     for (const [folder, kind] of [
       ["hats", "hat"],
       ["aprons", "apron"],
     ] as const) {
       for (const file of listPngs(path.join(SRC, folder))) {
         const id = file.replace(/\.png$/i, "");
+        if (only && id !== only) continue;
         note("found", `sprites/${folder}/${file}`);
-        const result = buildOverlay(
-          path.join(SRC, folder, file),
-          id,
-          kind,
-          baseForOverlays,
-          baseForOverlays.scale,
-        );
+        const result = buildOverlay(path.join(SRC, folder, file), id, kind, baseForOverlays);
         if (result) overlays[folder].push(result);
       }
     }
+    auditOverlays(overlays);
   } else {
-    note("skipped", "hats and aprons - no base body to diff against");
+    note("skipped", "hats and aprons - no base body to size against");
   }
+
+  if (only) return finishOne(overlays);
 
   // --- props --------------------------------------------------------------
   const propSpec: [string, "building" | "portal" | "small"][] = [
@@ -913,7 +925,10 @@ function main() {
   fs.writeFileSync(path.join(OUT, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
   note("made", "generated/manifest.json");
 
-  // --- report -------------------------------------------------------------
+  report();
+}
+
+function report() {
   console.log(`  found   ${found.length} source file(s)`);
   for (const f of found) console.log(`    + ${f}`);
   console.log(`\n  made    ${made.length} output(s)`);
@@ -927,6 +942,39 @@ function main() {
     for (const item of suspect) console.log(`    ! ${item}`);
   }
   console.log("\nprocess-sprites: done");
+}
+
+/**
+ * Merges a single re-cut overlay back into the manifest already on disk.
+ *
+ * Rewriting the whole manifest from a partial run would drop every prop, dish
+ * and terrain entry the last full run produced.
+ */
+function finishOne(overlays: { hats: OverlayResult[]; aprons: OverlayResult[] }) {
+  const file = path.join(OUT, "manifest.json");
+  if (!exists(file)) {
+    console.log("  no manifest.json yet - run the whole pipeline once first");
+    report();
+    return;
+  }
+
+  const manifest = JSON.parse(fs.readFileSync(file, "utf8")) as {
+    hats: OverlayResult[];
+    aprons: OverlayResult[];
+    generatedAt: string;
+  };
+
+  for (const kind of ["hats", "aprons"] as const) {
+    for (const entry of overlays[kind]) {
+      const at = manifest[kind].findIndex((e) => e.id === entry.id);
+      if (at >= 0) manifest[kind][at] = entry;
+      else manifest[kind].push(entry);
+    }
+  }
+  manifest.generatedAt = new Date().toISOString();
+  fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + "\n");
+  note("made", "generated/manifest.json (one entry merged)");
+  report();
 }
 
 main();

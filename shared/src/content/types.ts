@@ -273,6 +273,8 @@ export interface VillagerSettings {
   pauseMsMax: number;
   strollTilesMin: number;
   strollTilesMax: number;
+  /** How far a villager stays from the cauldron and from every shop front. */
+  keepAwayTiles: number;
   roster: VillagerDef[];
 }
 

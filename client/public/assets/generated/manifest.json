@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-19T09:45:37.287Z",
+  "generatedAt": "2026-09-19T10:38:49.775Z",
   "bodyFrame": {
     "width": 32,
     "height": 48
@@ -59,149 +59,165 @@
   "hats": [
     {
       "id": "hat_01_chef",
-      "width": 22,
-      "height": 8,
-      "offset": {
-        "x": 5,
-        "y": 5
-      }
-    },
-    {
-      "id": "hat_02_straw",
-      "width": 18,
-      "height": 5,
-      "offset": {
-        "x": 7,
-        "y": 8
-      }
-    },
-    {
-      "id": "hat_03_mushroom",
-      "width": 17,
-      "height": 6,
-      "offset": {
-        "x": 8,
-        "y": 7
-      }
-    },
-    {
-      "id": "hat_04_acorn",
-      "width": 19,
-      "height": 7,
-      "offset": {
-        "x": 7,
-        "y": 6
-      }
-    },
-    {
-      "id": "hat_05_circlet",
-      "width": 19,
-      "height": 6,
-      "offset": {
-        "x": 7,
-        "y": 7
-      }
-    },
-    {
-      "id": "hat_06_dragonscale",
-      "width": 18,
-      "height": 8,
-      "offset": {
-        "x": 7,
-        "y": 5
-      }
-    },
-    {
-      "id": "hat_07_moonpetal",
-      "width": 15,
-      "height": 6,
-      "offset": {
-        "x": 9,
-        "y": 7
-      }
-    },
-    {
-      "id": "hat_08_bronze",
-      "width": 18,
-      "height": 8,
-      "offset": {
-        "x": 7,
-        "y": 5
-      }
-    },
-    {
-      "id": "hat_09_gold",
       "width": 21,
       "height": 10,
       "offset": {
         "x": 6,
-        "y": 3
-      }
+        "y": 0
+      },
+      "widthPct": 0.84
+    },
+    {
+      "id": "hat_02_straw",
+      "width": 28,
+      "height": 14,
+      "offset": {
+        "x": 2,
+        "y": 0
+      },
+      "widthPct": 1.12
+    },
+    {
+      "id": "hat_03_mushroom",
+      "width": 26,
+      "height": 14,
+      "offset": {
+        "x": 3,
+        "y": 0
+      },
+      "widthPct": 1.04
+    },
+    {
+      "id": "hat_04_acorn",
+      "width": 23,
+      "height": 13,
+      "offset": {
+        "x": 5,
+        "y": 0
+      },
+      "widthPct": 0.92
+    },
+    {
+      "id": "hat_05_circlet",
+      "width": 22,
+      "height": 7,
+      "offset": {
+        "x": 5,
+        "y": 0
+      },
+      "widthPct": 0.88
+    },
+    {
+      "id": "hat_06_dragonscale",
+      "width": 24,
+      "height": 19,
+      "offset": {
+        "x": 4,
+        "y": -3
+      },
+      "widthPct": 0.96
+    },
+    {
+      "id": "hat_07_moonpetal",
+      "width": 25,
+      "height": 11,
+      "offset": {
+        "x": 4,
+        "y": -4
+      },
+      "widthPct": 1
+    },
+    {
+      "id": "hat_08_bronze",
+      "width": 22,
+      "height": 13,
+      "offset": {
+        "x": 5,
+        "y": 0
+      },
+      "widthPct": 0.88
+    },
+    {
+      "id": "hat_09_gold",
+      "width": 23,
+      "height": 17,
+      "offset": {
+        "x": 5,
+        "y": 0
+      },
+      "widthPct": 0.92
     }
   ],
   "aprons": [
     {
       "id": "apron_01_linen",
-      "width": 22,
-      "height": 14,
-      "offset": {
-        "x": 5,
-        "y": 22
-      }
-    },
-    {
-      "id": "apron_02_patched",
-      "width": 21,
-      "height": 14,
-      "offset": {
-        "x": 6,
-        "y": 22
-      }
-    },
-    {
-      "id": "apron_03_berry",
-      "width": 21,
-      "height": 18,
-      "offset": {
-        "x": 6,
-        "y": 22
-      }
-    },
-    {
-      "id": "apron_04_rugged",
-      "width": 21,
-      "height": 17,
-      "offset": {
-        "x": 6,
-        "y": 22
-      }
-    },
-    {
-      "id": "apron_05_midnight",
       "width": 23,
       "height": 18,
       "offset": {
         "x": 5,
-        "y": 22
-      }
+        "y": 18
+      },
+      "widthPct": 0.92
+    },
+    {
+      "id": "apron_02_patched",
+      "width": 23,
+      "height": 21,
+      "offset": {
+        "x": 5,
+        "y": 18
+      },
+      "widthPct": 0.92
+    },
+    {
+      "id": "apron_03_berry",
+      "width": 23,
+      "height": 23,
+      "offset": {
+        "x": 5,
+        "y": 18
+      },
+      "widthPct": 0.92
+    },
+    {
+      "id": "apron_04_rugged",
+      "width": 23,
+      "height": 21,
+      "offset": {
+        "x": 5,
+        "y": 18
+      },
+      "widthPct": 0.92
+    },
+    {
+      "id": "apron_05_midnight",
+      "width": 23,
+      "height": 23,
+      "offset": {
+        "x": 5,
+        "y": 18
+      },
+      "widthPct": 0.92
     },
     {
       "id": "apron_06_silver",
-      "width": 21,
-      "height": 19,
+      "width": 23,
+      "height": 22,
       "offset": {
-        "x": 6,
-        "y": 22
-      }
+        "x": 5,
+        "y": 18
+      },
+      "widthPct": 0.92
     },
     {
       "id": "apron_07_gold",
-      "width": 21,
-      "height": 19,
+      "width": 23,
+      "height": 21,
       "offset": {
-        "x": 6,
-        "y": 22
-      }
+        "x": 5,
+        "y": 18
+      },
+      "widthPct": 0.92
     }
   ],
   "props": [

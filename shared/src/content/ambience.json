@@ -1,9 +1,10 @@
 {
   "_comment": "Everything that makes the world feel inhabited without changing a rule. Villagers are simulated on the server so every client sees the same person in the same place; dressing, life and sound are client-side decoration seeded from these numbers.",
   "villagers": {
-    "_comment": "How many wander a hub, and how they move. Slower than a player on purpose: a villager overtaking you reads as a race.",
-    "min": 6,
-    "max": 8,
+    "_comment": "How many wander a hub, and how they move. Slower than a player on purpose: a villager overtaking you reads as a race. keepAwayTiles holds them out of the plaza centre and off the three shop fronts, so nobody is ever standing between you and the kitchen door.",
+    "min": 4,
+    "max": 6,
+    "keepAwayTiles": 3,
     "stepMs": 420,
     "pauseMsMin": 2600,
     "pauseMsMax": 7000,
@@ -109,14 +110,14 @@
     ]
   },
   "hubProps": {
-    "_comment": "Named decoration with a fixed home in the plaza. Any missing art falls back to a generated chip; a tile that turns out to be a path or a building is skipped rather than drawn over.",
+    "_comment": "Named decoration, out on the ring of the plaza rather than in the middle of it: the centre is where the game is played and where the camera sits. Every one of these is checked by the layout validator at startup - on a path, on a doorway, or within three tiles of a building or the cauldron and the server refuses to start.",
     "items": [
-      { "prop": "prop_well", "tileX": 9, "tileY": 6, "label": "The old well" },
-      { "prop": "prop_campfire", "tileX": 15, "tileY": 5, "label": "", "glow": "#f2b53b" },
-      { "prop": "prop_lantern", "tileX": 17, "tileY": 9, "label": "", "glow": "#f2b53b" },
-      { "prop": "prop_signpost", "tileX": 9, "tileY": 13, "label": "" },
-      { "prop": "prop_cart", "tileX": 6, "tileY": 16, "label": "" },
-      { "prop": "prop_cottage", "tileX": 19, "tileY": 18, "label": "" }
+      { "prop": "prop_well", "tileX": 6, "tileY": 2, "label": "The old well" },
+      { "prop": "prop_lantern", "tileX": 17, "tileY": 2, "label": "", "glow": "#f2b53b" },
+      { "prop": "prop_cottage", "tileX": 20, "tileY": 9, "label": "" },
+      { "prop": "prop_campfire", "tileX": 3, "tileY": 20, "label": "", "glow": "#f2b53b" },
+      { "prop": "prop_signpost", "tileX": 18, "tileY": 20, "label": "" },
+      { "prop": "prop_cart", "tileX": 6, "tileY": 20, "label": "" }
     ]
   },
   "dressing": {

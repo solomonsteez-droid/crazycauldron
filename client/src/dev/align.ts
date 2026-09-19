@@ -70,6 +70,17 @@ class AlignTool {
   private readonly canvas = document.createElement("canvas");
   private readonly status = document.createElement("p");
 
+  /*
+   * Erasing works on a canvas per overlay, not on the loaded image: the image
+   * element is the pristine copy, so a right-drag has something to restore
+   * from. Nothing is written to disk until Save.
+   */
+  private readonly edits = new Map<string, HTMLCanvasElement>();
+  private brush = false;
+  private brushSize = 2;
+  private painting: "erase" | "restore" | null = null;
+  private dirty = new Set<string>();
+
   async start(root: HTMLElement) {
     const art = await loadArt();
     this.manifest = art.manifest;
@@ -122,6 +133,97 @@ class AlignTool {
     point.x += dx;
     point.y += dy;
     this.draw();
+  }
+
+  // --- erasing ------------------------------------------------------------
+
+  /** The editable copy of an overlay, created from the pristine image once. */
+  private surface(kind: "hats" | "aprons", id: string): HTMLCanvasElement | null {
+    const key = `${kind}/${id}`;
+    const existing = this.edits.get(key);
+    if (existing) return existing;
+
+    const image = this.overlayImages.get(key);
+    if (!image) return null;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = image.width;
+    canvas.height = image.height;
+    canvas.getContext("2d")?.drawImage(image, 0, 0);
+    this.edits.set(key, canvas);
+    return canvas;
+  }
+
+  /** Erases or restores a square of pixels around one overlay pixel. */
+  private paintAt(clientX: number, clientY: number) {
+    if (!this.painting) return;
+    const id = this.selected === "hats" ? this.hatId : this.apronId;
+    if (!id) return;
+
+    const surface = this.surface(this.selected, id);
+    const context = surface?.getContext("2d");
+    const pristine = this.overlayImages.get(`${this.selected}/${id}`);
+    if (!surface || !context || !pristine) return;
+
+    const rect = this.canvas.getBoundingClientRect();
+    // The canvas is CSS-scaled, so pointer coordinates go through its own
+    // scale before the 4x zoom and the overlay's offset are undone.
+    const scaleX = this.canvas.width / rect.width;
+    const scaleY = this.canvas.height / rect.height;
+    const pad = 24;
+    const point = this.current(this.selected, id)[this.direction];
+
+    const x = Math.floor(((clientX - rect.left) * scaleX) / ZOOM) - pad - point.x;
+    const y = Math.floor(((clientY - rect.top) * scaleY) / ZOOM) - pad - point.y;
+
+    const half = Math.floor(this.brushSize / 2);
+    const left = x - half;
+    const top = y - half;
+
+    if (this.painting === "erase") {
+      context.clearRect(left, top, this.brushSize, this.brushSize);
+    } else {
+      context.save();
+      context.imageSmoothingEnabled = false;
+      context.clearRect(left, top, this.brushSize, this.brushSize);
+      context.drawImage(
+        pristine,
+        left,
+        top,
+        this.brushSize,
+        this.brushSize,
+        left,
+        top,
+        this.brushSize,
+        this.brushSize,
+      );
+      context.restore();
+    }
+
+    this.dirty.add(`${this.selected}/${id}`);
+    this.draw();
+  }
+
+  private bindBrush() {
+    this.canvas.addEventListener("contextmenu", (event) => {
+      if (this.brush) event.preventDefault();
+    });
+    this.canvas.addEventListener("pointerdown", (event) => {
+      if (!this.brush) return;
+      event.preventDefault();
+      this.canvas.setPointerCapture(event.pointerId);
+      this.painting = event.button === 2 ? "restore" : "erase";
+      this.paintAt(event.clientX, event.clientY);
+    });
+    this.canvas.addEventListener("pointermove", (event) => {
+      if (this.painting) this.paintAt(event.clientX, event.clientY);
+    });
+    const stop = () => {
+      this.painting = null;
+    };
+    this.canvas.addEventListener("pointerup", stop);
+    this.canvas.addEventListener("pointercancel", stop);
+    this.canvas.addEventListener("pointerleave", stop);
   }
 
   // --- rendering ----------------------------------------------------------
@@ -187,7 +289,9 @@ class AlignTool {
     const point = id ? this.current(this.selected, id)[this.direction] : { x: 0, y: 0 };
     this.status.textContent =
       `${this.selected.slice(0, -1)} "${id}" ${this.direction}: x ${point.x}, y ${point.y}` +
-      ` · flip ${id ? this.current(this.selected, id).flip : "-"}`;
+      ` · flip ${id ? this.current(this.selected, id).flip : "-"}` +
+      ` · brush ${this.brush ? `ON (${this.brushSize}px)` : "off"}` +
+      (this.dirty.size > 0 ? ` · ${this.dirty.size} unsaved edit(s)` : "");
   }
 
   private drawOverlay(
@@ -198,7 +302,7 @@ class AlignTool {
     originY: number,
   ) {
     if (!id) return;
-    const image = this.overlayImages.get(`${kind}/${id}`);
+    const image = this.edits.get(`${kind}/${id}`) ?? this.overlayImages.get(`${kind}/${id}`);
     if (!image) return;
 
     const offsets = this.current(kind, id);
@@ -245,7 +349,11 @@ class AlignTool {
     const help = document.createElement("p");
     help.textContent =
       "Arrow keys nudge the selected overlay by 1px. 1-4 pick the direction. " +
-      "Tab switches between hat and apron. F toggles the flip flag.";
+      "Tab switches between hat and apron. F toggles the flip flag. " +
+      "E toggles the eraser: left-drag rubs pixels out, right-drag paints them " +
+      "back from the source. [ and ] change the brush size. Save writes both " +
+      "offsets.json and any overlay you have cleaned; Reset re-cuts the " +
+      "selected item from its drop.";
 
     const controls = document.createElement("div");
     controls.className = "row";
@@ -284,10 +392,19 @@ class AlignTool {
     );
 
     const save = document.createElement("button");
-    save.textContent = "Save offsets.json";
+    save.textContent = "Save";
     save.addEventListener("click", () => void this.save(save));
 
-    root.append(title, help, controls, this.canvas, this.status, save);
+    const reset = document.createElement("button");
+    reset.textContent = "Reset this item";
+    reset.addEventListener("click", () => void this.reset(reset));
+
+    const buttons = document.createElement("div");
+    buttons.className = "row";
+    buttons.append(save, reset);
+
+    this.bindBrush();
+    root.append(title, help, controls, this.canvas, this.status, buttons);
   }
 
   private select(
@@ -339,6 +456,19 @@ class AlignTool {
           this.selected = this.selected === "hats" ? "aprons" : "hats";
           this.draw();
           break;
+        case "KeyE":
+          this.brush = !this.brush;
+          this.canvas.style.cursor = this.brush ? "crosshair" : "default";
+          this.draw();
+          break;
+        case "BracketLeft":
+          this.brushSize = Math.max(1, this.brushSize - 1);
+          this.draw();
+          break;
+        case "BracketRight":
+          this.brushSize = Math.min(12, this.brushSize + 1);
+          this.draw();
+          break;
         case "KeyF": {
           const id = this.selected === "hats" ? this.hatId : this.apronId;
           if (id) {
@@ -364,13 +494,71 @@ class AlignTool {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(this.offsets, null, 2),
       });
-      button.textContent = response.ok ? "Saved" : `Failed (${response.status})`;
+      if (!response.ok) throw new Error(`offsets ${response.status}`);
+
+      // Any overlay the eraser touched goes back to generated/ as a PNG, so
+      // the game and the next pipeline run both see the cleaned art.
+      for (const key of [...this.dirty]) {
+        const [kind, id] = key.split("/") as ["hats" | "aprons", string];
+        const surface = this.edits.get(key);
+        if (!surface) continue;
+        const written = await fetch("/dev/overlay", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ kind, id, png: surface.toDataURL("image/png") }),
+        });
+        if (!written.ok) throw new Error(`${id} ${written.status}`);
+        this.dirty.delete(key);
+      }
+      button.textContent = "Saved";
     } catch (err) {
       button.textContent = `Failed: ${(err as Error).message}`;
     }
+    this.draw();
     window.setTimeout(() => {
       button.disabled = false;
-      button.textContent = "Save offsets.json";
+      button.textContent = "Save";
+    }, 1500);
+  }
+
+  /**
+   * Throws away every hand edit for the selected item and re-cuts it.
+   *
+   * One item rather than the whole pipeline: erasing has no undo beyond going
+   * back to the source, and re-running everything would also discard the other
+   * fifteen overlays somebody may have already cleaned.
+   */
+  private async reset(button: HTMLButtonElement) {
+    const id = this.selected === "hats" ? this.hatId : this.apronId;
+    if (!id) return;
+
+    button.disabled = true;
+    button.textContent = "Re-cutting…";
+    try {
+      const response = await fetch("/dev/recut", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const result = (await response.json()) as { ok: boolean; output?: string; error?: string };
+      if (!result.ok) throw new Error(result.error ?? "re-cut failed");
+
+      const key = `${this.selected}/${id}`;
+      this.edits.delete(key);
+      this.dirty.delete(key);
+      // Cache-busted, or the browser hands back the file we just replaced.
+      this.overlayImages.set(
+        key,
+        await loadImage(`${GENERATED}/${this.selected}/${id}.png?t=${Date.now()}`),
+      );
+      button.textContent = "Re-cut";
+    } catch (err) {
+      button.textContent = `Failed: ${(err as Error).message}`;
+    }
+    this.draw();
+    window.setTimeout(() => {
+      button.disabled = false;
+      button.textContent = "Reset this item";
     }, 1500);
   }
 }

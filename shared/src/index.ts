@@ -12,4 +12,5 @@ export * from "./wardrobe.js";
 export * from "./sectionMap.js";
 export * from "./daylight.js";
 export * from "./dressing.js";
+export * from "./layout.js";
 export * from "./protocol.js";

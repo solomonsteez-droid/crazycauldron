@@ -1,11 +1,36 @@
 import { defineConfig, type Plugin } from "vite";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
-const OFFSETS = path.join(here, "public", "assets", "generated", "offsets.json");
+const GENERATED = path.join(here, "public", "assets", "generated");
+const OFFSETS = path.join(GENERATED, "offsets.json");
+
+/** Reads a JSON request body, with a ceiling so a bad client cannot fill memory. */
+function readJson(req: { on: (event: string, cb: (chunk: Buffer) => void) => void }): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    req.on("data", (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > 8 * 1024 * 1024) return reject(new Error("body too large"));
+      chunks.push(chunk);
+    });
+    req.on("end", () => {
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+      } catch (err) {
+        reject(err);
+      }
+    });
+  });
+}
+
+/** Overlay ids are file names; anything with a path separator is refused. */
+const SAFE_ID = /^[a-z0-9_]+$/;
 
 /**
  * The alignment workbench at /dev/align.
@@ -44,6 +69,63 @@ function devAlign(): Plugin {
               res.end(JSON.stringify({ ok: false, error: (err as Error).message }));
             }
           });
+          return undefined;
+        }
+
+        /*
+         * The eraser writes the cleaned overlay straight back to generated/.
+         * Automatic extraction cannot get these drops perfectly clean - they
+         * are three different compositions, not one figure re-dressed - so the
+         * last few pixels are removed by hand and this is where they land.
+         */
+        if (url === "/dev/overlay" && req.method === "POST") {
+          void (async () => {
+            try {
+              const body = (await readJson(req)) as { kind?: string; id?: string; png?: string };
+              const kind = body.kind === "hats" || body.kind === "aprons" ? body.kind : null;
+              const id = String(body.id ?? "");
+              const png = String(body.png ?? "");
+              if (!kind || !SAFE_ID.test(id)) throw new Error("bad kind or id");
+              if (!png.startsWith("data:image/png;base64,")) throw new Error("not a PNG data url");
+
+              const file = path.join(GENERATED, kind, `${id}.png`);
+              fs.mkdirSync(path.dirname(file), { recursive: true });
+              fs.writeFileSync(file, Buffer.from(png.split(",")[1] ?? "", "base64"));
+              res.statusCode = 200;
+              res.end(JSON.stringify({ ok: true, wrote: path.relative(repoRoot, file) }));
+            } catch (err) {
+              res.statusCode = 400;
+              res.end(JSON.stringify({ ok: false, error: (err as Error).message }));
+            }
+          })();
+          return undefined;
+        }
+
+        // Re-cut one item from its source drop, undoing any hand erasing.
+        if (url === "/dev/recut" && req.method === "POST") {
+          void (async () => {
+            try {
+              const body = (await readJson(req)) as { id?: string };
+              const id = String(body.id ?? "");
+              if (!SAFE_ID.test(id)) throw new Error("bad id");
+
+              const child = spawn(
+                process.platform === "win32" ? "npx.cmd" : "npx",
+                ["tsx", "scripts/process-sprites.ts", `--only=${id}`],
+                { cwd: repoRoot, shell: false },
+              );
+              let output = "";
+              child.stdout.on("data", (chunk: Buffer) => (output += chunk.toString()));
+              child.stderr.on("data", (chunk: Buffer) => (output += chunk.toString()));
+              child.on("close", (code) => {
+                res.statusCode = code === 0 ? 200 : 500;
+                res.end(JSON.stringify({ ok: code === 0, output: output.slice(-2000) }));
+              });
+            } catch (err) {
+              res.statusCode = 400;
+              res.end(JSON.stringify({ ok: false, error: (err as Error).message }));
+            }
+          })();
           return undefined;
         }
 
