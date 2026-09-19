@@ -28,6 +28,11 @@ export interface PlayerView extends Watchable {
   tileY: number;
   facing: string;
   moving: boolean;
+  /** 0 is the hub, 1..3 the gathering sections. */
+  section: number;
+  chefLevel: number;
+  /** "gathering" or "cooking" while the server is timing an action. */
+  activity: string;
 }
 
 export interface HubStateView {

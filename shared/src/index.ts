@@ -7,3 +7,4 @@ export * from "./path.js";
 export * from "./content/index.js";
 export * from "./progression.js";
 export * from "./sectionMap.js";
+export * from "./protocol.js";

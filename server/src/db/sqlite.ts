@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import fs from "node:fs";
 import path from "node:path";
+import { migrateGameTables } from "./gameRepo.js";
 import type { PlayerRecord, PlayerRepository } from "./types.js";
 
 export function openDatabase(file: string): Database.Database {
@@ -24,6 +25,7 @@ function migrate(db: Database.Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_players_last_seen ON players (last_seen_at);
   `);
+  migrateGameTables(db);
 }
 
 interface Row {

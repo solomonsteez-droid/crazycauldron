@@ -17,6 +17,16 @@ export class Player extends Schema {
   @type("string") facing: Facing = "s";
   /** True while a route is still being walked, so clients can pick an animation. */
   @type("boolean") moving = false;
+  /**
+   * Which map this player is standing on: 0 is the hub, 1..3 the gathering
+   * sections. Replicated because everyone needs to know who to draw - a player
+   * off in the Deep Forest must not appear in the hub.
+   */
+  @type("number") section = 0;
+  /** Replicated so other players can see a chef's standing at a glance. */
+  @type("number") chefLevel = 1;
+  /** Non-empty while a gather or cook timer is running, for the busy animation. */
+  @type("string") activity = "";
 }
 
 export class HubState extends Schema {

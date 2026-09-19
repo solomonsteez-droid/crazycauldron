@@ -16,6 +16,10 @@ export const TEX_PLAYER_FRONT = "player-front";
 export const TEX_PLAYER_BACK = "player-back";
 export const TEX_CAULDRON = "cauldron";
 export const TEX_MARKER = "move-marker";
+export const TEX_NODE = "gather-node";
+export const TEX_NODE_SPENT = "gather-node-spent";
+export const TEX_PORTAL = "portal";
+export const TEX_STATION = "station";
 
 const HALF_W = TILE_WIDTH / 2;
 const HALF_H = TILE_HEIGHT / 2;
@@ -78,7 +82,66 @@ export function createPlaceholderArt(scene: Phaser.Scene) {
 
   drawCauldron(g);
   g.generateTexture(TEX_CAULDRON, 96, 88);
+  g.clear();
+
+  // Nodes, portals and stations are all tinted at use, so each is drawn white
+  // and coloured by the section palette rather than baked three times over.
+  drawNode(g, true);
+  g.generateTexture(TEX_NODE, 16, 20);
+  g.clear();
+
+  drawNode(g, false);
+  g.generateTexture(TEX_NODE_SPENT, 16, 20);
+  g.clear();
+
+  drawPortal(g);
+  g.generateTexture(TEX_PORTAL, 24, 30);
+  g.clear();
+
+  drawStation(g);
+  g.generateTexture(TEX_STATION, 20, 22);
   g.destroy();
+}
+
+/** A tuft when full, a bare stem when spent. */
+function drawNode(g: Phaser.GameObjects.Graphics, full: boolean) {
+  g.fillStyle(0x000000, 0.25);
+  g.fillEllipse(8, 18, 11, 4);
+
+  g.fillStyle(0xffffff, 1);
+  g.fillRect(7, 10, 2, 8); // Stem.
+
+  if (full) {
+    g.fillCircle(8, 7, 5);
+    g.fillCircle(4, 10, 3);
+    g.fillCircle(12, 10, 3);
+  } else {
+    g.fillCircle(8, 9, 2);
+  }
+}
+
+/** A standing arch: reads as a gate at 16px without needing a door sprite. */
+function drawPortal(g: Phaser.GameObjects.Graphics) {
+  g.fillStyle(0x000000, 0.25);
+  g.fillEllipse(12, 28, 18, 5);
+
+  g.fillStyle(0xffffff, 1);
+  g.fillRect(2, 8, 4, 20);
+  g.fillRect(18, 8, 4, 20);
+  g.fillRect(2, 4, 20, 5);
+  g.fillStyle(0xffffff, 0.35);
+  g.fillRect(6, 9, 12, 19); // The opening, faintly lit.
+}
+
+/** A counter with a sign, for the kitchen, tavern and outfitter tiles. */
+function drawStation(g: Phaser.GameObjects.Graphics) {
+  g.fillStyle(0x000000, 0.25);
+  g.fillEllipse(10, 20, 16, 5);
+
+  g.fillStyle(0xffffff, 1);
+  g.fillRect(2, 10, 16, 10); // Counter.
+  g.fillRect(8, 2, 4, 8); // Post.
+  g.fillRect(3, 0, 14, 5); // Sign.
 }
 
 /** 16x24 hooded figure; `face` is the skin colour, `robe` the hood and body. */
