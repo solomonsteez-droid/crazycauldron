@@ -38,7 +38,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   const text = await response.text();
-  const parsed = text ? (JSON.parse(text) as unknown) : {};
+  let parsed: unknown = {};
+  try {
+    if (text) parsed = JSON.parse(text) as unknown;
+  } catch {
+    // A proxy or crash can answer with HTML. Report the status, not a parse
+    // error the player can do nothing with.
+    throw new ApiError(response.status, {
+      error: "bad_response",
+      message: `The server answered unexpectedly (${response.status}).`,
+    });
+  }
 
   if (!response.ok) {
     const body = parsed as Partial<ApiErrorBody>;

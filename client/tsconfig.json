@@ -4,8 +4,7 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["vite/client"],
     "noEmit": true,
-    "declaration": false,
-    "jsx": "preserve"
+    "declaration": false
   },
   "include": ["src", "vite.config.ts"]
 }

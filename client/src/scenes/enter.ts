@@ -1,5 +1,9 @@
 import type Phaser from "phaser";
-import { ROOM_HUB } from "@crazycauldron/shared";
+import {
+  KICK_AUTH_EXPIRED,
+  KICK_INSUFFICIENT_HOLD,
+  ROOM_HUB,
+} from "@crazycauldron/shared";
 import { ApiError, enterWorld } from "../net/api.js";
 import { consumeReservation } from "../net/room.js";
 import { clearSession, type Session } from "../net/session.js";
@@ -30,7 +34,19 @@ export function describeEnterFailure(err: unknown): string {
     }
     return err.message;
   }
-  return (err as Error)?.message ?? "Could not reach the cauldron.";
+
+  // A room can refuse the seat after /matchmake said yes - the gate is
+  // re-checked on join - and it rejects with the bare KICK_* code.
+  const message = (err as Error)?.message ?? "";
+  if (message === KICK_INSUFFICIENT_HOLD) {
+    clearSession();
+    return "Your $COOK balance no longer meets the amount the hub requires.";
+  }
+  if (message === KICK_AUTH_EXPIRED) {
+    clearSession();
+    return "Your session expired. Connect your wallet again.";
+  }
+  return message || "Could not reach the cauldron.";
 }
 
 /** Sends the player back to the login screen with the reason shown. */

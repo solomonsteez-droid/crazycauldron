@@ -64,8 +64,11 @@ export class WaitingScene extends Phaser.Scene {
         ? "You are next in line."
         : `You are number ${place} of ${update.waiting} in the queue.`,
     );
+    // The first MSG_QUEUE lands before the first capacity sweep, so these are
+    // still zero on join; showing "0 of 0" would just look broken.
+    const { hubPlayers, globalMax } = this.room.state;
     this.panel.setMeta(
-      `${this.room.state.hubPlayers} of ${this.room.state.globalMax} wizards are in the cauldron.`,
+      globalMax > 0 ? `${hubPlayers} of ${globalMax} wizards are in the cauldron.` : "",
     );
   }
 

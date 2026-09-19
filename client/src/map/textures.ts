@@ -70,7 +70,7 @@ export function createPlaceholderArt(scene: Phaser.Scene) {
   g.clear();
 
   drawCauldron(g);
-  g.generateTexture(TEX_CAULDRON, 96, 80);
+  g.generateTexture(TEX_CAULDRON, 96, 88);
   g.destroy();
 }
 
@@ -78,7 +78,7 @@ export function createPlaceholderArt(scene: Phaser.Scene) {
 function drawToken(g: Phaser.GameObjects.Graphics, face: number, robe: number) {
   // Soft contact shadow so the token reads as standing on the tile.
   g.fillStyle(0x000000, 0.25);
-  g.fillEllipse(8, 23, 12, 5);
+  g.fillEllipse(8, 21, 12, 5);
 
   g.fillStyle(robe, 1);
   g.fillTriangle(8, 4, 2, 23, 14, 23); // Robe.
