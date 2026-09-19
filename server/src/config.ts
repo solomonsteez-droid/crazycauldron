@@ -1,3 +1,4 @@
+import { AUTH_RATE_LIMIT, AUTH_RATE_WINDOW_MS } from "@crazycauldron/shared";
 import { config as loadEnv } from "dotenv";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -52,6 +53,13 @@ export const config = {
     .split(",")
     .map((o) => o.trim())
     .filter(Boolean),
+
+  /**
+   * Overridable so a load test can run many sign-ins from one IP without
+   * editing source. Leave it at the default in production.
+   */
+  authRateLimit: num("AUTH_RATE_LIMIT", AUTH_RATE_LIMIT),
+  authRateWindowMs: num("AUTH_RATE_WINDOW_MS", AUTH_RATE_WINDOW_MS),
 
   jwtSecret: str("JWT_SECRET"),
   siwsDomain: str("SIWS_DOMAIN", "localhost:5173"),

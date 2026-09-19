@@ -19,7 +19,7 @@ export const authRouter = Router();
 
 // Both endpoints share one limiter instance so nonce-farming and signature
 // guessing draw down the same per-IP budget.
-const limiter = rateLimit();
+const limiter = rateLimit(config.authRateLimit, config.authRateWindowMs);
 
 /**
  * Hands out a single-use nonce plus the exact message the wallet should sign.
