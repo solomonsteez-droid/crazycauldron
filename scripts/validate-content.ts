@@ -25,6 +25,7 @@ import {
   levelsFromXp,
   skillXpToReach,
   emptySkillXp,
+  cookXpAwards,
   techniquesUnlocked,
   type SkillId,
 } from "@crazycauldron/shared";
@@ -217,6 +218,22 @@ if (openers.length === 0) {
   note("a brand new player can cook nothing at all - progression can never start");
 } else {
   console.log(`  note: a new player can cook ${openers.map((r) => r.id).join(", ")}`);
+}
+
+/*
+ * Every skill must be able to earn its first XP.
+ *
+ * Firecraft, knifework and spicecraft are all cooking-only skills, so if the
+ * only recipes paying a skill also require it above level 1, that skill is
+ * pinned forever - and with it every unlock and recipe behind it.
+ */
+for (const skill of ["firecraft", "knifework", "spicecraft"] as const) {
+  const reachable = openers.some((recipe) =>
+    cookXpAwards(recipe, startingLevels, "common").some((a) => a.skill === skill && a.xp > 0),
+  );
+  if (!reachable) {
+    note(`no recipe a new player can cook awards ${skill} XP - that skill can never leave level 1`);
+  }
 }
 
 // --- report ----------------------------------------------------------------

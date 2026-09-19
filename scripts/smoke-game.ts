@@ -489,7 +489,14 @@ async function main() {
   // dish. That cap is the whole reason to level knifework.
   check("knifework 1 caps the dish at Common", cooked.quality === "common", cooked.quality);
   check("firecraft was paid", cooked.skillXp.some((x) => x.skill === "firecraft" && x.xp > 0));
-  check("meadow flatbread pays 10 XP at Common", cooked.chefXp === 10, `${cooked.chefXp}`);
+  // 10 to firecraft, plus the quarter-share base to knifework and spicecraft
+  // that keeps those two skills from being pinned at level 1 forever.
+  check("meadow flatbread pays 16 chef XP at Common", cooked.chefXp === 16, `${cooked.chefXp}`);
+  check(
+    "knifework and spicecraft both earn from every cook",
+    cooked.skillXp.some((x) => x.skill === "knifework" && x.xp > 0) &&
+      cooked.skillXp.some((x) => x.skill === "spicecraft" && x.xp > 0),
+  );
   check("ingredients were consumed", countOf("sunwheat") === sunwheatBefore - 2);
   check("the dish is in the bag", profile.inventory.some((s) => s.kind === "dish"));
   check(

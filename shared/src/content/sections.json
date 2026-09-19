@@ -82,7 +82,7 @@
         { "id": "mystical_caves_4",  "ingredient": "cave_pearls",          "tileX": 18, "tileY": 6 },
         { "id": "mystical_caves_5",  "ingredient": "crystal_sugar",        "tileX": 3,  "tileY": 11 },
         { "id": "mystical_caves_6",  "ingredient": "glowcap",              "tileX": 20, "tileY": 10 },
-        { "id": "mystical_caves_7",  "ingredient": "cave_pearls",          "tileX": 6,  "tileY": 13 },
+        { "id": "mystical_caves_7",  "ingredient": "starlight_salt",       "tileX": 6,  "tileY": 13 },
         { "id": "mystical_caves_8",  "ingredient": "ember_root",           "tileX": 11, "tileY": 11 },
         { "id": "mystical_caves_9",  "ingredient": "starlight_salt",       "tileX": 16, "tileY": 12 },
         { "id": "mystical_caves_10", "ingredient": "frost_quartz",         "tileX": 19, "tileY": 16 },

@@ -200,7 +200,14 @@ export interface SkillsFile {
     nightshadeDowngradeChance: number;
     qualitySteps: Quality[];
     quality: Record<Quality, QualityMultiplier>;
-    cookXp: { firecraftShare: number; knifeworkShare: number; spicecraftShare: number };
+    cookXp: {
+      firecraftShare: number;
+      knifeworkShare: number;
+      spicecraftShare: number;
+      /** Paid when the recipe does *not* require the skill; see skills.json. */
+      knifeworkBaseShare: number;
+      spicecraftBaseShare: number;
+    };
   };
   economy: {
     inventory: { baseSlots: number; stackMax: number };

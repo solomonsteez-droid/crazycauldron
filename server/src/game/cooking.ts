@@ -16,6 +16,7 @@ import {
   autoPrepSections,
   bonusQualityStepChance,
   cookDurationMs,
+  cookXpAwards,
   findIngredient,
   ingredientSlots,
   prepQualityCap,
@@ -272,28 +273,10 @@ export function resolveCook(
   state.addItem("dish", recipe.id, 1, quality);
   state.recordCooked(recipe.id, quality);
 
-  // XP. Firecraft always, knifework and spicecraft only when the recipe asks
-  // for them, each at half - then the quality multiplier and the spiced bonus.
-  const { firecraftShare, knifeworkShare, spicecraftShare } = CONFIG.cooking.cookXp;
-  const qualityXp = qualityMultipliers(quality).xp;
-  const spiceBonus =
-    recipeUsesSpice(ingredientIds) ? 1 + spicedXpBonusPct(levels) / 100 : 1;
-
-  const awards: { skill: SkillId; xp: number }[] = [
-    { skill: "firecraft", xp: recipe.chefXp * firecraftShare },
-  ];
-  if (recipe.requirements.knifework !== undefined) {
-    awards.push({ skill: "knifework", xp: recipe.chefXp * knifeworkShare });
-  }
-  if (recipe.requirements.spicecraft !== undefined) {
-    awards.push({ skill: "spicecraft", xp: recipe.chefXp * spicecraftShare });
-  }
-
-  const paid = awards.map(({ skill, xp }) => {
-    const amount = Math.round(xp * qualityXp * spiceBonus);
-    state.awardSkillXp(skill, amount);
-    return { skill, xp: amount };
-  });
+  // XP is worked out by the shared helper, so the simulation and the kitchen
+  // panel can never disagree with what the room actually pays.
+  const paid = cookXpAwards(recipe, levels, quality);
+  for (const award of paid) state.awardSkillXp(award.skill, award.xp);
 
   return {
     quality,

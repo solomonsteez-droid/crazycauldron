@@ -3,14 +3,14 @@
 
   "chef": {
     "maxLevel": 30,
-    "baseXp": 120,
-    "growth": 1.18,
+    "baseXp": 320,
+    "growth": 1.204,
     "targetHours": { "10": 2.5, "20": 10, "30": 25 }
   },
 
   "skills": {
     "maxLevel": 20,
-    "baseXp": 100,
+    "baseXp": 195,
     "growth": 1.1,
     "list": ["foraging", "prospecting", "knifework", "firecraft", "spicecraft"],
     "names": {
@@ -63,10 +63,12 @@
       "superb": { "xp": 2, "coins": 1.6 }
     },
     "cookXp": {
-      "_comment": "Firecraft gets the recipe's chefXp; knifework and spicecraft get half each when the recipe requires them. Chef XP always equals the total skill XP awarded.",
+      "_comment": "Firecraft gets the recipe chefXp; knifework and spicecraft get half each when the recipe requires them. The base shares are paid on every other cook, because every dish is still chopped and seasoned - without them neither skill can ever leave level 1, since every recipe that grants their XP also requires level 2+ of it. Chef XP always equals the total skill XP awarded.",
       "firecraftShare": 1,
       "knifeworkShare": 0.5,
-      "spicecraftShare": 0.5
+      "spicecraftShare": 0.5,
+      "knifeworkBaseShare": 0.25,
+      "spicecraftBaseShare": 0.25
     }
   },
 

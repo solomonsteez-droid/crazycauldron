@@ -401,6 +401,62 @@ export function sellValue(levels: SkillLevels, baseCoins: number, quality: Quali
   return Math.max(1, Math.round(baseCoins * multiplier * spice));
 }
 
+/**
+ * XP a finished dish pays out, per skill.
+ *
+ * Lives here rather than in the room so the server, the kitchen panel and
+ * scripts/simulate-progression.ts all read the same arithmetic - a simulation
+ * that modelled its own XP curve would be measuring itself, not the game.
+ *
+ * Firecraft always earns the recipe value. Knifework and spicecraft earn half
+ * when the recipe asks for them, and a smaller base share when it does not -
+ * every dish is still chopped and seasoned.
+ *
+ * That base share is not decoration. Every recipe that grants knifework XP also
+ * requires Knifework 2 or more, and the same holds for spicecraft, so without
+ * it both skills are pinned at level 1 forever - which in turn pins ingredient
+ * slots at 2 and makes 18 of the 20 recipes permanently uncookable.
+ *
+ * Quality multiplies all three, and spicecraft 19 adds its bonus on spiced
+ * dishes.
+ */
+export function cookXpAwards(
+  recipe: { chefXp: number; requirements: SkillRequirements; ingredients: { id: string }[] },
+  levels: SkillLevels,
+  quality: Quality,
+): { skill: SkillId; xp: number }[] {
+  const {
+    firecraftShare,
+    knifeworkShare,
+    spicecraftShare,
+    knifeworkBaseShare,
+    spicecraftBaseShare,
+  } = CONFIG.cooking.cookXp;
+  const qualityXp = qualityMultipliers(quality).xp;
+
+  const ingredientIds = recipe.ingredients.map((i) => i.id);
+  const spiceBonus = recipeUsesSpice(ingredientIds) ? 1 + spicedXpBonusPct(levels) / 100 : 1;
+
+  const shares: { skill: SkillId; share: number }[] = [
+    { skill: "firecraft", share: firecraftShare },
+    {
+      skill: "knifework",
+      share: recipe.requirements.knifework !== undefined ? knifeworkShare : knifeworkBaseShare,
+    },
+    {
+      skill: "spicecraft",
+      share: recipe.requirements.spicecraft !== undefined ? spicecraftShare : spicecraftBaseShare,
+    },
+  ];
+
+  return shares
+    .map(({ skill, share }) => ({
+      skill,
+      xp: Math.round(recipe.chefXp * share * qualityXp * spiceBonus),
+    }))
+    .filter((award) => award.xp > 0);
+}
+
 /** True when a recipe uses any ingredient tagged as spiced. */
 export function recipeUsesSpice(ingredientIds: string[]): boolean {
   return ingredientIds.some((id) => findIngredient(id)?.spiced === true);
