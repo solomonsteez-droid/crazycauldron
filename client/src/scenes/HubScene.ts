@@ -47,6 +47,7 @@ import {
 import { fetchCapacity } from "../net/api.js";
 import { gameStore } from "../net/game.js";
 import { GameMap, type MapFeature } from "../map/gameMap.js";
+import { LABEL_SCREEN_PX, labelScale, planCamera } from "../map/camera.js";
 import { TEX_MARKER, TEX_PLAYER_BACK, TEX_PLAYER_FRONT } from "../map/textures.js";
 import type { HubStateView, KickNotice, PlayerView } from "../net/state.js";
 import { clearSession, type Session } from "../net/session.js";
@@ -80,8 +81,12 @@ interface HubSceneData {
 interface Avatar {
   container: Phaser.GameObjects.Container;
   sprite: Phaser.GameObjects.Image;
+  label: Phaser.GameObjects.Text;
   tween?: Phaser.Tweens.Tween;
 }
+
+/** How hard the camera chases the player. Low enough to glide, high enough to keep up. */
+const FOLLOW_LERP = 0.12;
 
 /** A click on something out of reach: walk there, then do the thing. */
 interface PendingAction {
@@ -112,6 +117,8 @@ export class HubScene extends Phaser.Scene {
   private cookModal: ModalHandle | null = null;
   private dock!: Dock;
   private cooldownTimer?: Phaser.Time.TimerEvent;
+  /** Current camera zoom, so labels can cancel it out as it changes. */
+  private zoom = 1;
 
   constructor() {
     super(SCENE_HUB);
@@ -127,6 +134,12 @@ export class HubScene extends Phaser.Scene {
 
     this.cameras.main.setBackgroundColor("#101a14");
     this.buildMap(HUB_MAP);
+    this.layoutCamera();
+
+    this.scale.on(Phaser.Scale.Events.RESIZE, this.onResize, this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () =>
+      this.scale.off(Phaser.Scale.Events.RESIZE, this.onResize, this),
+    );
 
     this.marker = this.add.image(0, 0, TEX_MARKER).setOrigin(0.5, 0).setAlpha(0).setDepth(9999);
 
@@ -136,6 +149,7 @@ export class HubScene extends Phaser.Scene {
       players: 0,
       hubMax: 0,
       section: HUB_MAP,
+      roomReady: false,
     });
 
     void fetchCapacity()
@@ -168,8 +182,8 @@ export class HubScene extends Phaser.Scene {
   private buildMap(mapId: number) {
     this.map?.destroy();
     this.map = new GameMap(this, mapId);
-    this.map.applyCameraBounds();
     this.currentSection = mapId;
+    this.map.applyLabelScale(this.zoom);
     this.refreshNodes();
   }
 
@@ -185,13 +199,18 @@ export class HubScene extends Phaser.Scene {
     });
   }
 
-  /** Only players standing on the same map are drawn. */
+  /**
+   * Only players standing on the same map are counted.
+   *
+   * Reaching here at all means a state patch has been decoded, which is what
+   * the HUD needs to stop saying it is still connecting.
+   */
   private refreshCrowd() {
     let here = 0;
     this.room.state.players.forEach((player) => {
       if (player.section === this.currentSection) here += 1;
     });
-    this.hud.update({ players: here, section: this.currentSection });
+    this.hud.update({ players: here, section: this.currentSection, roomReady: true });
   }
 
   private bindInput() {
@@ -400,6 +419,59 @@ export class HubScene extends Phaser.Scene {
     });
   }
 
+  // --- camera --------------------------------------------------------------
+
+  /**
+   * Fits the camera to the current window.
+   *
+   * Zoom comes from the viewport width, bounds from the map, and the choice
+   * between following the player and centring the map comes from whether the
+   * map is actually bigger than the view. Phaser clamps the scroll to the
+   * bounds itself, which is what keeps empty space off the screen on the axes
+   * that do scroll.
+   */
+  private layoutCamera() {
+    const camera = this.cameras.main;
+    const plan = planCamera(this.scale.width, this.scale.height, this.map.worldBounds);
+
+    this.zoom = plan.zoom;
+    camera.setSize(this.scale.width, this.scale.height);
+    camera.setZoom(plan.zoom);
+    camera.setBounds(
+      plan.bounds.x,
+      plan.bounds.y,
+      plan.bounds.width,
+      plan.bounds.height,
+      // centerOn: with nothing to scroll, sit in the middle of the map.
+      plan.fitsEntirely,
+    );
+
+    const self = this.avatars.get(this.room.sessionId);
+    if (plan.fitsEntirely || !self) {
+      camera.stopFollow();
+      camera.centerOn(plan.centre.x, plan.centre.y);
+    } else {
+      // roundPixels on the follow keeps the scroll on whole pixels, so a 32px
+      // tile never straddles a device pixel and shimmers.
+      camera.startFollow(self.container, true, FOLLOW_LERP, FOLLOW_LERP);
+    }
+
+    this.map.applyLabelScale(plan.zoom);
+    this.applyAvatarLabelScale();
+  }
+
+  private onResize() {
+    this.layoutCamera();
+  }
+
+  /** Name labels live in the world, so they have to cancel the zoom out. */
+  private applyAvatarLabelScale() {
+    const scale = labelScale(this.zoom);
+    for (const avatar of this.avatars.values()) {
+      avatar.label.setScale(scale).setResolution(Math.max(1, Math.ceil(this.zoom)));
+    }
+  }
+
   /** Redraws node sprites from whatever the server last said about them. */
   private refreshNodes() {
     if (this.currentSection === HUB_MAP) return;
@@ -414,26 +486,30 @@ export class HubScene extends Phaser.Scene {
     const isSelf = player.wallet === this.session.wallet;
 
     const sprite = this.add.image(0, 0, TEX_PLAYER_FRONT).setOrigin(0.5, 1);
+    // Sized in screen pixels and scaled by 1/zoom, so a name is the same size
+    // whether the camera is at 1.5x or 3x.
     const label = this.add
       .text(0, -26, player.displayName, {
         fontFamily: "monospace",
-        fontSize: "8px",
+        fontSize: `${LABEL_SCREEN_PX}px`,
         color: isSelf ? "#7ce08a" : "#f3e9d2",
       })
       .setOrigin(0.5, 1)
-      .setResolution(3);
+      .setScale(labelScale(this.zoom))
+      .setResolution(Math.max(1, Math.ceil(this.zoom)));
 
     const container = this.add.container(position.x, position.y, [sprite, label]);
     container.setDepth(player.tileX + player.tileY);
     container.setVisible(player.section === this.currentSection);
 
-    const avatar: Avatar = { container, sprite };
+    const avatar: Avatar = { container, sprite, label };
     this.avatars.set(sessionId, avatar);
     this.applyFacing(avatar, player.facing);
 
     player.onChange(() => this.onPlayerChanged(sessionId, player));
 
-    if (isSelf) this.cameras.main.startFollow(container, true, 0.12, 0.12);
+    // The camera cannot follow before the player it follows exists.
+    if (isSelf) this.layoutCamera();
   }
 
   private onPlayerChanged(sessionId: string, player: PlayerView) {
@@ -447,7 +523,7 @@ export class HubScene extends Phaser.Scene {
     if (isSelf && player.section !== this.currentSection) {
       this.buildMap(player.section);
       this.rebuildAvatarsForMap();
-      this.cameras.main.startFollow(avatar.container, true, 0.12, 0.12);
+      this.layoutCamera();
       this.refreshCrowd();
       const section = findSection(player.section);
       toast(section ? `Entered ${section.name}.` : "Back in the hub.");

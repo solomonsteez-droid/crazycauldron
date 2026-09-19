@@ -15,6 +15,7 @@ import {
   type GatherNodeDef,
   type TilePos,
 } from "@crazycauldron/shared";
+import { LABEL_SCREEN_PX, MAP_WORLD_BOUNDS, SMALL_LABEL_SCREEN_PX, labelScale, type Rect } from "./camera.js";
 import {
   TEX_CAULDRON,
   TEX_NODE,
@@ -48,6 +49,8 @@ export class GameMap {
   private readonly nodeSprites = new Map<string, Phaser.GameObjects.Image>();
   private readonly nodeLabels = new Map<string, Phaser.GameObjects.Text>();
   private readonly decorations: Phaser.GameObjects.GameObject[] = [];
+  /** Every world-space label, so all of them can cancel the camera zoom. */
+  private readonly labels: Phaser.GameObjects.Text[] = [];
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -167,10 +170,14 @@ export class GameMap {
   private addNodeLabel(node: GatherNodeDef): Phaser.GameObjects.Text {
     const at = this.tileCentre(node.tileX, node.tileY);
     const text = this.scene.add
-      .text(at.x, at.y - 22, "", { fontFamily: "monospace", fontSize: "7px", color: "#9a8f7a" })
+      .text(at.x, at.y - 22, "", {
+        fontFamily: "monospace",
+        fontSize: `${SMALL_LABEL_SCREEN_PX}px`,
+        color: "#9a8f7a",
+      })
       .setOrigin(0.5, 1)
-      .setResolution(3)
       .setDepth(node.tileX + node.tileY + 1);
+    this.labels.push(text);
     this.decorations.push(text);
     return text;
   }
@@ -184,11 +191,15 @@ export class GameMap {
       .setTint(Phaser.Display.Color.HexStringToColor(colour).color);
 
     const text = this.scene.add
-      .text(at.x, at.y - 22, label, { fontFamily: "monospace", fontSize: "7px", color: colour })
+      .text(at.x, at.y - 22, label, {
+        fontFamily: "monospace",
+        fontSize: `${LABEL_SCREEN_PX}px`,
+        color: colour,
+      })
       .setOrigin(0.5, 1)
-      .setResolution(3)
       .setDepth(tileX + tileY);
 
+    this.labels.push(text);
     this.decorations.push(image, text);
   }
 
@@ -232,18 +243,32 @@ export class GameMap {
     return this.tileCentre(MAP_SIZE / 2, MAP_SIZE / 2);
   }
 
-  applyCameraBounds() {
-    this.scene.cameras.main.setBounds(
-      -this.offsetX - TILE_WIDTH,
-      -TILE_HEIGHT,
-      MAP_SIZE * TILE_WIDTH + TILE_WIDTH * 2,
-      MAP_SIZE * TILE_HEIGHT + TILE_HEIGHT * 3,
-    );
+  /**
+   * The world rectangle this map occupies, for the camera to clamp against.
+   * Tight to the floor, so no ground-coloured margin shows past the edges.
+   */
+  get worldBounds(): Rect {
+    return MAP_WORLD_BOUNDS;
+  }
+
+  /**
+   * Cancels the camera zoom on every world-space label.
+   *
+   * Labels are positioned in the world so they track their tile, but their size
+   * should be a screen-space decision - a name at 3x would otherwise be twice
+   * the height it is at 1.5x. Resolution follows the zoom so the glyphs are
+   * rasterised at the size they are actually drawn.
+   */
+  applyLabelScale(zoom: number) {
+    const scale = labelScale(zoom);
+    const resolution = Math.max(1, Math.ceil(zoom));
+    for (const label of this.labels) label.setScale(scale).setResolution(resolution);
   }
 
   destroy() {
     for (const decoration of this.decorations) decoration.destroy();
     this.decorations.length = 0;
+    this.labels.length = 0;
     this.nodeSprites.clear();
     this.nodeLabels.clear();
     this.features.length = 0;

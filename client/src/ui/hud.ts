@@ -8,6 +8,8 @@ export interface HudData {
   players: number;
   hubMax: number;
   section: number;
+  /** False until the first room state patch has been decoded. */
+  roomReady: boolean;
 }
 
 /**
@@ -54,12 +56,25 @@ export class Hud {
 
     this.left.textContent = `${this.data.displayName} · ${shortenAddress(this.data.wallet)}`;
 
-    this.middle.textContent = profile
-      ? `Chef ${profile.chefLevel} · ${profile.coins} coins · bag ${profile.usedSlots}/${profile.carrySlots}`
-      : "loading…";
+    /*
+     * Two separate things have to arrive before the strip is complete: the
+     * replicated room state, and the profile message carrying coins and XP.
+     * A bare "loading..." cannot say which is missing, so name it - and clear
+     * the slot entirely once both are in rather than leaving a stale word.
+     */
+    if (profile) {
+      this.middle.textContent = `Chef ${profile.chefLevel} · ${profile.coins} coins · bag ${profile.usedSlots}/${profile.carrySlots}`;
+    } else if (!this.data.roomReady) {
+      this.middle.textContent = "joining the room…";
+    } else {
+      this.middle.textContent = "waiting for your profile…";
+    }
+    this.middle.hidden = this.middle.textContent === "";
 
     const buff = gameStore.buffSeconds();
-    const crowd = `${this.data.players}/${this.data.hubMax} in ${place}`;
+    const crowd = this.data.roomReady
+      ? `${this.data.players}/${this.data.hubMax} in ${place}`
+      : "connecting…";
     this.right.textContent = buff > 0 ? `${crowd} · well fed ${buff}s` : crowd;
 
     const goal = profile?.nextGoal ?? null;
