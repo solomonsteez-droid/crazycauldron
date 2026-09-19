@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-19T08:05:21.214Z",
+  "generatedAt": "2026-09-19T08:21:21.377Z",
   "bodyFrame": {
     "width": 32,
     "height": 48
@@ -59,148 +59,148 @@
   "hats": [
     {
       "id": "hat_01_chef",
-      "width": 75,
-      "height": 28,
+      "width": 22,
+      "height": 8,
       "offset": {
-        "x": 8,
-        "y": -3
+        "x": 5,
+        "y": 5
       }
     },
     {
       "id": "hat_02_straw",
-      "width": 91,
-      "height": 28,
+      "width": 18,
+      "height": 5,
       "offset": {
-        "x": -4,
-        "y": -3
+        "x": 7,
+        "y": 8
       }
     },
     {
       "id": "hat_03_mushroom",
-      "width": 52,
-      "height": 28,
+      "width": 17,
+      "height": 6,
       "offset": {
-        "x": 11,
-        "y": -3
+        "x": 8,
+        "y": 7
       }
     },
     {
       "id": "hat_04_acorn",
-      "width": 61,
-      "height": 28,
+      "width": 19,
+      "height": 7,
       "offset": {
-        "x": 10,
-        "y": -3
+        "x": 7,
+        "y": 6
       }
     },
     {
       "id": "hat_05_circlet",
-      "width": 90,
-      "height": 29,
+      "width": 19,
+      "height": 6,
       "offset": {
-        "x": 6,
-        "y": -4
+        "x": 7,
+        "y": 7
       }
     },
     {
       "id": "hat_06_dragonscale",
-      "width": 59,
-      "height": 40,
+      "width": 18,
+      "height": 8,
       "offset": {
-        "x": 10,
-        "y": -16
+        "x": 7,
+        "y": 5
       }
     },
     {
       "id": "hat_07_moonpetal",
-      "width": 65,
-      "height": 40,
+      "width": 15,
+      "height": 6,
       "offset": {
-        "x": 10,
-        "y": -15
+        "x": 9,
+        "y": 7
       }
     },
     {
       "id": "hat_08_bronze",
-      "width": 59,
-      "height": 28,
+      "width": 18,
+      "height": 8,
       "offset": {
-        "x": 10,
-        "y": -4
+        "x": 7,
+        "y": 5
       }
     },
     {
       "id": "hat_09_gold",
-      "width": 48,
-      "height": 28,
+      "width": 21,
+      "height": 10,
       "offset": {
-        "x": 8,
-        "y": -4
+        "x": 6,
+        "y": 3
       }
     }
   ],
   "aprons": [
     {
       "id": "apron_01_linen",
-      "width": 58,
-      "height": 93,
+      "width": 22,
+      "height": 14,
       "offset": {
-        "x": -1,
-        "y": 19
+        "x": 5,
+        "y": 22
       }
     },
     {
       "id": "apron_02_patched",
-      "width": 53,
-      "height": 96,
+      "width": 21,
+      "height": 14,
       "offset": {
-        "x": -1,
-        "y": 19
+        "x": 6,
+        "y": 22
       }
     },
     {
       "id": "apron_03_berry",
-      "width": 53,
-      "height": 96,
+      "width": 21,
+      "height": 18,
       "offset": {
-        "x": 5,
-        "y": 19
+        "x": 6,
+        "y": 22
       }
     },
     {
       "id": "apron_04_rugged",
-      "width": 42,
-      "height": 96,
+      "width": 21,
+      "height": 17,
       "offset": {
-        "x": 3,
-        "y": 19
+        "x": 6,
+        "y": 22
       }
     },
     {
       "id": "apron_05_midnight",
-      "width": 49,
-      "height": 92,
+      "width": 23,
+      "height": 18,
       "offset": {
         "x": 5,
-        "y": 19
+        "y": 22
       }
     },
     {
       "id": "apron_06_silver",
-      "width": 32,
-      "height": 73,
+      "width": 21,
+      "height": 19,
       "offset": {
-        "x": 5,
-        "y": 19
+        "x": 6,
+        "y": 22
       }
     },
     {
       "id": "apron_07_gold",
-      "width": 32,
-      "height": 72,
+      "width": 21,
+      "height": 19,
       "offset": {
         "x": 6,
-        "y": 19
+        "y": 22
       }
     }
   ],
@@ -211,6 +211,28 @@
     "portal_meadows",
     "portal_forest",
     "portal_caves"
+  ],
+  "dishes": [
+    "meadow_flatbread",
+    "berry_porridge",
+    "honeycap_saute",
+    "cress_salad",
+    "honey_drizzle_cake",
+    "thyme_mushroom_soup",
+    "clay_baked_roots",
+    "roast_chestnuts",
+    "marsh_rice_bowl",
+    "kingcap_stew",
+    "amber_glazed_flatbread",
+    "nightshade_chili_pot",
+    "chestnut_stuffing",
+    "smoked_forest_platter",
+    "glowcap_broth",
+    "ember_root_tea_cake",
+    "cave_pearl_risotto",
+    "frost_quartz_sorbet",
+    "moonpetal_saffron_rice",
+    "dragons_breath_feast_pot"
   ],
   "terrain": [
     {
@@ -255,28 +277,31 @@
     }
   ],
   "optional": {
-    "ingredients": [],
-    "dishes": [
-      "recipe_01.png",
-      "recipe_02.png",
-      "recipe_03.png",
-      "recipe_04.png",
-      "recipe_05.png",
-      "recipe_06.png",
-      "recipe_07.png",
-      "recipe_08.png",
-      "recipe_09.png",
-      "recipe_10.png",
-      "recipe_11.png",
-      "recipe_12.png",
-      "recipe_13.png",
-      "recipe_14.png",
-      "recipe_15.png",
-      "recipe_16.png",
-      "recipe_17.png",
-      "recipe_18.png",
-      "recipe_19.png",
-      "recipe_20.png"
+    "ingredients": [
+      "sunwheat.png",
+      "meadow_berries.png",
+      "honeycap.png",
+      "wild_thyme.png",
+      "clover_honey.png",
+      "brook_cress.png",
+      "rock_salt.png",
+      "clay.png",
+      "giant_chestnuts.png",
+      "kingcap.png",
+      "marsh_rice.png",
+      "bog_garlic.png",
+      "nightshade_pepper.png",
+      "sap_amber.png",
+      "smoke_salt.png",
+      "iron_flake.png",
+      "glowcap.png",
+      "moonpetal.png",
+      "cave_pearls.png",
+      "ember_root.png",
+      "crystal_sugar.png",
+      "starlight_salt.png",
+      "frost_quartz.png",
+      "dragons_breath_chili.png"
     ],
     "nodes": [],
     "ui": [],

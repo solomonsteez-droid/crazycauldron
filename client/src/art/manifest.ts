@@ -36,6 +36,8 @@ export interface Manifest {
   hats: OverlayEntry[];
   aprons: OverlayEntry[];
   props: string[];
+  /** Recipe ids that have a processed dish icon. */
+  dishes: string[];
   terrain: TerrainEntry[];
   optional: Record<string, string[]>;
 }
@@ -67,6 +69,7 @@ const EMPTY_MANIFEST: Manifest = {
   hats: [],
   aprons: [],
   props: [],
+  dishes: [],
   terrain: [],
   optional: {},
 };

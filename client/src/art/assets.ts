@@ -86,14 +86,13 @@ export function queueArt(scene: Phaser.Scene, manifest: Manifest): void {
     });
   }
 
+  for (const recipeId of manifest.dishes ?? []) {
+    scene.load.image(dishKey(recipeId), `${GENERATED}/dishes/${recipeId}.png`);
+  }
+
   const optional = manifest.optional ?? {};
   for (const file of optional.ingredients ?? []) {
     scene.load.image(ingredientKey(file.replace(/\.png$/, "")), `/assets/sprites/ingredients/${file}`);
-  }
-  for (const file of optional.dishes ?? []) {
-    const index = Number(file.replace(/\D+/g, "")) - 1;
-    const recipeId = RECIPE_BY_INDEX[index];
-    if (recipeId) scene.load.image(dishKey(recipeId), `/assets/sprites/dishes/${file}`);
   }
   for (const file of optional.nodes ?? []) {
     const stem = file.replace(/^node_/, "").replace(/\.png$/, "");

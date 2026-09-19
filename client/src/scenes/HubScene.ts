@@ -206,9 +206,10 @@ export class HubScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.teardown());
   }
 
-  override update() {
-    // Garments copy the body's bob, which only the animation knows about.
-    for (const entry of this.avatars.values()) entry.avatar.tick();
+  override update(now: number) {
+    // Everyone in the room breathes, fidgets and dances - the motion is
+    // procedural, so it costs the same for one player or thirty.
+    for (const entry of this.avatars.values()) entry.avatar.tick(now);
   }
 
   private buildMap(mapId: number) {
@@ -612,6 +613,7 @@ export class HubScene extends Phaser.Scene {
     avatar.container.setDepth(player.tileX + player.tileY);
     avatar.container.setVisible(player.section === this.currentSection);
     avatar.setDirection((player.facing as Direction) ?? "down", player.moving);
+    avatar.setActivity(player.activity ?? "");
 
     const entry: AvatarEntry = { avatar };
     this.avatars.set(sessionId, entry);
@@ -649,6 +651,7 @@ export class HubScene extends Phaser.Scene {
       isSelf,
     });
     avatar.setDirection((player.facing as Direction) ?? "down", player.moving);
+    avatar.setActivity(player.activity ?? "");
 
     const target = this.map.tileCentre(player.tileX, player.tileY);
     if (avatar.container.x !== target.x || avatar.container.y !== target.y) {

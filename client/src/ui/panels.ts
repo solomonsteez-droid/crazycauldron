@@ -17,6 +17,7 @@ import {
   type ProfilePayload,
   type Quality,
 } from "@crazycauldron/shared";
+import { dishKey, ingredientKey } from "../art/assets.js";
 import { fetchLeaderboard } from "../net/api.js";
 import { gameStore } from "../net/game.js";
 import { openModal, toast, type ModalHandle } from "./overlay.js";
@@ -36,6 +37,42 @@ function live(modal: ModalHandle, render: (profile: ProfilePayload) => void) {
   const unsubscribe = gameStore.onChange(draw);
   modal.onClose(unsubscribe);
   draw();
+}
+
+/**
+ * A texture from the game, drawn into the DOM.
+ *
+ * Panels are HTML while the art lives in Phaser's texture manager, so the
+ * pixels are copied onto a canvas rather than loaded a second time as an
+ * <img>. Works the same whether the texture is a processed sprite or the
+ * lettered placeholder standing in for one.
+ */
+export function icon(key: string, size = 28): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.className = "cc-icon";
+  canvas.width = size;
+  canvas.height = size;
+
+  const context = canvas.getContext("2d");
+  const game = (window as unknown as { __ccGame?: Phaser.Game }).__ccGame;
+  if (!context || !game || !game.textures.exists(key)) return canvas;
+
+  context.imageSmoothingEnabled = false;
+  const texture = game.textures.get(key);
+  const source = texture.getSourceImage() as CanvasImageSource | undefined;
+  if (!source) return canvas;
+
+  const w = texture.source[0]?.width ?? size;
+  const h = texture.source[0]?.height ?? size;
+  const scale = Math.max(1, Math.floor(Math.min(size / w, size / h)));
+  context.drawImage(
+    source,
+    Math.floor((size - w * scale) / 2),
+    Math.floor((size - h * scale) / 2),
+    w * scale,
+    h * scale,
+  );
+  return canvas;
 }
 
 function row(): HTMLElement {
@@ -93,7 +130,10 @@ export function openInventory(callbacks: PanelCallbacks): ModalHandle {
     for (const stack of profile.inventory) {
       const entry = row();
       const kind = stack.kind === "dish" ? "dish" : (findIngredient(stack.id)?.rarity ?? "");
-      entry.append(labelled(`${stack.qty} x ${stack.name}`, `${kind}${expiryNote(stack)}`));
+      entry.append(
+        icon(stack.kind === "dish" ? dishKey(stack.id) : ingredientKey(stack.id)),
+        labelled(`${stack.qty} x ${stack.name}`, `${kind}${expiryNote(stack)}`),
+      );
 
       if (stack.kind === "dish") {
         entry.append(button("Eat", () => callbacks.onEat(stack.key)));
@@ -178,14 +218,19 @@ export function openCodex(): ModalHandle {
       const line = row();
 
       if (!entry?.cooked) {
-        // Silhouette: the shape of the dish, not the dish.
+        // Silhouette: the shape of the dish, not the dish. The icon is
+        // blacked out by CSS rather than omitted, so the row keeps its rhythm.
         line.className = "cc-row cc-dim";
+        const shadow = icon(dishKey(recipe.id));
+        shadow.classList.add("cc-silhouette");
         line.append(
+          shadow,
           labelled("???", `Section ${recipe.section} · ${recipe.ingredients.length} ingredients`),
         );
       } else {
         const best = entry.bestQuality ? QUALITY_MARK[entry.bestQuality] : "Common";
         line.append(
+          icon(dishKey(recipe.id)),
           labelled(recipe.name, `Best: ${best} · cooked ${entry.cookedCount}x · ${recipe.sellCoins}c`),
         );
       }
@@ -221,6 +266,7 @@ export function openTavern(callbacks: PanelCallbacks): ModalHandle {
       const recipe = findRecipe(stack.id);
       const entry = row();
       entry.append(
+        icon(dishKey(stack.id)),
         labelled(
           `${stack.qty} x ${stack.name}`,
           `about ${recipe?.sellCoins ?? "?"}c each before quality`,

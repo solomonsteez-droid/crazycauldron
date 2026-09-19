@@ -27,12 +27,10 @@ import { fileURLToPath } from "node:url";
 import { QUANTISE_RAMP, RECIPES, INGREDIENTS, TERRAIN } from "@crazycauldron/shared";
 import {
   alphaBounds,
-  bestAlignment,
   blank,
   blit,
   crop,
   denoise,
-  differenceMask,
   dominantColours,
   downscaleAveraged,
   findBlobs,
@@ -65,6 +63,17 @@ const TALL_HAT_W = 44;
 const TALL_HAT_H = 40;
 const APRON_W = 32;
 const APRON_H = 30;
+
+/**
+ * How much of each figure a garment band covers, as fractions.
+ *
+ * HAT_BAND is measured down from the top of the head: 0.62 stops at the brow,
+ * keeping hat and hairline but not the face. The apron band runs from just
+ * below the shoulders to the hip.
+ */
+const HAT_BAND = 0.62;
+const APRON_TOP = 0.1;
+const APRON_BOTTOM = 0.62;
 
 const DIRECTIONS = ["down", "up", "left", "right"] as const;
 type Direction = (typeof DIRECTIONS)[number];
@@ -250,105 +259,128 @@ interface OverlayResult {
 }
 
 /**
- * Extracts one garment by subtracting the base body from the dressed figure.
+ * Widest row in the lower half of a figure - its shoulders.
  *
- * `region` decides what survives the crop: a hat keeps everything above the
- * shoulder seam, an apron everything below it.
+ * Used as the scale reference between drawings, because it is the one
+ * measurement both a bust and a full-body pose share, whatever is on the head.
+ */
+function torsoWidth(img: Img, bounds: Rect): number {
+  const widths = rowWidths(img);
+  const from = bounds.y + Math.round(bounds.height * 0.4);
+  let widest = 1;
+  for (let y = from; y < bounds.y + bounds.height; y += 1) {
+    widest = Math.max(widest, widths[y] ?? 0);
+  }
+  return widest;
+}
+
+/**
+ * Cuts a garment out of a character drawing by anatomy rather than by
+ * subtraction.
+ *
+ * Subtracting the base body was the plan, and it cannot work with these drops:
+ * they are not the same figure re-dressed. The hats are head-and-shoulders
+ * portraits, the aprons are full-body but in a different pose holding a spoon,
+ * and both have different hair - so after scaling and aligning, fewer than one
+ * pixel in five of the shared torso agrees, and the difference keeps the whole
+ * character. scripts/debug-overlay.ts renders the evidence.
+ *
+ * What does work is cutting the band the garment lives in: the top of the head
+ * for a hat, the chest-to-hip for an apron. The hairline comes along with a
+ * hat, which composites acceptably because it is the same character design,
+ * and /dev/align exists to put the result exactly where it belongs.
  */
 function buildOverlay(
   file: string,
   id: string,
   kind: "hat" | "apron",
   base: { img: Img; bounds: Rect; shoulder: number },
-  scale: number,
+  bodyScale: number,
 ): OverlayResult | null {
   const dressed = denoise(removeChroma(load(file)));
-  const dressedBounds = alphaBounds(dressed);
-  if (!dressedBounds) {
+  const bounds = alphaBounds(dressed);
+  if (!bounds) {
     note("skipped", `${path.basename(file)} - nothing left after keying`);
     return null;
   }
 
-  // Match on the lower face and torso: the part both drawings share whatever
-  // is on the head.
-  const compare: Rect = {
-    x: base.bounds.x,
-    y: base.shoulder,
-    width: base.bounds.width,
-    height: Math.round(base.bounds.height * 0.35),
-  };
-  const offset = bestAlignment(base.img, dressed, compare);
-  const diff = differenceMask(base.img, dressed, offset);
+  /*
+   * Two factors, both needed. The first matches the drawings to each other by
+   * shoulder width - the drops are drawn far larger than the 2x2 idle sheet,
+   * roughly 4x for a bust and 2x for a full body. The second takes the base
+   * drawing down to the 32x48 body frame. Applying only the first leaves a hat
+   * ten times too big, which is exactly what it did.
+   */
+  const matchBase = torsoWidth(base.img, base.bounds) / torsoWidth(dressed, bounds);
+  const scale = matchBase * bodyScale;
+  const shoulder = shoulderRow(dressed, bounds);
 
-  // Keep only the half of the figure this garment belongs to.
-  const margin = Math.round(base.bounds.height * 0.06);
+  const headHeight = Math.max(1, shoulder - bounds.y);
+  const bodyHeight = Math.max(1, bounds.y + bounds.height - shoulder);
+
+  // The band the garment occupies, as rows of the source drawing.
   const band: Rect =
     kind === "hat"
-      ? { x: 0, y: 0, width: diff.width, height: base.shoulder + margin }
+      ? {
+          x: bounds.x,
+          y: bounds.y,
+          width: bounds.width,
+          // Down to the brow: everything above the eyes is hat and hairline.
+          height: Math.round(headHeight * HAT_BAND),
+        }
       : {
-          x: 0,
-          y: base.shoulder - margin,
-          width: diff.width,
-          height: diff.height - (base.shoulder - margin),
+          x: bounds.x,
+          y: shoulder + Math.round(bodyHeight * APRON_TOP),
+          width: bounds.width,
+          height: Math.round(bodyHeight * (APRON_BOTTOM - APRON_TOP)),
         };
 
-  const banded = blank(diff.width, diff.height);
-  blit(banded, crop(diff, band), band.x, band.y);
-
-  const cleaned = denoise(banded, 4);
-  const bounds = alphaBounds(cleaned);
-  if (!bounds || bounds.width < 8 || bounds.height < 8) {
-    note("skipped", `${path.basename(file)} - diff produced no ${kind} region`);
+  const cut = crop(denoise(dressed, 4), band);
+  const trimmed = alphaBounds(cut);
+  if (!trimmed || trimmed.width < 8 || trimmed.height < 4) {
+    note("skipped", `${path.basename(file)} - no ${kind} pixels in the expected band`);
     return null;
   }
 
-  const cut = crop(cleaned, bounds);
-  const w = Math.max(1, Math.round(cut.width * scale));
-  const h = Math.max(1, Math.round(cut.height * scale));
-  const small = scaleNearest(cut, w, h);
+  const tight = crop(cut, trimmed);
+  const w = Math.max(1, Math.round(tight.width * scale));
+  const h = Math.max(1, Math.round(tight.height * scale));
+  const small = scaleNearest(tight, w, h);
 
-  // The canvas is generous for the two hats that reach past the head, so they
-  // are never clipped.
-  const tall = TALL_HATS.has(id);
-  const canvasW = kind === "hat" ? (tall ? TALL_HAT_W : HAT_W) : APRON_W;
-  const canvasH = kind === "hat" ? (tall ? TALL_HAT_H : HAT_H) : APRON_H;
-  const canvas = blank(Math.max(canvasW, w), Math.max(canvasH, h));
-  const dx = Math.round((canvas.width - w) / 2);
-  const dy = kind === "hat" ? Math.max(0, canvas.height - h) : 0;
-  blit(canvas, small, dx, dy);
-
-  // Offset relative to the body frame: where this garment's box sat on the
-  // base figure, in body-frame pixels.
-  const bodyLeft = base.bounds.x;
-  const bodyBottom = base.bounds.y + base.bounds.height;
-  const offsetX = Math.round((bounds.x - bodyLeft) * scale) - dx +
-    Math.round((BODY_W - base.bounds.width * scale) / 2);
-  const offsetY = BODY_H - Math.round((bodyBottom - bounds.y) * scale) - dy;
-
-  save(path.join(OUT, kind === "hat" ? "hats" : "aprons", `${id}.png`), canvas);
-  note("made", `generated/${kind}s/${id}.png ${canvas.width}x${canvas.height}`);
+  const canvas = blank(w, h);
+  blit(canvas, small, 0, 0);
 
   /*
-   * A garment much bigger than the body it sits on means the subtraction found
-   * more than the garment - usually because the drop was drawn on a different
-   * base than the one being diffed against. Worth saying out loud rather than
-   * shipping a hat that is three heads wide.
+   * Default placement, in body-frame pixels. A hat hangs from the brow line, an
+   * apron from the shoulder line - both measured on the base figure, so the
+   * defaults are already close and the alignment tool only has to nudge.
    */
+  const baseHead = Math.max(1, base.shoulder - base.bounds.y);
+  const frameOf = (rows: number) => Math.round((rows / base.bounds.height) * BODY_H);
+
+  const offsetY =
+    kind === "hat"
+      ? frameOf(baseHead * HAT_BAND) - h
+      : frameOf(base.shoulder - base.bounds.y + baseHead * 0.1);
+
+  save(path.join(OUT, kind === "hat" ? "hats" : "aprons", `${id}.png`), canvas);
+  note("made", `generated/${kind}s/${id}.png ${w}x${h}`);
+
   const plausibleW = kind === "hat" ? HAT_W * 1.5 : APRON_W * 1.5;
-  const plausibleH = kind === "hat" ? TALL_HAT_H : APRON_H * 1.4;
-  if (canvas.width > plausibleW || canvas.height > plausibleH) {
+  const plausibleH = kind === "hat" ? TALL_HAT_H : APRON_H * 1.6;
+  if (w > plausibleW || h > plausibleH) {
     suspect.push(
-      `${id} came out ${canvas.width}x${canvas.height}, expected about ${
+      `${id} came out ${w}x${h}, expected about ${
         kind === "hat" ? `${HAT_W}x${HAT_H}` : `${APRON_W}x${APRON_H}`
-      } - the diff kept more than the ${kind}`,
+      } - the band kept more than the ${kind}`,
     );
   }
 
   return {
     id,
-    width: canvas.width,
-    height: canvas.height,
-    offset: { x: offsetX, y: offsetY },
+    width: w,
+    height: h,
+    offset: { x: Math.round((BODY_W - w) / 2), y: offsetY },
   };
 }
 
@@ -472,6 +504,65 @@ function buildTerrain(): TerrainOut[] {
   return out;
 }
 
+
+// --------------------------------------------------------------------------
+// Dishes
+// --------------------------------------------------------------------------
+
+/** Inventory and codex icons are this square. */
+const DISH_SIZE = 32;
+
+/**
+ * Turns the dish drops into icons.
+ *
+ * They arrive at 2048x2048 like everything else, which is roughly 3MB apiece -
+ * sixty megabytes of PNG to show twenty thumbnails. Keyed, trimmed, averaged
+ * down to 32px and quantised onto the palette, the whole set is a few
+ * kilobytes and matches the rest of the art.
+ */
+function buildDishes(): string[] {
+  const made: string[] = [];
+  const dir = path.join(SRC, "dishes");
+
+  for (let i = 0; i < RECIPES.length; i += 1) {
+    const recipe = RECIPES[i]!;
+    const file = path.join(dir, recipeFileName(i));
+    if (!exists(file)) continue;
+
+    note("found", `sprites/dishes/${recipeFileName(i)}`);
+    const cleaned = denoise(removeChroma(load(file)));
+    const bounds = alphaBounds(cleaned);
+    if (!bounds) {
+      note("skipped", `${recipeFileName(i)} - nothing left after keying`);
+      continue;
+    }
+
+    // Square the crop first so a wide dish is not squashed into the icon.
+    const side = Math.max(bounds.width, bounds.height);
+    const square = crop(cleaned, {
+      x: bounds.x + Math.round((bounds.width - side) / 2),
+      y: bounds.y + Math.round((bounds.height - side) / 2),
+      width: side,
+      height: side,
+    });
+
+    const small = downscaleAveraged(square, DISH_SIZE, DISH_SIZE);
+    const flat = quantise(small, [...QUANTISE_RAMP, ...dominantColours(small, 10)]);
+
+    save(path.join(OUT, "dishes", `${recipe.id}.png`), flat);
+    made.push(recipe.id);
+  }
+
+  if (made.length === 0) {
+    note("skipped", "sprites/dishes/ - empty, the game will draw placeholders");
+  } else {
+    note("made", `generated/dishes/ - ${made.length} icons at ${DISH_SIZE}x${DISH_SIZE}`);
+  }
+  return made;
+}
+
+const recipeFileName = (index: number) => `recipe_${String(index + 1).padStart(2, "0")}.png`;
+
 // --------------------------------------------------------------------------
 // Optional art
 // --------------------------------------------------------------------------
@@ -485,7 +576,6 @@ function buildTerrain(): TerrainOut[] {
 function surveyOptional(): Record<string, string[]> {
   const wanted: Record<string, string[]> = {
     ingredients: INGREDIENTS.map((i) => `${i.id}.png`),
-    dishes: RECIPES.map((_, i) => `recipe_${String(i + 1).padStart(2, "0")}.png`),
     nodes: INGREDIENTS.flatMap((i) => [`node_${i.id}.png`, `node_${i.id}_empty.png`]),
     ui: ["scroll_card", "ribbon", "button", "slot", "xp_bar", "heat_bar"].map((n) => `${n}.png`),
     effects: ["steam", "sizzle", "sparkle", "levelup"].map((n) => `${n}.png`),
@@ -597,6 +687,9 @@ function main() {
     props.push(id);
   }
 
+  // --- dishes -------------------------------------------------------------
+  const dishes = buildDishes();
+
   // --- terrain ------------------------------------------------------------
   const terrain = buildTerrain();
 
@@ -609,6 +702,7 @@ function main() {
     hats: overlays.hats,
     aprons: overlays.aprons,
     props,
+    dishes,
     terrain,
     optional,
   };

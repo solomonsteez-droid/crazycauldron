@@ -21,6 +21,31 @@ import {
 /** Frames of the walk cycle where the body is at the top of its bob. */
 const BOB_FRAMES = new Set([1, 3]);
 
+/**
+ * Procedural idle motion, in milliseconds.
+ *
+ * No new art: the body sheet has one frame per idle direction, so standing
+ * still would otherwise be perfectly static. These are whole-pixel offsets
+ * applied to the sprites rather than a scale or a rotation, because a
+ * sub-pixel wobble on a 32x48 pixel-art figure reads as blur.
+ */
+const BREATH_MS = 1200;
+const FIDGET_MIN_MS = 6000;
+const FIDGET_MAX_MS = 10000;
+const FIDGET_MS = 300;
+const DANCE_MS = 1500;
+
+type Fidget = "squash" | "leanLeft" | "leanRight";
+
+/** Where the whole figure sits this frame, relative to its resting place. */
+interface Pose {
+  /** Whole pixels, applied to body and garments alike. */
+  dx: number;
+  dy: number;
+  /** Extra squash, as a scale on the body only. */
+  squash: number;
+}
+
 export interface AvatarLook {
   body: string;
   hatId: string;
@@ -39,6 +64,15 @@ export class Avatar {
   private direction: Direction = "down";
   private moving = false;
   private look: AvatarLook;
+
+  /** Set while the server says this player is cooking, which drives the dance. */
+  private dancing = false;
+  /** Random per-avatar so a crowd does not breathe in unison. */
+  private readonly phase = Math.random() * BREATH_MS;
+  private fidgetUntil = 0;
+  private fidgetKind: Fidget = "squash";
+  private nextFidgetAt = 0;
+  private pose: Pose = { dx: 0, dy: 0, squash: 1 };
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -82,6 +116,11 @@ export class Avatar {
     this.moving = moving;
     this.playBody();
     this.placeOverlays();
+  }
+
+  /** Cooking replaces the idle motion with a little two-step. */
+  setActivity(activity: string) {
+    this.dancing = activity === "cooking";
   }
 
   /** Counter-scales the name so it reads the same at any camera zoom. */
@@ -137,8 +176,9 @@ export class Avatar {
    * frames 1 and 3, so a hat does not float free of the head mid-stride.
    */
   private placeOverlays() {
-    const left = -BODY_FRAME.width / 2;
-    const top = -BODY_FRAME.height;
+    // Garments hang off the body, so they inherit whatever the pose did to it.
+    const left = -BODY_FRAME.width / 2 + this.pose.dx;
+    const top = -BODY_FRAME.height + this.pose.dy;
     const frameIndex = this.body.anims.currentFrame?.index ?? 0;
     const bob = this.moving && BOB_FRAMES.has(frameIndex % 4) ? -1 : 0;
 
@@ -158,22 +198,91 @@ export class Avatar {
       );
 
       sprite.setFlipX(flipX);
-      // A flipped sprite grows from the opposite edge, so mirror the offset
-      // about the body centre to keep it on the figure.
-      const x = flipX
-        ? -left - offset.x - sprite.width
-        : left + offset.x;
+
+      /*
+       * A flipped sprite grows from the opposite edge, so its position is
+       * mirrored about the body's centre line - and that centre line is itself
+       * displaced by the pose. Folding pose.dx into `left` and negating the
+       * lot would send a flipped garment the opposite way to the body it is
+       * sitting on, which shows up the moment the dance tilts a side view.
+       */
+      const centre = this.pose.dx;
+      const unflipped = left + offset.x;
+      const x = flipX ? 2 * centre - unflipped - sprite.width : unflipped;
       sprite.setPosition(x, top + offset.y + bob);
     }
 
     // The name sits above whatever is tallest, so a dragonscale hat does not
     // push through it.
     const hatTop = this.hat.visible ? this.hat.y : top;
-    this.label.setY(Math.min(top, hatTop) - 4);
+    // The name stays put while the body breathes; a bobbing label reads as a
+    // rendering fault rather than as life.
+    this.label.setY(Math.min(-BODY_FRAME.height, hatTop) - 4);
   }
 
-  /** Called each frame while walking, to keep the bob in step with the body. */
-  tick() {
-    if (this.moving) this.placeOverlays();
+  /**
+   * Advances the procedural motion and re-seats everything.
+   *
+   * Three states, in priority order: walking uses the sheet's own frames and
+   * only needs the garments re-seated; cooking runs a looping two-step; and
+   * standing still breathes, with an occasional fidget. Every one of them
+   * resolves to a whole-pixel offset applied to the body *and* the garments,
+   * so a hat never drifts off a head that has moved.
+   */
+  tick(now: number) {
+    this.pose = this.moving
+      ? { dx: 0, dy: 0, squash: 1 }
+      : this.dancing
+        ? this.dancePose(now)
+        : this.idlePose(now);
+
+    this.body.setPosition(this.pose.dx, this.pose.dy);
+    this.body.setScale(1, this.pose.squash);
+    this.placeOverlays();
+  }
+
+  /**
+   * A two-step: bounce, bounce, tilt left, tilt right.
+   *
+   * Quarters of the cycle rather than a sine, so the beats land crisply -
+   * a smooth curve at this size just looks like the sprite is sliding.
+   */
+  private dancePose(now: number): Pose {
+    const t = ((now + this.phase) % DANCE_MS) / DANCE_MS;
+
+    if (t < 0.25) return { dx: 0, dy: t < 0.125 ? -2 : 0, squash: 1 };
+    if (t < 0.5) return { dx: 0, dy: t < 0.375 ? -2 : 0, squash: 1 };
+    if (t < 0.75) return { dx: -1, dy: -1, squash: 1 };
+    return { dx: 1, dy: -1, squash: 1 };
+  }
+
+  /** A 1px breath, plus a fidget every six to ten seconds. */
+  private idlePose(now: number): Pose {
+    if (now >= this.nextFidgetAt) {
+      this.startFidget(now);
+    }
+
+    if (now < this.fidgetUntil) {
+      if (this.fidgetKind === "squash") return { dx: 0, dy: 1, squash: 0.96 };
+      return { dx: this.fidgetKind === "leanLeft" ? -1 : 1, dy: 0, squash: 1 };
+    }
+
+    // Eased so the figure hangs at the top and bottom of the breath rather
+    // than ticking between two positions.
+    const t = ((now + this.phase) % BREATH_MS) / BREATH_MS;
+    const eased = (1 - Math.cos(t * Math.PI * 2)) / 2;
+    return { dx: 0, dy: eased > 0.5 ? -1 : 0, squash: 1 };
+  }
+
+  private startFidget(now: number) {
+    // The first call seeds the timer rather than firing immediately, so an
+    // avatar does not twitch the instant it appears.
+    if (this.nextFidgetAt !== 0) {
+      const kinds: Fidget[] = ["squash", "leanLeft", "leanRight"];
+      this.fidgetKind = kinds[Math.floor(Math.random() * kinds.length)] ?? "squash";
+      this.fidgetUntil = now + FIDGET_MS;
+    }
+    this.nextFidgetAt =
+      now + FIDGET_MIN_MS + Math.random() * (FIDGET_MAX_MS - FIDGET_MIN_MS);
   }
 }

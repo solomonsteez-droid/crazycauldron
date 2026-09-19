@@ -336,6 +336,18 @@ const CSS = `
 .cc-gains { margin: 2px 0 0; color: #7ce08a; }
 .cc-card small { color: #9a8f7a; }
 
+/* Item icons inside list rows. */
+.cc-icon {
+  flex: 0 0 auto;
+  margin-right: 9px;
+  image-rendering: pixelated;
+  vertical-align: middle;
+}
+.cc-row { align-items: center; }
+.cc-row > div { flex: 1 1 auto; }
+/* An undiscovered recipe shows its outline, not its contents. */
+.cc-silhouette { filter: brightness(0) opacity(0.55); }
+
 .cc-toast {
   position: fixed;
   left: 50%;
