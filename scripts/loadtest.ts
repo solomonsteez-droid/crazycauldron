@@ -1,28 +1,63 @@
 /**
- * Synthetic load against a running dev server.
+ * Synthetic load against a running server.
  *
- *   npm run loadtest -- --clients 50 --duration 60
+ *   AUTH_RATE_LIMIT=5000 npm run dev            # in another terminal
+ *   npm run loadtest -- --clients 600 --duration 600
  *
  * Each virtual client is a freshly generated Solana keypair that signs the
  * server's real sign-in message, so the whole path is exercised - nonce,
- * signature, JWT, matchmaking, room join, move intents - rather than a
- * shortcut past auth.
+ * signature, JWT, matchmaking, room join, and then the game itself - rather
+ * than a shortcut past auth.
  *
- * Requires the server to be running with TEST_BYPASS_HOLD=true: the generated
- * wallets hold no $COOK and would otherwise be turned away at the gate. Raise
- * AUTH_RATE_LIMIT too, since every client signs in from one IP.
+ * The clients play rather than twitch. Each one runs the real loop: travel to
+ * the Meadows, walk to a node, gather, come back, walk to the kitchen, cook,
+ * sell at the tavern. One action every four to eight seconds, which is roughly
+ * what a person does. Anything faster measures the rate limiter instead of the
+ * game.
+ *
+ * Requires TEST_BYPASS_HOLD=true - the generated wallets hold no $COOK - and a
+ * raised AUTH_RATE_LIMIT, since every client signs in from one IP.
  */
 
 import { Keypair } from "@solana/web3.js";
-import { Client } from "colyseus.js";
+import { Client, type Room } from "colyseus.js";
 import bs58 from "bs58";
 import nacl from "tweetnacl";
 import {
-  MAP_SIZE,
+  HUB_MAP,
+  HUB_STATIONS,
+  MSG_ADMIT,
+  MSG_COOK_PREP,
+  MSG_COOK_PREPARED,
+  MSG_COOK_RESULT,
+  MSG_COOK_START,
+  MSG_COOK_STOP,
+  MSG_GATHER,
+  MSG_ATE,
+  MSG_BOUGHT,
+  MSG_GATHER_RESULT,
+  MSG_GATHER_STARTED,
+  MSG_KICK,
+  MSG_NODES,
+  MSG_UNLOCKED,
+  MSG_HEAT_BAR,
   MSG_MOVE,
+  MSG_PROFILE,
+  MSG_REJECTED,
+  MSG_SELL,
+  MSG_SOLD,
+  MSG_TRAVEL,
+  RECIPES,
   ROOM_HUB,
+  SECTIONS,
+  findPath,
+  isWalkableOn,
+  type CookPreparedPayload,
   type EnterResponse,
+  type HeatBarPayload,
   type NonceResponse,
+  type ProfilePayload,
+  type TilePos,
   type VerifyResponse,
 } from "@crazycauldron/shared";
 
@@ -31,10 +66,13 @@ interface Options {
   duration: number;
   httpUrl: string;
   wsUrl: string;
-  /** ms between a client's move intents. */
-  moveInterval: number;
+  /** Range between one client action and the next, in ms. */
+  actionMinMs: number;
+  actionMaxMs: number;
   /** ms between client start-ups, to avoid a thundering herd at t=0. */
   rampMs: number;
+  /** How often to sample /health, in ms. */
+  sampleMs: number;
 }
 
 function parseArgs(argv: string[]): Options {
@@ -43,35 +81,72 @@ function parseArgs(argv: string[]): Options {
     return index >= 0 ? (argv[index + 1] ?? fallback) : fallback;
   };
   return {
-    clients: Number(flag("clients", "25")),
-    duration: Number(flag("duration", "30")),
+    clients: Number(flag("clients", "600")),
+    duration: Number(flag("duration", "600")),
     httpUrl: flag("endpoint", process.env.VITE_SERVER_HTTP_URL ?? "http://localhost:2567"),
     wsUrl: flag("ws", process.env.VITE_SERVER_WS_URL ?? "ws://localhost:2567"),
-    moveInterval: Number(flag("move-interval", "3000")),
-    rampMs: Number(flag("ramp", "80")),
+    actionMinMs: Number(flag("action-min", "4000")),
+    actionMaxMs: Number(flag("action-max", "8000")),
+    rampMs: Number(flag("ramp", "40")),
+    sampleMs: Number(flag("sample", "5000")),
   };
 }
+
+// --------------------------------------------------------------------------
+// Tallies
+// --------------------------------------------------------------------------
 
 const stats = {
   signedIn: 0,
   joinedHub: 0,
   queued: 0,
-  moves: 0,
+  promoted: 0,
+  actions: 0,
+  gathers: 0,
+  cooks: 0,
+  sells: 0,
+  travels: 0,
+  rejected: new Map<string, number>(),
   rateLimited: 0,
   failures: new Map<string, number>(),
   authMs: [] as number[],
   enterMs: [] as number[],
+  /** Peak hub occupancy the server reported while the test ran. */
+  peakHubPlayers: 0,
+  peakQueued: 0,
 };
 
-function fail(reason: string) {
-  stats.failures.set(reason, (stats.failures.get(reason) ?? 0) + 1);
+interface HealthSample {
+  at: number;
+  cpu: number;
+  rssMb: number;
+  tickP95: number;
+  tickMax: number;
+  messages: number;
+  hubPlayers: number;
+  hubRooms: number;
+  dbOk: boolean;
+  ticks: number;
+  slowTicks: number;
+  cores: number;
 }
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const samples: HealthSample[] = [];
 
-/** Fetch that retries once when the auth limiter pushes back. */
+const fail = (reason: string) =>
+  stats.failures.set(reason, (stats.failures.get(reason) ?? 0) + 1);
+const refused = (reason: string) =>
+  stats.rejected.set(reason, (stats.rejected.get(reason) ?? 0) + 1);
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const between = (min: number, max: number) => min + Math.random() * (max - min);
+
+// --------------------------------------------------------------------------
+// HTTP
+// --------------------------------------------------------------------------
+
 async function postJson<T>(url: string, body: unknown, token?: string): Promise<T> {
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
     const response = await fetch(url, {
       method: "POST",
       headers: {
@@ -92,11 +167,11 @@ async function postJson<T>(url: string, body: unknown, token?: string): Promise<
     }
     return (await response.json()) as T;
   }
-  throw new Error("429 after retry");
+  throw new Error("429 after retries");
 }
 
 async function getJson<T>(url: string): Promise<T> {
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
     const response = await fetch(url);
     if (response.status === 429) {
       stats.rateLimited += 1;
@@ -106,10 +181,198 @@ async function getJson<T>(url: string): Promise<T> {
     if (!response.ok) throw new Error(`${response.status}`);
     return (await response.json()) as T;
   }
-  throw new Error("429 after retry");
+  throw new Error("429 after retries");
 }
 
-/** One virtual player: sign in, take a seat, wander until told to stop. */
+// --------------------------------------------------------------------------
+// One virtual player
+// --------------------------------------------------------------------------
+
+/** The starter recipe and what it needs, read from content rather than named. */
+const STARTER = RECIPES.find((r) => Object.keys(r.requirements).length === 0) ?? RECIPES[0]!;
+const MEADOWS = SECTIONS[0]!;
+
+/** Walks the server's own pathfinder to see how far a destination is. */
+function reachable(mapId: number, from: TilePos, to: TilePos): boolean {
+  return findPath(from, to, (x, y) => isWalkableOn(mapId, x, y)).length > 0;
+}
+
+interface Self {
+  tileX: number;
+  tileY: number;
+  section: number;
+  moving: boolean;
+}
+
+function selfOf(room: Room): Self | undefined {
+  const state = room.state as { players?: { get(id: string): Self | undefined } };
+  return state.players?.get(room.sessionId);
+}
+
+/** Sends a destination and waits for the server to walk us there, or gives up. */
+async function walkTo(room: Room, target: TilePos, timeoutMs: number): Promise<boolean> {
+  room.send(MSG_MOVE, target);
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const me = selfOf(room);
+    if (me && me.tileX === target.tileX && me.tileY === target.tileY) return true;
+    await sleep(200);
+  }
+  return false;
+}
+
+/**
+ * The loop a person actually runs, paced like a person.
+ *
+ * Deliberately forgiving: any step that does not land inside its window is
+ * abandoned and the next cycle starts over. A load test that insists on a
+ * perfect run measures its own assumptions.
+ */
+async function play(room: Room, options: Options, stopAt: number) {
+  // Explicitly typed holders: the callbacks below are the only writers, and
+  // TypeScript narrows an assigned-once closure variable to `never` otherwise.
+  const latest: {
+    profile: ProfilePayload | null;
+    heatBar: HeatBarPayload | null;
+    prepared: CookPreparedPayload | null;
+  } = { profile: null, heatBar: null, prepared: null };
+
+  /*
+   * Read through functions, not directly.
+   *
+   * These are written only by the message callbacks, so after "latest.heatBar
+   * = null" TypeScript narrows the property to null and every later read to
+   * never - it cannot see that a socket will fill it in between. A call
+   * returns the declared type and the narrowing stops there.
+   */
+  const takePrepared = (): CookPreparedPayload | null => latest.prepared;
+  const takeHeatBar = (): HeatBarPayload | null => latest.heatBar;
+  const takeProfile = (): ProfilePayload | null => latest.profile;
+
+  room.onMessage(MSG_PROFILE, (p: ProfilePayload) => {
+    latest.profile = p;
+  });
+  room.onMessage(MSG_HEAT_BAR, (p: HeatBarPayload) => {
+    latest.heatBar = p;
+  });
+  room.onMessage(MSG_COOK_PREPARED, (p: CookPreparedPayload) => {
+    latest.prepared = p;
+  });
+  room.onMessage(MSG_COOK_RESULT, () => (stats.cooks += 1));
+  room.onMessage(MSG_GATHER_RESULT, () => (stats.gathers += 1));
+  room.onMessage(MSG_SOLD, () => (stats.sells += 1));
+  room.onMessage(MSG_REJECTED, (r: { reason?: string }) => refused(r.reason ?? "unknown"));
+
+  // colyseus.js warns for every unhandled type, which at 600 clients drowns
+  // the report. These are all fire-and-forget updates the load test ignores.
+  for (const type of [MSG_NODES, MSG_GATHER_STARTED, MSG_UNLOCKED, MSG_ATE, MSG_BOUGHT, MSG_KICK]) {
+    room.onMessage(type, () => undefined);
+  }
+
+  const pause = async () => {
+    stats.actions += 1;
+    await sleep(between(options.actionMinMs, options.actionMaxMs));
+  };
+  const running = () => Date.now() < stopAt;
+
+  while (running()) {
+    // --- out to the Meadows ------------------------------------------------
+    const gate = selfOf(room)?.section === HUB_MAP;
+    if (gate) {
+      const portal = { tileX: 21, tileY: 18 };
+      const me = selfOf(room);
+      if (me && reachable(HUB_MAP, { tileX: me.tileX, tileY: me.tileY }, portal)) {
+        await walkTo(room, { tileX: portal.tileX, tileY: portal.tileY - 1 }, 20000);
+      }
+      if (!running()) break;
+      room.send(MSG_TRAVEL, { section: MEADOWS.index });
+      stats.travels += 1;
+      await pause();
+    }
+
+    // --- gather a few times -------------------------------------------------
+    for (let i = 0; i < 3 && running(); i += 1) {
+      const me = selfOf(room);
+      if (!me || me.section !== MEADOWS.index) break;
+      const node = MEADOWS.nodes[Math.floor(Math.random() * MEADOWS.nodes.length)]!;
+      const beside = { tileX: node.tileX, tileY: node.tileY + 1 };
+      if (!isWalkableOn(MEADOWS.index, beside.tileX, beside.tileY)) continue;
+
+      await walkTo(room, beside, 20000);
+      if (!running()) break;
+      room.send(MSG_GATHER, { nodeId: node.id });
+      await pause();
+    }
+    if (!running()) break;
+
+    // --- home again ----------------------------------------------------------
+    if (selfOf(room)?.section === MEADOWS.index) {
+      await walkTo(room, { tileX: 14, tileY: 20 }, 20000);
+      room.send(MSG_TRAVEL, { section: HUB_MAP });
+      stats.travels += 1;
+      await pause();
+    }
+    if (!running()) break;
+
+    // --- cook, if the bag allows --------------------------------------------
+    const kitchen = HUB_STATIONS.find((s) => s.id === "kitchen")!;
+    const canCook = STARTER.ingredients.every(
+      (need) =>
+        (takeProfile()?.inventory.find((i) => i.kind === "ingredient" && i.id === need.id)?.qty ??
+          0) >=
+        need.qty,
+    );
+    if (canCook) {
+      await walkTo(room, { tileX: kitchen.tileX, tileY: kitchen.tileY - 1 }, 20000);
+      if (!running()) break;
+
+      latest.heatBar = null;
+      latest.prepared = null;
+      room.send(MSG_COOK_START, { recipeId: STARTER.id });
+      await sleep(600);
+
+      // Prep is a hold-and-release; the server sends the bar either way.
+      const readyPrep = takePrepared();
+      if (readyPrep && !readyPrep.autoPrep) {
+        await sleep(readyPrep.prepMs);
+        room.send(MSG_COOK_PREP, { cookId: readyPrep.cookId });
+        await sleep(400);
+      }
+
+      const bar = takeHeatBar();
+      if (bar) {
+        // Stop near the middle of the bar - a real player aiming and missing.
+        const target = bar.durationMs / 2 + between(-120, 120);
+        await sleep(Math.max(0, target));
+        room.send(MSG_COOK_STOP, { cookId: bar.cookId, elapsedMs: Math.round(target) });
+      }
+      await pause();
+    }
+    if (!running()) break;
+
+    // --- sell whatever came out ---------------------------------------------
+    const dish = takeProfile()?.inventory.find((i) => i.kind === "dish");
+    if (dish) {
+      const tavern = HUB_STATIONS.find((s) => s.id === "tavern")!;
+      await walkTo(room, { tileX: tavern.tileX, tileY: tavern.tileY + 1 }, 20000);
+      if (!running()) break;
+      room.send(MSG_SELL, { stackKey: dish.key, qty: 1 });
+      await pause();
+    }
+
+    // A wander between cycles, so the movement loop always has work to do.
+    const me = selfOf(room);
+    if (me) {
+      await walkTo(
+        room,
+        { tileX: 8 + Math.floor(Math.random() * 8), tileY: 16 + Math.floor(Math.random() * 4) },
+        10000,
+      );
+    }
+    await pause();
+  }
+}
+
 async function runClient(options: Options, stopAt: number) {
   const keypair = Keypair.generate();
   const address = keypair.publicKey.toBase58();
@@ -130,76 +393,175 @@ async function runClient(options: Options, stopAt: number) {
   stats.signedIn += 1;
 
   const enterStart = Date.now();
-  const entered = await postJson<EnterResponse>(
-    `${options.httpUrl}/play/enter`,
-    {},
-    verified.token,
-  );
+  const entered = await postJson<EnterResponse>(`${options.httpUrl}/play/enter`, {}, verified.token);
   const gameClient = new Client(options.wsUrl);
   const room = await gameClient.consumeSeatReservation(entered.reservation as never);
   stats.enterMs.push(Date.now() - enterStart);
 
-  if (entered.room === ROOM_HUB) stats.joinedHub += 1;
-  else stats.queued += 1;
-
-  // Wander only in the hub; a queued client just holds its place.
-  const moving = entered.room === ROOM_HUB;
-  while (Date.now() < stopAt) {
-    await sleep(options.moveInterval);
-    if (!moving) continue;
-    // Any tile at all: the server rejects unwalkable destinations, and having
-    // some intents refused is part of what is being measured.
-    room.send(MSG_MOVE, {
-      tileX: Math.floor(Math.random() * MAP_SIZE),
-      tileY: Math.floor(Math.random() * MAP_SIZE),
+  if (entered.room === ROOM_HUB) {
+    stats.joinedHub += 1;
+    await play(room, options, stopAt);
+  } else {
+    /*
+     * Queued clients are the point of the exercise above 300: they hold their
+     * place, and when the waiting room promotes them they take the seat and
+     * start playing, which is what proves the queue drains.
+     */
+    stats.queued += 1;
+    let promoted = false;
+    room.onMessage(MSG_ADMIT, () => {
+      promoted = true;
     });
-    stats.moves += 1;
+    while (Date.now() < stopAt && !promoted) await sleep(1000);
+    if (promoted) stats.promoted += 1;
   }
 
   await room.leave();
 }
 
+// --------------------------------------------------------------------------
+// Sampling and report
+// --------------------------------------------------------------------------
+
+interface Health {
+  ok: boolean;
+  rooms: { hubPlayers: number; hubRooms: number };
+  database: { ok: boolean };
+  process: {
+    cpuPercentOfCore: number;
+    peakCpuPercentOfCore: number;
+    rssMb: number;
+    peakRssMb: number;
+    cores: number;
+  };
+  tick: { count: number; p95Ms: number; maxMs: number; slow: number };
+  messages: { total: number; perSecond: number; byType: Record<string, number> };
+}
+
+async function sampleHealth(options: Options, stopAt: number) {
+  while (Date.now() < stopAt) {
+    try {
+      const health = await getJson<Health>(`${options.httpUrl}/health`);
+      samples.push({
+        at: Date.now(),
+        cpu: health.process.cpuPercentOfCore,
+        rssMb: health.process.rssMb,
+        tickP95: health.tick.p95Ms,
+        tickMax: health.tick.maxMs,
+        messages: health.messages.total,
+        hubPlayers: health.rooms.hubPlayers,
+        hubRooms: health.rooms.hubRooms,
+        dbOk: health.database.ok,
+        ticks: health.tick.count,
+        slowTicks: health.tick.slow,
+        cores: health.process.cores,
+      });
+      stats.peakHubPlayers = Math.max(stats.peakHubPlayers, health.rooms.hubPlayers);
+    } catch (err) {
+      fail(`health: ${(err as Error).message.slice(0, 60)}`);
+    }
+    await sleep(options.sampleMs);
+  }
+}
+
 function percentile(values: number[], p: number): number {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
-  const index = Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length));
-  return sorted[index] ?? 0;
+  return sorted[Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length))] ?? 0;
 }
 
-function report(options: Options) {
+function report(options: Options, elapsedSeconds: number) {
   const line = (label: string, value: string | number) =>
-    console.log(`  ${label.padEnd(22)} ${value}`);
+    console.log(`  ${label.padEnd(26)} ${value}`);
 
-  console.log(`\nload test: ${options.clients} clients for ${options.duration}s`);
+  const peakCpu = Math.max(0, ...samples.map((s) => s.cpu));
+  const peakRss = Math.max(0, ...samples.map((s) => s.rssMb));
+  const tickP95 = percentile(samples.map((s) => s.tickP95), 95);
+  const tickMax = Math.max(0, ...samples.map((s) => s.tickMax));
+  const first = samples[0];
+  const last = samples[samples.length - 1];
+  const messageRate =
+    first && last && last.at > first.at
+      ? ((last.messages - first.messages) / ((last.at - first.at) / 1000)).toFixed(1)
+      : "0";
+
+  console.log(`\nload test: ${options.clients} clients for ${Math.round(elapsedSeconds)}s`);
   line("signed in", stats.signedIn);
-  line("joined hub", stats.joinedHub);
-  line("sent to queue", stats.queued);
-  line("move intents", stats.moves);
-  line("rate limited (retried)", stats.rateLimited);
+  line("joined a hub", stats.joinedHub);
+  line("sent to the queue", stats.queued);
+  line("promoted out of queue", stats.promoted);
+  line("peak hub players", stats.peakHubPlayers);
+  line("peak hub rooms", Math.max(0, ...samples.map((s) => s.hubRooms)));
+
+  console.log("");
+  line("player actions", stats.actions);
+  line("gathers / cooks / sells", `${stats.gathers} / ${stats.cooks} / ${stats.sells}`);
+  line("travels", stats.travels);
+  line("server messages/s", messageRate);
+
+  console.log("");
+  line("peak CPU (% of one core)", peakCpu.toFixed(1));
+  line("peak RSS (MB)", peakRss.toFixed(1));
+  line("tick p95 / max (ms)", `${tickP95.toFixed(2)} / ${tickMax.toFixed(2)}`);
+  line(
+    "slow ticks",
+    last ? `${last.slowTicks} of ${last.ticks} (over the 180ms budget)` : "n/a",
+  );
+  line("machine", last ? `${last.cores} cores` : "unknown");
+  line("database healthy", samples.every((s) => s.dbOk) ? "yes" : "NO");
+
+  console.log("");
   line("auth p50 / p95 ms", `${percentile(stats.authMs, 50)} / ${percentile(stats.authMs, 95)}`);
   line("enter p50 / p95 ms", `${percentile(stats.enterMs, 50)} / ${percentile(stats.enterMs, 95)}`);
+  line("rate limited (retried)", stats.rateLimited);
+
+  if (stats.rejected.size > 0) {
+    console.log("\n  server refusals (expected - the clients are not careful):");
+    for (const [reason, count] of [...stats.rejected].sort((a, b) => b[1] - a[1]).slice(0, 8)) {
+      console.log(`    ${String(count).padStart(6)}x ${reason}`);
+    }
+  }
 
   if (stats.failures.size === 0) {
-    console.log("  no failures");
-    return;
+    console.log("\n  no client failures");
+  } else {
+    console.log("\n  client failures:");
+    for (const [reason, count] of [...stats.failures].sort((a, b) => b[1] - a[1]).slice(0, 12)) {
+      console.log(`    ${String(count).padStart(6)}x ${reason}`);
+    }
   }
-  console.log("  failures:");
-  for (const [reason, count] of stats.failures) console.log(`    ${count}x ${reason}`);
+
+  if (peakCpu > 70) {
+    console.log(
+      `\n  CPU peaked at ${peakCpu.toFixed(1)}% of one core with ${stats.joinedHub} ` +
+        "players seated - see the tick timings above for where it went.",
+    );
+  }
 }
 
+// --------------------------------------------------------------------------
+
 const options = parseArgs(process.argv.slice(2));
-const stopAt = Date.now() + options.duration * 1000;
+const startedAt = Date.now();
+const stopAt = startedAt + options.duration * 1000;
 
-console.log(`connecting ${options.clients} clients to ${options.httpUrl} ...`);
+console.log(
+  `connecting ${options.clients} clients to ${options.httpUrl} for ${options.duration}s ` +
+    `(one action every ${options.actionMinMs / 1000}-${options.actionMaxMs / 1000}s)`,
+);
 
+const sampler = sampleHealth(options, stopAt);
 const running: Promise<void>[] = [];
 for (let i = 0; i < options.clients; i += 1) {
   running.push(
-    runClient(options, stopAt).catch((err: Error) => fail(err.message.slice(0, 80))),
+    runClient(options, stopAt).catch((err: Error) => {
+      fail(err.message.slice(0, 80));
+    }),
   );
   await sleep(options.rampMs);
 }
 
 await Promise.all(running);
-report(options);
+await sampler;
+report(options, (Date.now() - startedAt) / 1000);
 process.exit(stats.failures.size === 0 ? 0 : 1);

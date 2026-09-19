@@ -86,6 +86,7 @@ import { completeGather, nodeStates, planGather } from "../game/gathering.js";
 import { loadSession, type Session } from "../game/session.js";
 import { VillagerCrowd } from "../game/villagers.js";
 import { log } from "../logger.js";
+import { recordMessage, recordTick } from "../metrics.js";
 import { checkHold, invalidateHold } from "../tokengate/index.js";
 import { authenticateJoin, CLOSE_INSUFFICIENT_HOLD, type JoinAuth } from "./auth.js";
 import { HubState, Player } from "./schema.js";
@@ -111,28 +112,42 @@ export class HubRoom extends Room<HubState> {
   /** The hub's residents. Decoration, but server-simulated so all clients agree. */
   private crowd!: VillagerCrowd;
 
+  /**
+   * Registers a handler and counts what arrives on it.
+   *
+   * Wrapped in one place rather than counted in each handler: a message that
+   * is refused still cost the server the work of refusing it, and a message
+   * rate that excludes the rejections would flatter the load test.
+   */
+  private handle<T>(type: string, handler: (client: Client, message: T) => void) {
+    this.onMessage(type, (client, message: T) => {
+      recordMessage(type);
+      handler(client, message);
+    });
+  }
+
   override onCreate() {
     this.setState(new HubState());
     this.setPatchRate(PATCH_RATE_MS);
 
-    this.onMessage(MSG_MOVE, (client, message: MoveIntent) => this.onMoveIntent(client, message));
-    this.onMessage(MSG_TRAVEL, (client, message: TravelIntent) => this.onTravel(client, message));
-    this.onMessage(MSG_GATHER, (client, message: GatherIntent) => this.onGather(client, message));
-    this.onMessage(MSG_COOK_START, (client, message: CookStartIntent) =>
+    this.handle(MSG_MOVE, (client, message: MoveIntent) => this.onMoveIntent(client, message));
+    this.handle(MSG_TRAVEL, (client, message: TravelIntent) => this.onTravel(client, message));
+    this.handle(MSG_GATHER, (client, message: GatherIntent) => this.onGather(client, message));
+    this.handle(MSG_COOK_START, (client, message: CookStartIntent) =>
       this.onCookStart(client, message),
     );
-    this.onMessage(MSG_COOK_PREP, (client, message: CookPrepIntent) =>
+    this.handle(MSG_COOK_PREP, (client, message: CookPrepIntent) =>
       this.onCookPrepped(client, message),
     );
-    this.onMessage(MSG_COOK_STOP, (client, message: CookStopIntent) =>
+    this.handle(MSG_COOK_STOP, (client, message: CookStopIntent) =>
       this.onCookStop(client, message),
     );
-    this.onMessage(MSG_COOK_CANCEL, (client) => this.onCookCancel(client));
-    this.onMessage(MSG_SELL, (client, message: SellIntent) => this.onSell(client, message));
-    this.onMessage(MSG_EAT, (client, message: EatIntent) => this.onEat(client, message));
-    this.onMessage(MSG_BUY, (client, message: BuyIntent) => this.onBuy(client, message));
-    this.onMessage(MSG_EQUIP, (client, message: EquipIntent) => this.onEquip(client, message));
-    this.onMessage(MSG_GREET, (client, message: GreetIntent) => this.onGreet(client, message));
+    this.handle(MSG_COOK_CANCEL, (client) => this.onCookCancel(client));
+    this.handle(MSG_SELL, (client, message: SellIntent) => this.onSell(client, message));
+    this.handle(MSG_EAT, (client, message: EatIntent) => this.onEat(client, message));
+    this.handle(MSG_BUY, (client, message: BuyIntent) => this.onBuy(client, message));
+    this.handle(MSG_EQUIP, (client, message: EquipIntent) => this.onEquip(client, message));
+    this.handle(MSG_GREET, (client, message: GreetIntent) => this.onGreet(client, message));
 
     /*
      * The cheat handler is not registered in production at all, rather than
@@ -141,12 +156,19 @@ export class HubRoom extends Room<HubState> {
      * live server even if a client sends one.
      */
     if (!config.isProduction) {
-      this.onMessage(MSG_DEV, (client, message: DevIntent) => this.onDev(client, message));
+      this.handle(MSG_DEV, (client, message: DevIntent) => this.onDev(client, message));
       log.warn("dev.commands_enabled", { roomId: this.roomId, env: config.nodeEnv });
     }
 
     // One tick = one tile of progress for everyone currently walking.
-    this.setSimulationInterval(() => this.stepMovement(), MOVE_STEP_MS);
+    this.setSimulationInterval(() => {
+      // Timed rather than assumed: at 600 clients the question is whether the
+      // loop still finishes inside its own interval, and nothing else answers
+      // it. See metrics.ts.
+      const started = performance.now();
+      this.stepMovement();
+      recordTick(performance.now() - started, MOVE_STEP_MS);
+    }, MOVE_STEP_MS);
 
     /*
      * The villagers walk on their own slower clock. Seeded from the room id so

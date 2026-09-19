@@ -15,6 +15,7 @@
     "@colyseus/ws-transport": "^0.15.3",
     "@crazycauldron/shared": "*",
     "@solana/web3.js": "^1.95.4",
+    "@types/node-cron": "^3.0.11",
     "better-sqlite3": "^12.11.1",
     "bs58": "^6.0.0",
     "colyseus": "^0.15.17",
@@ -22,6 +23,7 @@
     "dotenv": "^16.4.5",
     "express": "^4.21.1",
     "jsonwebtoken": "^9.0.2",
+    "node-cron": "^4.6.0",
     "tweetnacl": "^1.0.3"
   },
   "devDependencies": {

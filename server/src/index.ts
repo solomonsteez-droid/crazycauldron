@@ -6,8 +6,9 @@ import http from "node:http";
 import { ROOM_HUB, ROOM_WAITING, validateAllLayouts } from "@crazycauldron/shared";
 import { authRouter } from "./auth/routes.js";
 import { config } from "./config.js";
-import { closeDatabase } from "./db/index.js";
+import { closeDatabase, databaseHealth } from "./db/index.js";
 import { log } from "./logger.js";
+import { snapshot } from "./metrics.js";
 import { capacity } from "./matchmaking/index.js";
 import { matchmakeRouter } from "./matchmaking/routes.js";
 import { HubRoom } from "./rooms/HubRoom.js";
@@ -48,8 +49,32 @@ app.use(
 );
 app.use(express.json({ limit: "8kb" }));
 
+/**
+ * One endpoint that answers "is this thing alive and how hard is it working".
+ *
+ * Room and player counts, whether the database still answers a read, uptime,
+ * and the process's own CPU, memory and simulation-tick timings. The load test
+ * polls it; so does anything watching the deployment.
+ */
 app.get("/health", async (_req, res) => {
-  res.json({ ok: true, ...(await capacity()) });
+  const [rooms, db] = [await capacity(), databaseHealth()];
+  const metrics = snapshot();
+  res.status(db.ok ? 200 : 503).json({
+    ok: db.ok,
+    uptimeSeconds: metrics.uptimeSeconds,
+    rooms,
+    database: db,
+    process: {
+      cpuPercentOfCore: metrics.cpuPercentOfCore,
+      peakCpuPercentOfCore: metrics.peakCpuPercentOfCore,
+      cores: metrics.cores,
+      rssMb: metrics.rssMb,
+      peakRssMb: metrics.peakRssMb,
+      heapUsedMb: metrics.heapUsedMb,
+    },
+    tick: metrics.tick,
+    messages: metrics.messages,
+  });
 });
 
 app.use("/auth", authRouter);
