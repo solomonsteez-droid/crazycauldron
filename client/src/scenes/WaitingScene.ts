@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import type { Room } from "colyseus.js";
+import type { GameRoom } from "../net/room.js";
 import { MSG_ADMIT, MSG_QUEUE, type EnterResponse } from "@crazycauldron/shared";
 import { consumeReservation } from "../net/room.js";
 import type { QueueUpdate, WaitingStateView } from "../net/state.js";
@@ -8,7 +8,7 @@ import { showPanel, toast, type PanelHandle } from "../ui/overlay.js";
 import { SCENE_HUB, SCENE_LOGIN, SCENE_WAITING } from "./keys.js";
 
 interface WaitingSceneData {
-  room: Room<WaitingStateView>;
+  room: GameRoom<WaitingStateView>;
   session: Session;
 }
 
@@ -18,7 +18,7 @@ interface WaitingSceneData {
  * seat frees up, so this scene only has to redeem it.
  */
 export class WaitingScene extends Phaser.Scene {
-  private room!: Room<WaitingStateView>;
+  private room!: GameRoom<WaitingStateView>;
   private session!: Session;
   private panel!: PanelHandle;
   private departing = false;

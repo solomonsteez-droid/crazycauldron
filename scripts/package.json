@@ -1,0 +1,4 @@
+{
+  "//": "Not a package - only here to say that scripts/*.ts are ES modules. The repo root deliberately has no \"type\" field so that pm2 can require ecosystem.config.js, which has to be CommonJS.",
+  "type": "module"
+}

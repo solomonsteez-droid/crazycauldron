@@ -1,10 +1,10 @@
 import { WebSocketTransport } from "@colyseus/ws-transport";
-import { Server } from "@colyseus/core";
+import { defineRoom, defineServer, listen } from "colyseus";
 import cors from "cors";
 import express from "express";
-import http from "node:http";
 import { ROOM_HUB, ROOM_WAITING, validateAllLayouts } from "@crazycauldron/shared";
 import { authRouter } from "./auth/routes.js";
+import { cloudOptions, onColyseusCloud } from "./cloud.js";
 import { config } from "./config.js";
 import { closeDatabase, databaseHealth } from "./db/index.js";
 import { log } from "./logger.js";
@@ -36,87 +36,117 @@ if (layoutProblems.length > 0) {
 }
 log.info("layout.ok", { maps: 4 });
 
-const app = express();
+/**
+ * Everything this server answers over plain HTTP.
+ *
+ * Colyseus owns the app now - `defineServer` builds it, attaches the
+ * matchmaking routes and hands it here to be furnished. That inversion is what
+ * Colyseus Cloud expects to find, and it is why there is no `http.createServer`
+ * anywhere in this file any more.
+ */
+function routes(app: express.Application): void {
+  /*
+   * Explicit allowlist. Requests with no Origin (curl, health checks, the load
+   * test) pass; a browser on an unlisted origin does not.
+   *
+   * The refusal is a plain 403 rather than a thrown error. Throwing worked -
+   * the request was refused - but it travelled to the last-resort handler,
+   * which answered 500 and raised an unhandled-error alert. A browser on the
+   * wrong origin is a configuration mistake, not an incident.
+   */
+  app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin && !config.corsOrigins.includes(origin)) {
+      log.warn("cors.refused", { origin, path: req.path });
+      return res.status(403).json({
+        error: "origin_not_allowed",
+        message: "This server does not serve that origin.",
+      });
+    }
+    return next();
+  });
+
+  app.use(cors({ origin: config.corsOrigins, credentials: false }));
+  app.use(express.json({ limit: "8kb" }));
+
+  /**
+   * One endpoint that answers "is this thing alive and how hard is it working".
+   *
+   * Room and player counts, whether the database still answers a read, uptime,
+   * and the process's own CPU, memory and simulation-tick timings. The load test
+   * polls it; so does anything watching the deployment.
+   */
+  app.get("/health", async (_req, res) => {
+    const [rooms, db] = [await capacity(), databaseHealth()];
+    const metrics = snapshot();
+    res.status(db.ok ? 200 : 503).json({
+      ok: db.ok,
+      uptimeSeconds: metrics.uptimeSeconds,
+      rooms,
+      database: db,
+      process: {
+        cpuPercentOfCore: metrics.cpuPercentOfCore,
+        peakCpuPercentOfCore: metrics.peakCpuPercentOfCore,
+        cores: metrics.cores,
+        rssMb: metrics.rssMb,
+        peakRssMb: metrics.peakRssMb,
+        heapUsedMb: metrics.heapUsedMb,
+      },
+      tick: metrics.tick,
+      messages: metrics.messages,
+    });
+  });
+
+  app.use("/auth", authRouter);
+  // NOT "/matchmake": Colyseus hooks the raw http server's "request" event and
+  // swallows every URL *containing* that substring (Server.attachMatchMakingRoutes),
+  // so an Express router mounted there is never reached - /capacity would answer
+  // with Colyseus's room list and /enter with a JSON parse error.
+  app.use("/play", matchmakeRouter);
+
+  // Last-resort handler: log the detail, tell the client nothing useful.
+  app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    log.error("http.unhandled", { message: err.message, stack: err.stack });
+    void alert({
+      kind: "unhandled_error",
+      message: "An unhandled error reached the HTTP layer.",
+      detail: { error: err.message },
+    });
+    res.status(500).json({ error: "internal_error", message: "Something went wrong." });
+  });
+}
 
 /*
- * Explicit allowlist. Requests with no Origin (curl, health checks, the load
- * test) pass; a browser on an unlisted origin does not.
+ * The server, declared rather than assembled.
  *
- * The refusal is a plain 403 rather than a thrown error. Throwing worked -
- * the request was refused - but it travelled to the last-resort handler,
- * which answered 500 and raised an unhandled-error alert. A browser on the
- * wrong origin is a configuration mistake, not an incident.
+ * Rooms, transport and HTTP routes in one object. Colyseus Cloud reads this
+ * shape directly - it is the entry point its template expects - and the same
+ * file runs unchanged under `npm run dev` locally.
  */
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  if (origin && !config.corsOrigins.includes(origin)) {
-    log.warn("cors.refused", { origin, path: req.path });
-    return res.status(403).json({
-      error: "origin_not_allowed",
-      message: "This server does not serve that origin.",
-    });
-  }
-  return next();
+const gameServer = defineServer({
+  transport: new WebSocketTransport(),
+  rooms: {
+    [ROOM_HUB]: defineRoom(HubRoom),
+    [ROOM_WAITING]: defineRoom(WaitingRoom),
+  },
+  express: routes,
+  // Nothing behind the greeting banner is useful in a log aggregator.
+  greet: config.nodeEnv !== "production",
+  ...(await cloudOptions()),
 });
 
-app.use(cors({ origin: config.corsOrigins, credentials: false }));
-app.use(express.json({ limit: "8kb" }));
-
-/**
- * One endpoint that answers "is this thing alive and how hard is it working".
+/*
+ * listen() rather than gameServer.listen().
  *
- * Room and player counts, whether the database still answers a read, uptime,
- * and the process's own CPU, memory and simulation-tick timings. The load test
- * polls it; so does anything watching the deployment.
+ * On Colyseus Cloud a process does not bind a TCP port at all - it binds a
+ * unix socket that the edge proxy in front of it knows about - and it has to
+ * tell pm2 it is ready before pm2 will send it traffic. Both of those live in
+ * this helper. Off Cloud it is `server.listen(port)` with extra steps.
  */
-app.get("/health", async (_req, res) => {
-  const [rooms, db] = [await capacity(), databaseHealth()];
-  const metrics = snapshot();
-  res.status(db.ok ? 200 : 503).json({
-    ok: db.ok,
-    uptimeSeconds: metrics.uptimeSeconds,
-    rooms,
-    database: db,
-    process: {
-      cpuPercentOfCore: metrics.cpuPercentOfCore,
-      peakCpuPercentOfCore: metrics.peakCpuPercentOfCore,
-      cores: metrics.cores,
-      rssMb: metrics.rssMb,
-      peakRssMb: metrics.peakRssMb,
-      heapUsedMb: metrics.heapUsedMb,
-    },
-    tick: metrics.tick,
-    messages: metrics.messages,
-  });
-});
-
-app.use("/auth", authRouter);
-// NOT "/matchmake": Colyseus hooks the raw http server's "request" event and
-// swallows every URL *containing* that substring (Server.attachMatchMakingRoutes),
-// so an Express router mounted there is never reached - /capacity would answer
-// with Colyseus's room list and /enter with a JSON parse error.
-app.use("/play", matchmakeRouter);
-
-// Last-resort handler: log the detail, tell the client nothing useful.
-app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  log.error("http.unhandled", { message: err.message, stack: err.stack });
-  void alert({
-    kind: "unhandled_error",
-    message: "An unhandled error reached the HTTP layer.",
-    detail: { error: err.message },
-  });
-  res.status(500).json({ error: "internal_error", message: "Something went wrong." });
-});
-
-const httpServer = http.createServer(app);
-const gameServer = new Server({ transport: new WebSocketTransport({ server: httpServer }) });
-
-gameServer.define(ROOM_HUB, HubRoom);
-gameServer.define(ROOM_WAITING, WaitingRoom);
-
-await gameServer.listen(config.port);
+await listen(gameServer, config.port);
 log.info("server.listening", {
   port: config.port,
+  cloud: onColyseusCloud,
   env: config.nodeEnv,
   hubMax: config.hubMaxPlayers,
   globalMax: config.globalMaxPlayers,

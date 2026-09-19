@@ -100,7 +100,7 @@ function isEnterResponse(body: unknown): body is EnterResponse {
   return (
     isRecord(body) &&
     (body.room === ROOM_HUB || body.room === ROOM_WAITING) &&
-    // colyseus.js reads .room off the reservation, so an absent one crashes
+    // The SDK reads the room off the reservation, so an absent one crashes
     // inside the library rather than here.
     isRecord(body.reservation)
   );

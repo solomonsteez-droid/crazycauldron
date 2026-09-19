@@ -22,7 +22,7 @@ const PROMOTE_INTERVAL_MS = 2_000;
  * Promotion is a fresh seat reservation pushed over the socket, so the client
  * never has to poll /play/enter again - it just consumes what it is handed.
  */
-export class WaitingRoom extends Room<WaitingState> {
+export class WaitingRoom extends Room<{ state: WaitingState; client: Client<{ auth: JoinAuth }> }> {
   /** Everyone waiting, oldest first. */
   private readonly order: string[] = [];
   /** Per-seat join options, needed to mint the hub reservation on promotion. */

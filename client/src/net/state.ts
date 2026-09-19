@@ -2,25 +2,25 @@
  * Client-side shapes for the replicated room state.
  *
  * Deliberately structural rather than importing the server's schema classes:
- * colyseus.js decodes state from the reflection data the server sends on join,
- * so the client needs the field names but not the decorated classes - and the
+ * the SDK decodes state from the reflection data the server sends on join, so
+ * the client needs the field names but not the decorated classes - and the
  * server's schema file stays free to import server-only modules.
+ *
+ * Nothing here carries a callback. Since 0.16 the listeners live on a separate
+ * proxy handed out by getStateCallbacks(room) rather than on the decoded
+ * objects, which is why these are plain data shapes. The iterator and entries()
+ * are declared because that is how the proxy recognises a collection.
  */
 
 export interface MapSchemaLike<T> {
   readonly size: number;
   get(key: string): T | undefined;
   forEach(callback: (value: T, key: string) => void): void;
-  onAdd(callback: (value: T, key: string) => void, triggerAll?: boolean): void;
-  onRemove(callback: (value: T, key: string) => void): void;
+  entries(): IterableIterator<[string, T]>;
+  [Symbol.iterator](): IterableIterator<[string, T]>;
 }
 
-/** Anything decoded from a Schema exposes onChange. */
-export interface Watchable {
-  onChange(callback: () => void): void;
-}
-
-export interface PlayerView extends Watchable {
+export interface PlayerView {
   sessionId: string;
   wallet: string;
   displayName: string;
@@ -39,7 +39,7 @@ export interface PlayerView extends Watchable {
 }
 
 /** A hub resident. No wallet and no progress - they are scenery that walks. */
-export interface VillagerView extends Watchable {
+export interface VillagerView {
   id: string;
   name: string;
   tileX: number;
@@ -56,7 +56,7 @@ export interface HubStateView {
   villagers: MapSchemaLike<VillagerView>;
 }
 
-export interface QueuedPlayerView extends Watchable {
+export interface QueuedPlayerView {
   wallet: string;
   displayName: string;
   place: number;

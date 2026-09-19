@@ -20,7 +20,7 @@
  */
 
 import { Keypair } from "@solana/web3.js";
-import { Client, type Room } from "colyseus.js";
+import { Client, type Room } from "@colyseus/sdk";
 import bs58 from "bs58";
 import nacl from "tweetnacl";
 import {
@@ -300,7 +300,7 @@ async function play(room: Room, options: Options, stopAt: number) {
   room.onMessage(MSG_SOLD, () => (stats.sells += 1));
   room.onMessage(MSG_REJECTED, (r: { reason?: string }) => refused(r.reason ?? "unknown"));
 
-  // colyseus.js warns for every unhandled type, which at 600 clients drowns
+  // The SDK warns for every unhandled type, which at 600 clients drowns
   // the report. These are all fire-and-forget updates the load test ignores.
   for (const type of [MSG_NODES, MSG_GATHER_STARTED, MSG_UNLOCKED, MSG_ATE, MSG_BOUGHT, MSG_KICK]) {
     room.onMessage(type, () => undefined);

@@ -11,7 +11,7 @@
  *   npx tsx scripts/smoke-game.ts
  */
 
-import { Client, type Room } from "colyseus.js";
+import { Client, type Room } from "@colyseus/sdk";
 import bs58 from "bs58";
 import nacl from "tweetnacl";
 import {
@@ -75,7 +75,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 /**
  * A queue per message type.
  *
- * colyseus.js keeps one handler per type, so registering a fresh listener for
+ * The SDK keeps one handler per type, so registering a fresh listener for
  * each await would silently unhook the previous one. Everything lands in a
  * queue instead and `next()` takes from it - which also means a message that
  * arrives before its await is not lost.

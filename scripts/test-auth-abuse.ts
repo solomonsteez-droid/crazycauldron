@@ -19,7 +19,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { config as loadEnv } from "dotenv";
 import { Keypair } from "@solana/web3.js";
-import { Client } from "colyseus.js";
+import { Client } from "@colyseus/sdk";
 import bs58 from "bs58";
 import jwt from "jsonwebtoken";
 import nacl from "tweetnacl";

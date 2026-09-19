@@ -15,7 +15,7 @@
  */
 
 import { Keypair } from "@solana/web3.js";
-import { Client, type Room } from "colyseus.js";
+import { Client, type Room } from "@colyseus/sdk";
 import bs58 from "bs58";
 import nacl from "tweetnacl";
 import {

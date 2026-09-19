@@ -1,5 +1,6 @@
 import Phaser from "phaser";
-import type { Room } from "colyseus.js";
+import { getStateCallbacks } from "@colyseus/sdk";
+import type { GameRoom } from "../net/room.js";
 import {
   AMBIENCE,
   HUB_MAP,
@@ -92,7 +93,7 @@ import {
 import { SCENE_HUB, SCENE_LOGIN } from "./keys.js";
 
 interface HubSceneData {
-  room: Room<HubStateView>;
+  room: GameRoom<HubStateView>;
   session: Session;
 }
 
@@ -126,7 +127,9 @@ interface PendingAction {
  * rather than one, and with gather nodes on top.
  */
 export class HubScene extends Phaser.Scene {
-  private room!: Room<HubStateView>;
+  private room!: GameRoom<HubStateView>;
+  /** The room's callback proxy: where every state listener is registered. */
+  private watch!: ReturnType<typeof getStateCallbacks<HubStateView>>;
   private session!: Session;
   private map!: GameMap;
   private hud!: Hud;
@@ -269,13 +272,24 @@ export class HubScene extends Phaser.Scene {
     sound.enterMap(mapId);
   }
 
+  /*
+   * Listeners hang off a proxy, not off the state.
+   *
+   * $(x) returns the callback surface for whatever x is - a collection gets
+   * onAdd/onRemove, a decoded object gets onChange - and the decoded state
+   * itself stays plain data. Keeping the proxy on the scene means every
+   * avatar's onChange can be registered from the same one.
+   */
   private bindState() {
-    this.room.state.players.onAdd((player, sessionId) => {
+    this.watch = getStateCallbacks(this.room);
+    const state = this.watch(this.room.state);
+
+    state.players.onAdd((player, sessionId) => {
       this.addAvatar(player, sessionId);
       this.refreshCrowd();
     }, true);
 
-    this.room.state.players.onRemove((_player, sessionId) => {
+    state.players.onRemove((_player, sessionId) => {
       this.removeAvatar(sessionId);
       this.refreshCrowd();
     });
@@ -283,8 +297,8 @@ export class HubScene extends Phaser.Scene {
     // Villagers arrive the same way players do and are drawn the same way, but
     // they are not players: they never reach refreshCrowd, so the room count
     // stays a count of people who are actually playing.
-    this.room.state.villagers.onAdd((villager, id) => this.addVillager(villager, id), true);
-    this.room.state.villagers.onRemove((_villager, id) => this.removeVillager(id));
+    state.villagers.onAdd((villager, id) => this.addVillager(villager, id), true);
+    state.villagers.onRemove((_villager, id) => this.removeVillager(id));
   }
 
   /**
@@ -710,7 +724,7 @@ export class HubScene extends Phaser.Scene {
 
     const entry: AvatarEntry = { avatar };
     this.villagers.set(id, entry);
-    villager.onChange(() => this.onVillagerChanged(id, villager));
+    this.watch(villager).onChange(() => this.onVillagerChanged(id, villager));
   }
 
   private onVillagerChanged(id: string, villager: VillagerView) {
@@ -804,7 +818,7 @@ export class HubScene extends Phaser.Scene {
     const entry: AvatarEntry = { avatar };
     this.avatars.set(sessionId, entry);
 
-    player.onChange(() => this.onPlayerChanged(sessionId, player));
+    this.watch(player).onChange(() => this.onPlayerChanged(sessionId, player));
 
     // The camera cannot follow before the player it follows exists.
     if (isSelf) this.layoutCamera();

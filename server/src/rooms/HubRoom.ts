@@ -1,4 +1,4 @@
-import { Room, type Client } from "@colyseus/core";
+import { CloseCode, Room, type Client } from "@colyseus/core";
 import {
   BALANCE_CACHE_TTL_MS,
   CONFIG,
@@ -102,7 +102,7 @@ import { HubState, Player } from "./schema.js";
  * player one tile per MOVE_STEP_MS. A client that lies about its position has
  * nothing to lie with.
  */
-export class HubRoom extends Room<HubState> {
+export class HubRoom extends Room<{ state: HubState; client: Client<{ auth: JoinAuth }> }> {
   override maxClients = config.hubMaxPlayers;
 
   /** Remaining route per player, server-side only - never replicated. */
@@ -238,7 +238,7 @@ export class HubRoom extends Room<HubState> {
     });
   }
 
-  override onLeave(client: Client, consented?: boolean) {
+  override onLeave(client: Client, code?: number) {
     const player = this.state.players.get(client.sessionId);
 
     // Last write wins: an action still in flight is abandoned rather than paid
@@ -253,7 +253,17 @@ export class HubRoom extends Room<HubState> {
     this.routes.delete(client.sessionId);
     this.expiries.delete(client.sessionId);
     this.sessions.delete(client.sessionId);
-    log.info("hub.leave", { roomId: this.roomId, wallet: player?.wallet, consented });
+    /*
+      * The close code says how they went. CONSENTED is a player choosing to
+      * leave; anything else is a socket that died on them, which is worth
+      * telling apart in the log when somebody reports being dropped.
+      */
+     log.info("hub.leave", {
+       roomId: this.roomId,
+       wallet: player?.wallet,
+       consented: code === CloseCode.CONSENTED,
+       code,
+     });
   }
 
   override onDispose() {
