@@ -140,6 +140,15 @@ export class HubRoom extends Room<HubState> {
     player.chefLevel = session.state.chefLevel;
     player.section = HUB_MAP;
 
+    /*
+     * Which body a wallet gets is fixed by the wallet itself rather than
+     * stored: it never changes, so there is nothing to persist or migrate, and
+     * the same player looks the same on every device.
+     */
+    player.body = claims.wallet.charCodeAt(1) % 2 === 0 ? "male" : "female";
+    player.hatId = session.state.hatId;
+    player.apronId = session.state.apronId;
+
     this.state.players.set(client.sessionId, player);
     this.expiries.set(client.sessionId, claims.exp);
     this.sessions.set(client.sessionId, session);

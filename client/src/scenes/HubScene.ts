@@ -47,8 +47,10 @@ import {
 import { fetchCapacity } from "../net/api.js";
 import { gameStore } from "../net/game.js";
 import { GameMap, type MapFeature } from "../map/gameMap.js";
+import { Avatar } from "../world/avatar.js";
+import { loadArt, type Direction, type Manifest, type OffsetsFile } from "../art/manifest.js";
 import { LABEL_SCREEN_PX, labelScale, planCamera } from "../map/camera.js";
-import { TEX_MARKER, TEX_PLAYER_BACK, TEX_PLAYER_FRONT } from "../map/textures.js";
+import { TEX_MARKER } from "../map/textures.js";
 import type { HubStateView, KickNotice, PlayerView } from "../net/state.js";
 import { clearSession, type Session } from "../net/session.js";
 import { Hud } from "../ui/hud.js";
@@ -78,10 +80,8 @@ interface HubSceneData {
   session: Session;
 }
 
-interface Avatar {
-  container: Phaser.GameObjects.Container;
-  sprite: Phaser.GameObjects.Image;
-  label: Phaser.GameObjects.Text;
+interface AvatarEntry {
+  avatar: Avatar;
   tween?: Phaser.Tweens.Tween;
 }
 
@@ -107,7 +107,9 @@ export class HubScene extends Phaser.Scene {
   private map!: GameMap;
   private hud!: Hud;
   private marker!: Phaser.GameObjects.Image;
-  private readonly avatars = new Map<string, Avatar>();
+  private readonly avatars = new Map<string, AvatarEntry>();
+  private manifest!: Manifest;
+  private artOffsets!: OffsetsFile;
   private departing = false;
   private currentSection = HUB_MAP;
   private pending: PendingAction | null = null;
@@ -127,6 +129,11 @@ export class HubScene extends Phaser.Scene {
   create(data: HubSceneData) {
     this.room = data.room;
     this.session = data.session;
+    // Boot has already fetched these; this resolves from its cache.
+    void loadArt().then((art) => {
+      this.manifest = art.manifest;
+      this.artOffsets = art.offsets;
+    });
     this.departing = false;
     this.pending = null;
     this.pendingStation = null;
@@ -177,6 +184,11 @@ export class HubScene extends Phaser.Scene {
     });
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.teardown());
+  }
+
+  override update() {
+    // Garments copy the body's bob, which only the animation knows about.
+    for (const entry of this.avatars.values()) entry.avatar.tick();
   }
 
   private buildMap(mapId: number) {
@@ -446,7 +458,7 @@ export class HubScene extends Phaser.Scene {
       plan.fitsEntirely,
     );
 
-    const self = this.avatars.get(this.room.sessionId);
+    const self = this.avatars.get(this.room.sessionId)?.avatar;
     if (plan.fitsEntirely || !self) {
       camera.stopFollow();
       camera.centerOn(plan.centre.x, plan.centre.y);
@@ -467,9 +479,8 @@ export class HubScene extends Phaser.Scene {
   /** Name labels live in the world, so they have to cancel the zoom out. */
   private applyAvatarLabelScale() {
     const scale = labelScale(this.zoom);
-    for (const avatar of this.avatars.values()) {
-      avatar.label.setScale(scale).setResolution(Math.max(1, Math.ceil(this.zoom)));
-    }
+    const resolution = Math.max(1, Math.ceil(this.zoom));
+    for (const entry of this.avatars.values()) entry.avatar.setLabelScale(scale, resolution);
   }
 
   /** Redraws node sprites from whatever the server last said about them. */
@@ -485,26 +496,26 @@ export class HubScene extends Phaser.Scene {
     const position = this.map.tileCentre(player.tileX, player.tileY);
     const isSelf = player.wallet === this.session.wallet;
 
-    const sprite = this.add.image(0, 0, TEX_PLAYER_FRONT).setOrigin(0.5, 1);
-    // Sized in screen pixels and scaled by 1/zoom, so a name is the same size
-    // whether the camera is at 1.5x or 3x.
-    const label = this.add
-      .text(0, -26, player.displayName, {
-        fontFamily: "monospace",
-        fontSize: `${LABEL_SCREEN_PX}px`,
-        color: isSelf ? "#7ce08a" : "#f3e9d2",
-      })
-      .setOrigin(0.5, 1)
-      .setScale(labelScale(this.zoom))
-      .setResolution(Math.max(1, Math.ceil(this.zoom)));
+    const avatar = new Avatar(
+      this,
+      this.manifest,
+      this.artOffsets,
+      {
+        body: player.body || "male",
+        hatId: player.hatId ?? "",
+        apronId: player.apronId ?? "",
+        displayName: player.displayName,
+        isSelf,
+      },
+      position.x,
+      position.y,
+    );
+    avatar.container.setDepth(player.tileX + player.tileY);
+    avatar.container.setVisible(player.section === this.currentSection);
+    avatar.setDirection((player.facing as Direction) ?? "down", player.moving);
 
-    const container = this.add.container(position.x, position.y, [sprite, label]);
-    container.setDepth(player.tileX + player.tileY);
-    container.setVisible(player.section === this.currentSection);
-
-    const avatar: Avatar = { container, sprite, label };
-    this.avatars.set(sessionId, avatar);
-    this.applyFacing(avatar, player.facing);
+    const entry: AvatarEntry = { avatar };
+    this.avatars.set(sessionId, entry);
 
     player.onChange(() => this.onPlayerChanged(sessionId, player));
 
@@ -513,8 +524,9 @@ export class HubScene extends Phaser.Scene {
   }
 
   private onPlayerChanged(sessionId: string, player: PlayerView) {
-    const avatar = this.avatars.get(sessionId);
-    if (!avatar) return;
+    const entry = this.avatars.get(sessionId);
+    if (!entry) return;
+    const { avatar } = entry;
 
     const isSelf = player.wallet === this.session.wallet;
 
@@ -530,12 +542,19 @@ export class HubScene extends Phaser.Scene {
     }
 
     avatar.container.setVisible(player.section === this.currentSection);
-    this.applyFacing(avatar, player.facing);
+    avatar.setLook({
+      body: player.body || "male",
+      hatId: player.hatId ?? "",
+      apronId: player.apronId ?? "",
+      displayName: player.displayName,
+      isSelf,
+    });
+    avatar.setDirection((player.facing as Direction) ?? "down", player.moving);
 
     const target = this.map.tileCentre(player.tileX, player.tileY);
     if (avatar.container.x !== target.x || avatar.container.y !== target.y) {
-      avatar.tween?.stop();
-      avatar.tween = this.tweens.add({
+      entry.tween?.stop();
+      entry.tween = this.tweens.add({
         targets: avatar.container,
         x: target.x,
         y: target.y,
@@ -562,26 +581,20 @@ export class HubScene extends Phaser.Scene {
 
   private rebuildAvatarsForMap() {
     this.room.state.players.forEach((player, sessionId) => {
-      const avatar = this.avatars.get(sessionId);
-      if (!avatar) return;
+      const entry = this.avatars.get(sessionId);
+      if (!entry) return;
       const at = this.map.tileCentre(player.tileX, player.tileY);
-      avatar.tween?.stop();
-      avatar.container.setPosition(at.x, at.y);
-      avatar.container.setVisible(player.section === this.currentSection);
+      entry.tween?.stop();
+      entry.avatar.container.setPosition(at.x, at.y);
+      entry.avatar.container.setVisible(player.section === this.currentSection);
     });
   }
 
-  private applyFacing(avatar: Avatar, facing: string) {
-    const away = facing === "n" || facing === "e";
-    avatar.sprite.setTexture(away ? TEX_PLAYER_BACK : TEX_PLAYER_FRONT);
-    avatar.sprite.setFlipX(facing === "e" || facing === "w");
-  }
-
   private removeAvatar(sessionId: string) {
-    const avatar = this.avatars.get(sessionId);
-    if (!avatar) return;
-    avatar.tween?.stop();
-    avatar.container.destroy(true);
+    const entry = this.avatars.get(sessionId);
+    if (!entry) return;
+    entry.tween?.stop();
+    entry.avatar.destroy();
     this.avatars.delete(sessionId);
   }
 

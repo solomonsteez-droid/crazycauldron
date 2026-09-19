@@ -56,6 +56,9 @@ export class PlayerState {
   panTier: number;
   bagTier: number;
   buffExpiresAt: number;
+  /** Equipped wardrobe items. The linen apron is the starting garment. */
+  hatId = "";
+  apronId = "apron_01_linen";
   /** Keyed by stackKey so lookups and merges are both O(1). */
   private readonly stacks = new Map<string, StackRecord>();
   private readonly codex = new Map<string, CodexRecord>();

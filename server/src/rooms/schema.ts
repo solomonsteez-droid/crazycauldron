@@ -27,6 +27,11 @@ export class Player extends Schema {
   @type("number") chefLevel = 1;
   /** Non-empty while a gather or cook timer is running, for the busy animation. */
   @type("string") activity = "";
+  /** Which body sheet to draw. */
+  @type("string") body = "male";
+  /** Equipped wardrobe items; empty means nothing worn. */
+  @type("string") hatId = "";
+  @type("string") apronId = "";
 }
 
 export class HubState extends Schema {

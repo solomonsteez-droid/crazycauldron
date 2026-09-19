@@ -33,6 +33,9 @@ export interface PlayerView extends Watchable {
   chefLevel: number;
   /** "gathering" or "cooking" while the server is timing an action. */
   activity: string;
+  body: string;
+  hatId: string;
+  apronId: string;
 }
 
 export interface HubStateView {
