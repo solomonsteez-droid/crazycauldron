@@ -208,7 +208,14 @@ export class HubScene extends Phaser.Scene {
     showPanel({
       title: "Removed from the hub",
       error: explanation,
-      actions: [{ label: "Back to sign-in", onClick: () => this.scene.start(SCENE_LOGIN) }],
+      actions: [
+        {
+          label: "Back to sign-in",
+          onClick: () => {
+            this.scene.start(SCENE_LOGIN);
+          },
+        },
+      ],
     });
   }
 

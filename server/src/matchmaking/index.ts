@@ -1,4 +1,4 @@
-import { matchMaker } from "colyseus";
+import { matchMaker } from "@colyseus/core";
 import { ROOM_HUB, ROOM_WAITING, type EnterResponse, type SessionClaims } from "@crazycauldron/shared";
 import { config } from "../config.js";
 import { log } from "../logger.js";

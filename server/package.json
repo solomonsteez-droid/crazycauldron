@@ -10,11 +10,12 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@colyseus/core": "^0.15.57",
     "@colyseus/schema": "^2.0.35",
-    "@colyseus/ws-transport": "^0.15.14",
+    "@colyseus/ws-transport": "^0.15.3",
     "@crazycauldron/shared": "*",
     "@solana/web3.js": "^1.95.4",
-    "better-sqlite3": "^11.5.0",
+    "better-sqlite3": "^12.11.1",
     "bs58": "^6.0.0",
     "colyseus": "^0.15.17",
     "cors": "^2.8.5",
@@ -24,7 +25,7 @@
     "tweetnacl": "^1.0.3"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.11",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/jsonwebtoken": "^9.0.7",

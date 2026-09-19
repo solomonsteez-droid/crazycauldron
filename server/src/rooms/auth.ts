@@ -1,4 +1,4 @@
-import { ServerError } from "colyseus";
+import { ServerError } from "@colyseus/core";
 import {
   KICK_AUTH_EXPIRED,
   KICK_INSUFFICIENT_HOLD,

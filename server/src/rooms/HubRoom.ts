@@ -1,4 +1,4 @@
-import { Client, Room } from "colyseus";
+import { Room, type Client } from "@colyseus/core";
 import {
   BALANCE_CACHE_TTL_MS,
   HUB_SPAWN,

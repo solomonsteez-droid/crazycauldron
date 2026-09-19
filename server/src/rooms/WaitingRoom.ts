@@ -1,4 +1,4 @@
-import { Client, Room, matchMaker } from "colyseus";
+import { Room, matchMaker, type Client } from "@colyseus/core";
 import {
   MSG_ADMIT,
   MSG_QUEUE,

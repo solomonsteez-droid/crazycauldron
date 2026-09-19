@@ -2,7 +2,8 @@
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": ["vite/client"],
+    // vite.config.ts is type-checked too and imports node:path / node:url.
+    "types": ["vite/client", "node"],
     "noEmit": true,
     "declaration": false
   },
