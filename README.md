@@ -29,13 +29,21 @@ Everything tunable is JSON under `shared/src/content/`, loaded by both runtimes
 ```
 ingredients.json   24 ingredients, 8 per section
 recipes.json       20 recipes: ingredients, technique, requirements, XP, price
-sections.json      the three maps, their gates, and 12 gather nodes each
+sections.json      what each gathering area *is*: its name, its price of entry,
+                   and the 12 things that grow there
 skills.json        both XP curves, every unlock, and the tuning constants
 wardrobe.json      hats and aprons, and what earns each one
-terrain.json       which pack tiles and scenery each map is built from
-ambience.json      villagers, hub props, scatter density, particles, day length,
-                   and every sound cue
+ambience.json      villagers, particles, day length, and every sound cue
+maps/*.json        the four painted areas: a walkable mask, the spawn, the
+                   gates and counters, and where each node stands
 ```
+
+The four maps are hand-painted images in `client/public/assets/maps/`. Each is
+drawn at a fixed world size with an invisible 24px square grid over it, and
+`npm run areas` turns the painting into that grid: the open regions and the big
+structures are authored in `scripts/area-layout.json`, everything smaller comes
+out of the pixels, and `/dev/mapedit` is where a person corrects what a
+classifier cannot tell apart.
 
 Change a number there and the server, the client and the simulation all agree
 about it without a code change. `npx tsx scripts/validate-content.ts` checks the
@@ -65,6 +73,8 @@ Other useful scripts:
 ```bash
 npm run typecheck
 npm run sprites                            # art drops -> game-ready sprites
+npm run areas                              # paintings -> walkable grids
+npm run areas -- --preview                 # ...and a picture of what it decided
 
 # No server needed
 npx tsx scripts/validate-content.ts        # content, and every map's layout

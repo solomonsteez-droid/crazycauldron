@@ -25,8 +25,9 @@ import bs58 from "bs58";
 import nacl from "tweetnacl";
 import {
   HUB_MAP,
-  HUB_PORTALS,
-  HUB_STATIONS,
+  approachTo,
+  areaNode,
+  zoneById,
   MSG_ATE,
   MSG_BOUGHT,
   MSG_COOK_PREP,
@@ -239,17 +240,42 @@ async function seat(keypair: Keypair): Promise<Seat> {
   };
 }
 
-function beside(mapId: number, tile: TilePos): TilePos {
+/**
+ * Where to stand to use a zone, and where to stand to gather a node.
+ *
+ * Asked of the map rather than worked out here: a painted building is solid,
+ * so the cell a player wants is always outside it, and which cell that is is a
+ * question about the walkable mask.
+ */
+function approachZone(mapId: number, zoneId: string, from: TilePos): TilePos | null {
+  const zone = zoneById(mapId, zoneId);
+  return zone ? approachTo(mapId, zone, from) : null;
+}
+
+function besideNode(mapId: number, nodeId: string): TilePos | null {
+  const node = areaNode(mapId, nodeId);
+  if (!node) return null;
   for (const [dx, dy] of [
     [0, 1],
     [0, -1],
     [1, 0],
     [-1, 0],
+    [1, 1],
+    [-1, -1],
+    [1, -1],
+    [-1, 1],
   ] as const) {
-    const candidate = { tileX: tile.tileX + dx, tileY: tile.tileY + dy };
-    if (isWalkableOn(mapId, candidate.tileX, candidate.tileY)) return candidate;
+    if (isWalkableOn(mapId, node.c + dx, node.r + dy)) {
+      return { tileX: node.c + dx, tileY: node.r + dy };
+    }
   }
-  return tile;
+  return null;
+}
+
+/** Where a seated player is standing. */
+function tileOf(seat: Seat): TilePos {
+  const me = seat.self();
+  return me ? { tileX: me.tileX, tileY: me.tileY } : { tileX: 0, tileY: 0 };
 }
 
 /** Polls until something becomes true, or gives up. */
@@ -295,8 +321,7 @@ async function main() {
     check("a fresh wallet starts at Chef 1", player.profile()?.chefLevel === 1);
 
     // Out to the Meadows, which is also the section unlock being recorded.
-    const gate = HUB_PORTALS.find((p) => p.section === meadows.index)!;
-    await walkTo(player, beside(HUB_MAP, { tileX: gate.tileX, tileY: gate.tileY }));
+    await walkTo(player, approachZone(HUB_MAP, `portal_${meadows.index}`, tileOf(player))!);
     player.room.send(MSG_TRAVEL, { section: meadows.index });
     await waitFor(() => player.self()?.section === meadows.index, 10000);
     check("it reaches the Meadows", player.self()?.section === meadows.index);
@@ -323,7 +348,7 @@ async function main() {
         const node = nodes[attempt % nodes.length]!;
         const arrived = await walkTo(
           player,
-          beside(meadows.index, { tileX: node.tileX, tileY: node.tileY }),
+          besideNode(meadows.index, node.id)!,
         );
         if (!arrived) continue;
 
@@ -342,13 +367,12 @@ async function main() {
     }
 
     // Home, and cook.
-    await walkTo(player, beside(meadows.index, meadows.returnPortal));
+    await walkTo(player, approachZone(meadows.index, "portal_hub", tileOf(player))!);
     player.room.send(MSG_TRAVEL, { section: HUB_MAP });
     await waitFor(() => player.self()?.section === HUB_MAP, 10000);
     check("it comes home", player.self()?.section === HUB_MAP);
 
-    const kitchen = HUB_STATIONS.find((s) => s.id === "kitchen")!;
-    await walkTo(player, beside(HUB_MAP, { tileX: kitchen.tileX, tileY: kitchen.tileY }));
+    await walkTo(player, approachZone(HUB_MAP, "kitchen", tileOf(player))!);
 
     player.reset();
     player.room.send(MSG_COOK_START, { recipeId: starter.id });
@@ -381,8 +405,7 @@ async function main() {
     check("it cooked a dish", dishes.length > 0, dishes.map((s) => s.id).join(", "));
 
     // Sell one, which is the coins.
-    const tavern = HUB_STATIONS.find((s) => s.id === "tavern")!;
-    await walkTo(player, beside(HUB_MAP, { tileX: tavern.tileX, tileY: tavern.tileY }));
+    await walkTo(player, approachZone(HUB_MAP, "tavern", tileOf(player))!);
     const dish = player.profile()?.inventory.find((s) => s.kind === "dish");
     if (dish) {
       const before = player.profile()?.coins ?? 0;

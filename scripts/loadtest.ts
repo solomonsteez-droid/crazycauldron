@@ -25,7 +25,9 @@ import bs58 from "bs58";
 import nacl from "tweetnacl";
 import {
   HUB_MAP,
-  HUB_STATIONS,
+  approachTo,
+  areaNode,
+  zoneById,
   MSG_ADMIT,
   MSG_COOK_PREP,
   MSG_COOK_PREPARED,
@@ -50,6 +52,7 @@ import {
   RECIPES,
   ROOM_HUB,
   SECTIONS,
+  areaFor,
   findPath,
   isWalkableOn,
   type CookPreparedPayload,
@@ -197,6 +200,40 @@ function reachable(mapId: number, from: TilePos, to: TilePos): boolean {
   return findPath(from, to, (x, y) => isWalkableOn(mapId, x, y)).length > 0;
 }
 
+/**
+ * A cell to stand on to use a zone, and one to stand on to gather a node.
+ *
+ * Both come from shared rather than being worked out here: a painted building
+ * is solid, so the cell a player wants is always outside it, and "outside it"
+ * is a question about the map's walkable mask rather than about arithmetic on
+ * a centre point.
+ */
+function approachZone(mapId: number, zoneId: string, from: TilePos): TilePos | null {
+  const zone = zoneById(mapId, zoneId);
+  return zone ? approachTo(mapId, zone, from) : null;
+}
+
+function besideNode(mapId: number, nodeId: string): TilePos | null {
+  const node = areaNode(mapId, nodeId);
+  if (!node) return null;
+  for (const [dx, dy] of [
+    [0, 1],
+    [0, -1],
+    [1, 0],
+    [-1, 0],
+    [1, 1],
+    [-1, -1],
+    [1, -1],
+    [-1, 1],
+  ] as const) {
+    if (isWalkableOn(mapId, node.c + dx, node.r + dy)) {
+      return { tileX: node.c + dx, tileY: node.r + dy };
+    }
+  }
+  return null;
+}
+
+
 interface Self {
   tileX: number;
   tileY: number;
@@ -279,11 +316,10 @@ async function play(room: Room, options: Options, stopAt: number) {
     // --- out to the Meadows ------------------------------------------------
     const gate = selfOf(room)?.section === HUB_MAP;
     if (gate) {
-      const portal = { tileX: 21, tileY: 18 };
       const me = selfOf(room);
-      if (me && reachable(HUB_MAP, { tileX: me.tileX, tileY: me.tileY }, portal)) {
-        await walkTo(room, { tileX: portal.tileX, tileY: portal.tileY - 1 }, 20000);
-      }
+      const here = me ? { tileX: me.tileX, tileY: me.tileY } : { tileX: 0, tileY: 0 };
+      const at = approachZone(HUB_MAP, `portal_${MEADOWS.index}`, here);
+      if (at && reachable(HUB_MAP, here, at)) await walkTo(room, at, 20000);
       if (!running()) break;
       room.send(MSG_TRAVEL, { section: MEADOWS.index });
       stats.travels += 1;
@@ -295,8 +331,8 @@ async function play(room: Room, options: Options, stopAt: number) {
       const me = selfOf(room);
       if (!me || me.section !== MEADOWS.index) break;
       const node = MEADOWS.nodes[Math.floor(Math.random() * MEADOWS.nodes.length)]!;
-      const beside = { tileX: node.tileX, tileY: node.tileY + 1 };
-      if (!isWalkableOn(MEADOWS.index, beside.tileX, beside.tileY)) continue;
+      const beside = besideNode(MEADOWS.index, node.id);
+      if (!beside) continue;
 
       await walkTo(room, beside, 20000);
       if (!running()) break;
@@ -306,8 +342,13 @@ async function play(room: Room, options: Options, stopAt: number) {
     if (!running()) break;
 
     // --- home again ----------------------------------------------------------
-    if (selfOf(room)?.section === MEADOWS.index) {
-      await walkTo(room, { tileX: 14, tileY: 20 }, 20000);
+    const inMeadows = selfOf(room);
+    if (inMeadows?.section === MEADOWS.index) {
+      const out = approachZone(MEADOWS.index, "portal_hub", {
+        tileX: inMeadows.tileX,
+        tileY: inMeadows.tileY,
+      });
+      if (out) await walkTo(room, out, 20000);
       room.send(MSG_TRAVEL, { section: HUB_MAP });
       stats.travels += 1;
       await pause();
@@ -315,7 +356,6 @@ async function play(room: Room, options: Options, stopAt: number) {
     if (!running()) break;
 
     // --- cook, if the bag allows --------------------------------------------
-    const kitchen = HUB_STATIONS.find((s) => s.id === "kitchen")!;
     const canCook = STARTER.ingredients.every(
       (need) =>
         (takeProfile()?.inventory.find((i) => i.kind === "ingredient" && i.id === need.id)?.qty ??
@@ -323,7 +363,12 @@ async function play(room: Room, options: Options, stopAt: number) {
         need.qty,
     );
     if (canCook) {
-      await walkTo(room, { tileX: kitchen.tileX, tileY: kitchen.tileY - 1 }, 20000);
+      const me = selfOf(room);
+      const door = approachZone(HUB_MAP, "kitchen", {
+        tileX: me?.tileX ?? 0,
+        tileY: me?.tileY ?? 0,
+      });
+      if (door) await walkTo(room, door, 20000);
       if (!running()) break;
 
       latest.heatBar = null;
@@ -353,21 +398,29 @@ async function play(room: Room, options: Options, stopAt: number) {
     // --- sell whatever came out ---------------------------------------------
     const dish = takeProfile()?.inventory.find((i) => i.kind === "dish");
     if (dish) {
-      const tavern = HUB_STATIONS.find((s) => s.id === "tavern")!;
-      await walkTo(room, { tileX: tavern.tileX, tileY: tavern.tileY + 1 }, 20000);
+      const me = selfOf(room);
+      const counter = approachZone(HUB_MAP, "tavern", {
+        tileX: me?.tileX ?? 0,
+        tileY: me?.tileY ?? 0,
+      });
+      if (counter) await walkTo(room, counter, 20000);
       if (!running()) break;
       room.send(MSG_SELL, { stackKey: dish.key, qty: 1 });
       await pause();
     }
 
     // A wander between cycles, so the movement loop always has work to do.
-    const me = selfOf(room);
-    if (me) {
-      await walkTo(
-        room,
-        { tileX: 8 + Math.floor(Math.random() * 8), tileY: 16 + Math.floor(Math.random() * 4) },
-        10000,
-      );
+    const wanderer = selfOf(room);
+    if (wanderer) {
+      // Somewhere walkable, picked from the map rather than from memory.
+      const area = areaFor(wanderer.section);
+      for (let tries = 0; tries < 12; tries += 1) {
+        const tileX = Math.floor(Math.random() * area.cols);
+        const tileY = Math.floor(Math.random() * area.rows);
+        if (!isWalkableOn(wanderer.section, tileX, tileY)) continue;
+        await walkTo(room, { tileX, tileY }, 10000);
+        break;
+      }
     }
     await pause();
   }

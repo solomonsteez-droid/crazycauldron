@@ -15,8 +15,11 @@ import { Client, type Room } from "colyseus.js";
 import bs58 from "bs58";
 import nacl from "tweetnacl";
 import {
-  HUB_PORTALS,
-  HUB_STATIONS,
+  HUB_MAP,
+  approachTo,
+  areaNode,
+  isWalkableOn,
+  zoneById,
   MSG_ATE,
   MSG_BUY,
   MSG_COOK_PREP,
@@ -156,6 +159,39 @@ async function signIn(): Promise<{ token: string; wallet: string }> {
   ).json()) as { token: string; wallet: string };
 }
 
+
+/**
+ * Where to stand to use a zone, and where to stand to gather a node.
+ *
+ * Asked of the map rather than worked out here: a painted building is solid,
+ * so the cell a player wants is always outside it, and which cell that is is a
+ * question about the walkable mask.
+ */
+function approachZone(mapId: number, zoneId: string, from: TilePos): TilePos | null {
+  const zone = zoneById(mapId, zoneId);
+  return zone ? approachTo(mapId, zone, from) : null;
+}
+
+function besideNode(mapId: number, nodeId: string): TilePos | null {
+  const node = areaNode(mapId, nodeId);
+  if (!node) return null;
+  for (const [dx, dy] of [
+    [0, 1],
+    [0, -1],
+    [1, 0],
+    [-1, 0],
+    [1, 1],
+    [-1, -1],
+    [1, -1],
+    [-1, 1],
+  ] as const) {
+    if (isWalkableOn(mapId, node.c + dx, node.r + dy)) {
+      return { tileX: node.c + dx, tileY: node.r + dy };
+    }
+  }
+  return null;
+}
+
 interface SelfView {
   tileX: number;
   tileY: number;
@@ -213,8 +249,6 @@ async function walkTo(room: Room, target: TilePos, timeoutMs = 25000): Promise<v
 interface NodeDef {
   id: string;
   ingredient: string;
-  tileX: number;
-  tileY: number;
 }
 
 /**
@@ -253,6 +287,7 @@ async function tryGather(room: Room, node: NodeDef): Promise<GatherResultPayload
  */
 async function stockUp(
   room: Room,
+  mapId: number,
   nodes: NodeDef[],
   ingredientId: string,
   want: number,
@@ -273,7 +308,9 @@ async function stockUp(
       if (countOf(ingredientId) >= want) break;
       if (Date.now() < (cooldowns.get(node.id) ?? 0)) continue;
 
-      await walkTo(room, { tileX: node.tileX, tileY: node.tileY });
+      const beside = besideNode(mapId, node.id);
+      if (!beside) throw new Error(`nowhere to stand beside ${node.id}`);
+      await walkTo(room, beside);
       const result = await tryGather(room, node);
       if (result) {
         cooldowns.set(node.id, result.readyAt);
@@ -332,10 +369,11 @@ async function cookOnce(room: Room, recipeId: string): Promise<CookResultPayload
   return result;
 }
 
-const station = (id: string): TilePos => {
-  const found = HUB_STATIONS.find((entry) => entry.id === id);
-  if (!found) throw new Error(`no ${id} station in content`);
-  return { tileX: found.tileX, tileY: found.tileY };
+/** The cell to stand on to use one of the hub's counters. */
+const station = (id: string, from: TilePos): TilePos => {
+  const at = approachZone(HUB_MAP, id, from);
+  if (!at) throw new Error(`nowhere to stand at the ${id}`);
+  return at;
 };
 
 async function main() {
@@ -398,8 +436,8 @@ async function main() {
 
   // --- travel --------------------------------------------------------------
   console.log("\n-- travel --");
-  const portal = HUB_PORTALS.find((p) => p.section === 1);
-  const forestPortal = HUB_PORTALS.find((p) => p.section === 2);
+  const portal = zoneById(HUB_MAP, "portal_1");
+  const forestPortal = zoneById(HUB_MAP, "portal_2");
   if (!portal || !forestPortal) throw new Error("missing portals in content");
 
   room.send(MSG_TRAVEL, { section: 1 });
@@ -407,7 +445,7 @@ async function main() {
   check("travel refused away from the gate", rejected("not_at_portal"));
 
   const locked = findSection(2);
-  await walkTo(room, { tileX: forestPortal.tileX, tileY: forestPortal.tileY });
+  await walkTo(room, approachZone(HUB_MAP, "portal_2", self(room))!);
   room.send(MSG_TRAVEL, { section: 2 });
   await sleep(300);
   check(
@@ -417,7 +455,7 @@ async function main() {
     ),
   );
 
-  await walkTo(room, { tileX: portal.tileX, tileY: portal.tileY });
+  await walkTo(room, approachZone(HUB_MAP, "portal_1", self(room))!);
   room.send(MSG_TRAVEL, { section: 1 });
   const nodes = await mail.next<NodesPayload>(MSG_NODES);
   check("arrived in the Meadows", nodes.section === 1 && (await waitForSection(room, 1)));
@@ -435,7 +473,7 @@ async function main() {
   if (!firstNode || !saltNode) throw new Error("meadows is missing nodes");
 
   mail.drain(MSG_REJECTED);
-  await walkTo(room, { tileX: firstNode.tileX, tileY: firstNode.tileY });
+  await walkTo(room, besideNode(1, firstNode.id)!);
 
   room.send(MSG_GATHER, { nodeId: firstNode.id });
   const started = await mail.next<GatherStartedPayload>(MSG_GATHER_STARTED);
@@ -461,7 +499,7 @@ async function main() {
   await sleep(400);
   check("cooldown blocks a regather", rejected("cooldown"));
 
-  await walkTo(room, { tileX: saltNode.tileX, tileY: saltNode.tileY });
+  await walkTo(room, besideNode(1, saltNode.id)!);
   room.send(MSG_GATHER, { nodeId: saltNode.id });
   const salt = await mail.next<GatherResultPayload>(MSG_GATHER_RESULT);
   check("prospecting awards prospecting XP", salt.skill === "prospecting");
@@ -469,8 +507,8 @@ async function main() {
 
   // Two flatbreads worth: one for the tavern, one to eat. Both nodes worked
   // above are still regrowing, so seed their timers rather than rediscover them.
-  await stockUp(room, meadows.nodes, "sunwheat", 4, new Map([[firstNode.id, gathered.readyAt]]));
-  await stockUp(room, meadows.nodes, "rock_salt", 2, new Map([[saltNode.id, salt.readyAt]]));
+  await stockUp(room, 1, meadows.nodes, "sunwheat", 4, new Map([[firstNode.id, gathered.readyAt]]));
+  await stockUp(room, 1, meadows.nodes, "rock_salt", 2, new Map([[saltNode.id, salt.readyAt]]));
   check(
     "holding enough for two flatbreads",
     countOf("sunwheat") >= 4 && countOf("rock_salt") >= 2,
@@ -483,7 +521,9 @@ async function main() {
 
   // --- cooking -------------------------------------------------------------
   console.log("\n-- cooking --");
-  await walkTo(room, meadows.returnPortal);
+  const wayOut = approachZone(meadows.index, "portal_hub", self(room));
+  if (!wayOut) throw new Error("no way out of the Meadows");
+  await walkTo(room, wayOut);
   room.send(MSG_TRAVEL, { section: 0 });
   check("back in the hub", await waitForSection(room, 0));
 
@@ -492,7 +532,7 @@ async function main() {
   await sleep(300);
   check("cooking is refused away from the kitchen", rejected("not_at_kitchen"));
 
-  await walkTo(room, station("kitchen"));
+  await walkTo(room, station("kitchen", self(room)));
 
   // A click whose reported time is nowhere near the server measurement is
   // thrown away, and nothing is consumed by the attempt.
@@ -613,7 +653,7 @@ async function main() {
   await sleep(300);
   check("selling is refused away from the tavern", rejected("not_at_tavern"));
 
-  await walkTo(room, station("tavern"));
+  await walkTo(room, station("tavern", self(room)));
   room.send(MSG_SELL, { stackKey: dish.key, qty: 1 });
   const sold = await mail.next<SoldPayload>(MSG_SOLD);
   // 5 base x 2.4 for Superb, retuned in Block 3.5 from 1.6.
@@ -626,7 +666,7 @@ async function main() {
   await sleep(300);
   check("buying is refused away from the outfitter", rejected("not_at_outfitter"));
 
-  await walkTo(room, station("outfitter"));
+  await walkTo(room, station("outfitter", self(room)));
   room.send(MSG_BUY, { kind: "bag", tier: 1 });
   await sleep(300);
   check("cannot buy what you cannot afford", rejected("too_poor"));
@@ -637,7 +677,7 @@ async function main() {
 
   // --- buff ----------------------------------------------------------------
   console.log("\n-- buff --");
-  await walkTo(room, station("kitchen"));
+  await walkTo(room, station("kitchen", self(room)));
   await cookOnce(room, "meadow_flatbread");
 
   const spare = profile.inventory.find((entry) => entry.kind === "dish");

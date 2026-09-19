@@ -20,8 +20,9 @@ import bs58 from "bs58";
 import nacl from "tweetnacl";
 import {
   HUB_MAP,
-  HUB_PORTALS,
-  HUB_STATIONS,
+  approachTo,
+  areaNode,
+  zoneById,
   MSG_ATE,
   MSG_BOUGHT,
   MSG_BUY,
@@ -142,6 +143,12 @@ class Session {
     return this.rejections.map((r) => r.reason).join(", ") || "nothing";
   }
 
+  /** Where this session is standing, for working out where to walk next. */
+  tile(): TilePos {
+    const me = this.self();
+    return me ? { tileX: me.tileX, tileY: me.tileY } : { tileX: 0, tileY: 0 };
+  }
+
   self(): { tileX: number; tileY: number; section: number } | undefined {
     const state = this.room.state as {
       players?: { get(id: string): { tileX: number; tileY: number; section: number } | undefined };
@@ -167,18 +174,36 @@ class Session {
 
 // --------------------------------------------------------------------------
 
-/** A tile beside a feature that a player can actually stand on. */
-function beside(mapId: number, tile: TilePos): TilePos {
+/**
+ * Where to stand to use a zone, and where to stand to gather a node.
+ *
+ * Asked of the map rather than worked out here: a painted building is solid,
+ * so the cell a player wants is always outside it, and which cell that is is a
+ * question about the walkable mask.
+ */
+function approachZone(mapId: number, zoneId: string, from: TilePos): TilePos | null {
+  const zone = zoneById(mapId, zoneId);
+  return zone ? approachTo(mapId, zone, from) : null;
+}
+
+function besideNode(mapId: number, nodeId: string): TilePos | null {
+  const node = areaNode(mapId, nodeId);
+  if (!node) return null;
   for (const [dx, dy] of [
     [0, 1],
     [0, -1],
     [1, 0],
     [-1, 0],
+    [1, 1],
+    [-1, -1],
+    [1, -1],
+    [-1, 1],
   ] as const) {
-    const candidate = { tileX: tile.tileX + dx, tileY: tile.tileY + dy };
-    if (isWalkableOn(mapId, candidate.tileX, candidate.tileY)) return candidate;
+    if (isWalkableOn(mapId, node.c + dx, node.r + dy)) {
+      return { tileX: node.c + dx, tileY: node.r + dy };
+    }
   }
-  return tile;
+  return null;
 }
 
 async function main() {
@@ -249,11 +274,12 @@ async function main() {
   console.log("\n-- locked content --");
   {
     const locked = SECTIONS.find((s) => s.unlockChefLevel > 1);
-    const gate = locked ? HUB_PORTALS.find((p) => p.section === locked.index) : undefined;
+    const gate = locked ? zoneById(HUB_MAP, `portal_${locked.index}`) : undefined;
     if (!locked || !gate) {
       check("a locked section exists to test", false);
     } else {
-      await session.walkTo(beside(HUB_MAP, { tileX: gate.tileX, tileY: gate.tileY }));
+      const at = approachZone(HUB_MAP, gate.id, session.tile());
+      if (at) await session.walkTo(at);
       session.clear();
       session.room.send(MSG_TRAVEL, { section: locked.index });
       await session.settle();
@@ -287,8 +313,7 @@ async function main() {
 
   // --- cooking without the means -------------------------------------------
   console.log("\n-- cooking without the means --");
-  const kitchen = HUB_STATIONS.find((s) => s.id === "kitchen")!;
-  await session.walkTo(beside(HUB_MAP, { tileX: kitchen.tileX, tileY: kitchen.tileY }));
+  await session.walkTo(approachZone(HUB_MAP, "kitchen", session.tile())!);
 
   {
     session.clear();
@@ -326,14 +351,13 @@ async function main() {
   // --- faster than the animation -------------------------------------------
   console.log("\n-- faster than the animation --");
   {
-    const gate = HUB_PORTALS.find((p) => p.section === meadows.index)!;
-    await session.walkTo(beside(HUB_MAP, { tileX: gate.tileX, tileY: gate.tileY }));
+    await session.walkTo(approachZone(HUB_MAP, `portal_${meadows.index}`, session.tile())!);
     session.room.send(MSG_TRAVEL, { section: meadows.index });
     await session.settle(1200);
     check("the Meadows are open at Chef 1", session.self()?.section === meadows.index);
 
     const node = meadows.nodes[0]!;
-    await session.walkTo(beside(meadows.index, { tileX: node.tileX, tileY: node.tileY }));
+    await session.walkTo(besideNode(meadows.index, node.id)!);
 
     session.clear();
     // Ten gathers in a burst. The first may start; every one after it is a
@@ -380,12 +404,11 @@ async function main() {
   // --- selling what was never owned ----------------------------------------
   console.log("\n-- selling what was never owned --");
   {
-    await session.walkTo(beside(meadows.index, meadows.returnPortal));
+    await session.walkTo(approachZone(meadows.index, "portal_hub", session.tile())!);
     session.room.send(MSG_TRAVEL, { section: HUB_MAP });
     await session.settle(1200);
 
-    const tavern = HUB_STATIONS.find((s) => s.id === "tavern")!;
-    await session.walkTo(beside(HUB_MAP, { tileX: tavern.tileX, tileY: tavern.tileY }));
+    await session.walkTo(approachZone(HUB_MAP, "tavern", session.tile())!);
 
     const coinsBefore = session.profile()?.coins ?? 0;
     session.clear();
@@ -434,8 +457,7 @@ async function main() {
 
   console.log("\n-- buying what cannot be bought --");
   {
-    const outfitter = HUB_STATIONS.find((s) => s.id === "outfitter")!;
-    await session.walkTo(beside(HUB_MAP, { tileX: outfitter.tileX, tileY: outfitter.tileY }));
+    await session.walkTo(approachZone(HUB_MAP, "outfitter", session.tile())!);
 
     const coinsBefore = session.profile()?.coins ?? 0;
 

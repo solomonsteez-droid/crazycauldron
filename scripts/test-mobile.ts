@@ -245,8 +245,9 @@ console.log("\n-- input --");
     scene.includes("Phaser.Input.Events.POINTER_DOWN") && scene.includes("pickFeature"),
   );
   check(
-    "picking has a radius rather than needing the exact tile",
-    scene.includes("pickFeature") && read("client/src/map/gameMap.ts").includes("PICK_TILES"),
+    "picking has a radius rather than needing the exact cell",
+    scene.includes("pickFeature") && read("client/src/map/gameMap.ts").includes("PICK_CELLS"),
+    "a 24px cell is a small target for a fingertip",
   );
   check(
     "the dock drops its keyboard hints where there is no keyboard",

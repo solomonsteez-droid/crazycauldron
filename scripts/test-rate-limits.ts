@@ -20,7 +20,10 @@ import nacl from "tweetnacl";
 import {
   AUTH_RATE_LIMIT,
   HUB_MAP,
-  HUB_PORTALS,
+  approachTo,
+  areaFor,
+  areaNode,
+  zoneById,
   SECTIONS,
   MSG_TRAVEL,
   MSG_GATHER,
@@ -122,18 +125,67 @@ async function takeSeat(): Promise<Seat> {
   return seat;
 }
 
-/** A tile beside a feature that a player can actually stand on. */
-function beside(mapId: number, tile: TilePos): TilePos {
+/**
+ * Where to stand to use a zone, and where to stand to gather a node.
+ *
+ * Asked of the map rather than worked out here: a painted building is solid,
+ * so the cell a player wants is always outside it, and which cell that is is a
+ * question about the walkable mask.
+ */
+function approachZone(mapId: number, zoneId: string, from: TilePos): TilePos | null {
+  const zone = zoneById(mapId, zoneId);
+  return zone ? approachTo(mapId, zone, from) : null;
+}
+
+function besideNode(mapId: number, nodeId: string): TilePos | null {
+  const node = areaNode(mapId, nodeId);
+  if (!node) return null;
   for (const [dx, dy] of [
     [0, 1],
     [0, -1],
     [1, 0],
     [-1, 0],
+    [1, 1],
+    [-1, -1],
+    [1, -1],
+    [-1, 1],
   ] as const) {
-    const candidate = { tileX: tile.tileX + dx, tileY: tile.tileY + dy };
-    if (isWalkableOn(mapId, candidate.tileX, candidate.tileY)) return candidate;
+    if (isWalkableOn(mapId, node.c + dx, node.r + dy)) {
+      return { tileX: node.c + dx, tileY: node.r + dy };
+    }
   }
-  return tile;
+  return null;
+}
+
+/**
+ * A walkable cell to walk to, taken from the map rather than from memory.
+ *
+ * The old version named hub tiles by hand. A painted map's walkable set is
+ * decided by the picture, so a hard-coded destination is a coin flip.
+ */
+function somewhereWalkable(mapId: number, from: TilePos): TilePos {
+  const area = areaFor(mapId);
+  let best = from;
+  let bestDistance = 0;
+  for (let r = 0; r < area.rows; r += 1) {
+    for (let c = 0; c < area.cols; c += 1) {
+      if (!isWalkableOn(mapId, c, r)) continue;
+      const distance = Math.max(Math.abs(c - from.tileX), Math.abs(r - from.tileY));
+      // Somewhere a few cells away: far enough that arriving proves movement,
+      // near enough that the walk finishes inside the timeout.
+      if (distance > bestDistance && distance <= 5) {
+        bestDistance = distance;
+        best = { tileX: c, tileY: r };
+      }
+    }
+  }
+  return best;
+}
+
+/** Where a seated player is standing. */
+function tileOf(seat: Seat): TilePos {
+  const me = seat.self();
+  return me ? { tileX: me.tileX, tileY: me.tileY } : { tileX: 0, tileY: 0 };
 }
 
 /** Sends a destination and waits for the server to walk the player there. */
@@ -212,7 +264,7 @@ async function main() {
   console.log("\n-- the bystander --");
   {
     const start = Date.now();
-    const walked = await walkTo(bystander, { tileX: 12, tileY: 18 }, 10000);
+    const walked = await walkTo(bystander, somewhereWalkable(HUB_MAP, tileOf(bystander)), 10000);
     check("still moves during the burst", walked, `${Date.now() - start}ms`);
     check("and was never kicked", bystander.self() !== undefined);
     check(
@@ -233,14 +285,14 @@ async function main() {
      * and a test that passes on the wrong refusal is not testing the guard.
      */
     const meadows = SECTIONS[0]!;
-    const gate = HUB_PORTALS.find((p) => p.section === meadows.index)!;
+    const gateId = `portal_${meadows.index}`;
     const node = meadows.nodes[0]!;
 
     for (const seat of [hammer, quiet]) {
-      await walkTo(seat, beside(HUB_MAP, { tileX: gate.tileX, tileY: gate.tileY }));
+      await walkTo(seat, approachZone(HUB_MAP, gateId, tileOf(seat))!);
       seat.room.send(MSG_TRAVEL, { section: meadows.index });
       await sleep(1200);
-      await walkTo(seat, beside(meadows.index, { tileX: node.tileX, tileY: node.tileY }));
+      await walkTo(seat, besideNode(meadows.index, node.id)!);
     }
     check(
       "both are standing at a node in the Meadows",
@@ -275,7 +327,7 @@ async function main() {
     // The quiet session sends exactly one of the same message, from a
     // different node so the first one's cooldown is not what answers.
     const otherNode = meadows.nodes[1] ?? node;
-    await walkTo(quiet, beside(meadows.index, { tileX: otherNode.tileX, tileY: otherNode.tileY }));
+    await walkTo(quiet, besideNode(meadows.index, otherNode.id)!);
     quiet.rejections.length = 0;
     quiet.room.send(MSG_GATHER, { nodeId: otherNode.id });
     await sleep(4500);
@@ -287,7 +339,11 @@ async function main() {
     );
     check("and its own gather went through", quiet.gathers >= 1, `${quiet.gathers} gathers`);
 
-    const stillMoving = await walkTo(quiet, beside(meadows.index, meadows.returnPortal), 12000);
+    const stillMoving = await walkTo(
+      quiet,
+      approachZone(meadows.index, "portal_hub", tileOf(quiet))!,
+      12000,
+    );
     check("and it still moves", stillMoving);
 
     await hammer.room.leave();
@@ -297,7 +353,7 @@ async function main() {
   // --- and the bystander is still fine --------------------------------------
   console.log("\n-- afterwards --");
   {
-    const walked = await walkTo(bystander, { tileX: 13, tileY: 17 }, 10000);
+    const walked = await walkTo(bystander, somewhereWalkable(HUB_MAP, tileOf(bystander)), 10000);
     check("the bystander is still playing", walked);
     const health = (await (await fetch(`${HTTP}/health`)).json()) as { ok: boolean };
     check("and the server is healthy", health.ok);
