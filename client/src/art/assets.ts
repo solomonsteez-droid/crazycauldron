@@ -9,6 +9,7 @@
 
 import Phaser from "phaser";
 import {
+  AMBIENCE,
   INGREDIENTS,
   PALETTE,
   RECIPES,
@@ -50,6 +51,8 @@ export const hasProcessedNode = (archetype: string) => PROCESSED_NODES.has(arche
 export const nodeArchetype = (ingredientId: string): string =>
   INGREDIENTS.find((i) => i.id === ingredientId)?.node ?? "herb";
 export const uiKey = (name: string) => `ui:${name}`;
+/** Decor is cut per map, so the key carries the map it was cut for. */
+export const decorKey = (mapId: number, id: string) => `decor:${mapId}:${id}`;
 export const effectKey = (name: string) => `fx:${name}`;
 export const terrainKey = (mapId: number) => `terrain:${mapId}`;
 
@@ -114,6 +117,15 @@ export function queueArt(scene: Phaser.Scene, manifest: Manifest): void {
 
   for (const id of manifest.ingredients ?? []) {
     scene.load.image(ingredientKey(id), `${GENERATED}/ingredients/${id}.png`);
+  }
+
+  for (const entry of manifest.decor ?? []) {
+    for (const item of entry.items) {
+      scene.load.image(
+        decorKey(entry.map, item.id),
+        `${GENERATED}/decor/${entry.map}_${item.id}.png`,
+      );
+    }
   }
 
   for (const node of manifest.nodes ?? []) {
@@ -240,6 +252,45 @@ export function drawPlaceholders(scene: Phaser.Scene): void {
     const id = PORTAL_PROP[section.index];
     if (id) portalChip(scene, propKey(id), section.accentColor);
   }
+
+  // Named plaza props. The art may not have been processed - a stand-in keeps
+  // the well, the cart and the signpost on the map either way.
+  for (const item of AMBIENCE.hubProps.items) smallPropChip(scene, propKey(item.prop), item.prop);
+}
+
+/**
+ * A stand-in for a named hub prop.
+ *
+ * Deliberately crude - a post, a box or a mound in the palette - because its
+ * only job is to hold the spot until the drop lands, and anything more
+ * elaborate would be mistaken for finished art.
+ */
+function smallPropChip(scene: Phaser.Scene, key: string, id: string): void {
+  if (scene.textures.exists(key)) return;
+  const g = scene.add.graphics();
+
+  g.fillStyle(PALETTE.shadow, 0.3);
+  g.fillEllipse(16, 30, 22, 6);
+
+  if (id === "prop_lantern" || id === "prop_signpost") {
+    g.fillStyle(PALETTE.rock, 1);
+    g.fillRect(14, 10, 4, 20);
+    g.fillStyle(id === "prop_lantern" ? PALETTE.saffron : PALETTE.parchment, 1);
+    g.fillRect(10, 4, 12, 8);
+  } else if (id === "prop_campfire") {
+    g.fillStyle(PALETTE.rock, 1);
+    g.fillRect(8, 24, 16, 5);
+    g.fillStyle(PALETTE.danger, 1);
+    g.fillTriangle(16, 10, 23, 25, 9, 25);
+  } else {
+    g.fillStyle(PALETTE.path, 1);
+    g.fillRect(7, 12, 18, 18);
+    g.fillStyle(PALETTE.night, 0.6);
+    g.fillRect(7, 12, 18, 4);
+  }
+
+  g.generateTexture(key, 32, 32);
+  g.destroy();
 }
 
 function nodeChip(scene: Phaser.Scene, key: string, colour: number, full: boolean): void {

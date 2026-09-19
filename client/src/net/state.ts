@@ -38,8 +38,22 @@ export interface PlayerView extends Watchable {
   apronId: string;
 }
 
+/** A hub resident. No wallet and no progress - they are scenery that walks. */
+export interface VillagerView extends Watchable {
+  id: string;
+  name: string;
+  tileX: number;
+  tileY: number;
+  facing: string;
+  moving: boolean;
+  body: string;
+  hatId: string;
+  apronId: string;
+}
+
 export interface HubStateView {
   players: MapSchemaLike<PlayerView>;
+  villagers: MapSchemaLike<VillagerView>;
 }
 
 export interface QueuedPlayerView extends Watchable {

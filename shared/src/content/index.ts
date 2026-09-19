@@ -7,12 +7,15 @@
  * below, so tuning a number never means touching code.
  */
 
+import ambienceJson from "./ambience.json" with { type: "json" };
 import ingredientsJson from "./ingredients.json" with { type: "json" };
 import recipesJson from "./recipes.json" with { type: "json" };
 import sectionsJson from "./sections.json" with { type: "json" };
 import skillsJson from "./skills.json" with { type: "json" };
 import terrainJson from "./terrain.json" with { type: "json" };
 import type {
+  AmbienceFile,
+  DecorPiece,
   GatherNodeDef,
   TerrainFile,
   Ingredient,
@@ -41,6 +44,33 @@ export const TERRAIN = terrainJson as unknown as TerrainFile;
 /** Terrain settings for a map id, falling back to the hub's. */
 export function terrainFor(mapId: number) {
   return TERRAIN.maps.find((m) => m.map === mapId) ?? TERRAIN.maps[0]!;
+}
+
+/**
+ * The scenery a map may be dressed with, resolved through its pack.
+ *
+ * A map names decor ids; the pack owns the files. Anything a map asks for that
+ * its pack does not have is dropped here rather than failing a build, so
+ * retiring one piece of art never breaks a map that still lists it.
+ */
+export function decorFor(mapId: number): DecorPiece[] {
+  const map = terrainFor(mapId);
+  const pieces = TERRAIN.decor[map.pack] ?? [];
+  const wanted = map.decor ?? [];
+  return wanted
+    .map((id) => pieces.find((piece) => piece.id === id))
+    .filter((piece): piece is DecorPiece => piece !== undefined);
+}
+
+export const AMBIENCE = ambienceJson as unknown as AmbienceFile;
+
+/** Particle settings for a map, or null when it has none authored. */
+export function lifeFor(mapId: number) {
+  return AMBIENCE.life.maps.find((m) => m.map === mapId) ?? null;
+}
+
+export function dressingFor(mapId: number) {
+  return AMBIENCE.dressing.maps.find((m) => m.map === mapId) ?? null;
 }
 
 const ingredientById = new Map(INGREDIENTS.map((i) => [i.id, i]));

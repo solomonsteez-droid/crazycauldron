@@ -23,6 +23,8 @@ import {
   MSG_DEV,
   MSG_EQUIP,
   MSG_GATHER,
+  MSG_GREET,
+  MSG_GREETED,
   MSG_GATHER_RESULT,
   MSG_GATHER_STARTED,
   MSG_HEAT_BAR,
@@ -38,6 +40,7 @@ import {
   PATCH_RATE_MS,
   facingFor,
   findPath,
+  hashSeed,
   CHEF_MAX_LEVEL,
   SECTIONS,
   SKILL_IDS,
@@ -62,6 +65,8 @@ import {
   type DevIntent,
   type EquipIntent,
   type GatherIntent,
+  type GreetIntent,
+  type GreetedPayload,
   type GatherResultPayload,
   type HeatBarPayload,
   type MoveIntent,
@@ -79,6 +84,7 @@ import { makeHeatBar, planCook, resolveCook, validateClick } from "../game/cooki
 import { buyUpgrade, eatStack, sellStack } from "../game/economy.js";
 import { completeGather, nodeStates, planGather } from "../game/gathering.js";
 import { loadSession, type Session } from "../game/session.js";
+import { VillagerCrowd } from "../game/villagers.js";
 import { log } from "../logger.js";
 import { checkHold, invalidateHold } from "../tokengate/index.js";
 import { authenticateJoin, CLOSE_INSUFFICIENT_HOLD, type JoinAuth } from "./auth.js";
@@ -102,6 +108,8 @@ export class HubRoom extends Room<HubState> {
   private readonly expiries = new Map<string, number>();
   /** Progress, rate-limit guard and in-flight action, per connection. */
   private readonly sessions = new Map<string, Session>();
+  /** The hub's residents. Decoration, but server-simulated so all clients agree. */
+  private crowd!: VillagerCrowd;
 
   override onCreate() {
     this.setState(new HubState());
@@ -124,6 +132,7 @@ export class HubRoom extends Room<HubState> {
     this.onMessage(MSG_EAT, (client, message: EatIntent) => this.onEat(client, message));
     this.onMessage(MSG_BUY, (client, message: BuyIntent) => this.onBuy(client, message));
     this.onMessage(MSG_EQUIP, (client, message: EquipIntent) => this.onEquip(client, message));
+    this.onMessage(MSG_GREET, (client, message: GreetIntent) => this.onGreet(client, message));
 
     /*
      * The cheat handler is not registered in production at all, rather than
@@ -138,6 +147,15 @@ export class HubRoom extends Room<HubState> {
 
     // One tick = one tile of progress for everyone currently walking.
     this.setSimulationInterval(() => this.stepMovement(), MOVE_STEP_MS);
+
+    /*
+     * The villagers walk on their own slower clock. Seeded from the room id so
+     * two hubs are populated differently while one hub stays the same town for
+     * as long as it lives.
+     */
+    this.crowd = new VillagerCrowd(this.state.villagers, hashSeed(this.roomId));
+    this.crowd.populate(Date.now());
+    this.clock.setInterval(() => this.crowd.step(Date.now()), VillagerCrowd.stepMs);
 
     // Holding $COOK is a condition of staying, not just of entering.
     this.clock.setInterval(() => void this.revalidateHolders(), BALANCE_CACHE_TTL_MS);
@@ -794,6 +812,25 @@ export class HubRoom extends Room<HubState> {
       wallet: session.state.wallet,
       items: earned.map((i) => i.id),
     });
+  }
+
+  // --- villagers -----------------------------------------------------------
+
+  /**
+   * A hello. The line comes from the roster in ambience.json, picked by the
+   * server so two players standing together hear the same thing - and so the
+   * client cannot put words in a villager's mouth.
+   */
+  private onGreet(client: Client, message: GreetIntent) {
+    const villagerId = String(message?.villagerId ?? "");
+    const villager = this.state.villagers.get(villagerId);
+    if (!villager) return;
+
+    const line = VillagerCrowd.lineFor(villagerId, Math.floor(Date.now() / 1000));
+    if (!line) return;
+
+    const payload: GreetedPayload = { villagerId, name: villager.name, line };
+    client.send(MSG_GREETED, payload);
   }
 
   // --- development ---------------------------------------------------------

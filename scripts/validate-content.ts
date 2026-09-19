@@ -10,6 +10,7 @@
  */
 
 import {
+  AMBIENCE,
   CONFIG,
   INGREDIENTS,
   RECIPES,
@@ -19,8 +20,15 @@ import {
   HUB_SPAWN,
   HUB_STATIONS,
   MAP_SIZE,
+  decorFor,
+  dressingFor,
   findIngredient,
   findPath,
+  hubTileId,
+  lifeFor,
+  TERRAIN,
+  TileId,
+  WARDROBE_ITEMS,
   isWalkable,
   isWalkableInSection,
   ingredientSlots,
@@ -288,9 +296,99 @@ for (const skill of ["firecraft", "knifework", "spicecraft"] as const) {
   }
 }
 
+// --- ambience --------------------------------------------------------------
+
+/*
+ * The decoration has to hold together too. A villager wearing a hat that was
+ * renamed, or a well placed on the kitchen doorstep, is exactly the kind of
+ * thing that only shows up when someone loads the game and looks.
+ */
+const villagerIds = new Set<string>();
+const hatIds = new Set(WARDROBE_ITEMS.filter((i) => i.kind === "hat").map((i) => i.id));
+const apronIds = new Set(WARDROBE_ITEMS.filter((i) => i.kind === "apron").map((i) => i.id));
+
+for (const villager of AMBIENCE.villagers.roster) {
+  if (!SNAKE.test(villager.id)) note(`villager id is not snake_case: ${villager.id}`);
+  if (villagerIds.has(villager.id)) note(`duplicate villager id: ${villager.id}`);
+  villagerIds.add(villager.id);
+
+  if (villager.body !== "male" && villager.body !== "female") {
+    note(`villager ${villager.id} has body "${villager.body}", which is not a sheet`);
+  }
+  if (villager.hat && !hatIds.has(villager.hat)) {
+    note(`villager ${villager.id} wears unknown hat ${villager.hat}`);
+  }
+  if (villager.apron && !apronIds.has(villager.apron)) {
+    note(`villager ${villager.id} wears unknown apron ${villager.apron}`);
+  }
+  if (villager.lines.length === 0) note(`villager ${villager.id} has nothing to say`);
+}
+
+const crowd = AMBIENCE.villagers;
+if (crowd.min > crowd.max) note(`villager min ${crowd.min} is above max ${crowd.max}`);
+if (crowd.max > crowd.roster.length) {
+  note(`up to ${crowd.max} villagers are wanted but only ${crowd.roster.length} are authored`);
+}
+if (crowd.stepMs <= 0) note("villagers step every 0ms, which would never move them");
+
+const stationTiles = new Set(HUB_STATIONS.map((s) => `${s.tileX},${s.tileY}`));
+const portalTiles = new Set(HUB_PORTALS.map((p) => `${p.tileX},${p.tileY}`));
+
+for (const prop of AMBIENCE.hubProps.items) {
+  const at = `${prop.tileX},${prop.tileY}`;
+  if (!isWalkable(prop.tileX, prop.tileY)) {
+    note(`hub prop ${prop.prop} at ${at} is off the walkable map`);
+  }
+  if (hubTileId(prop.tileX, prop.tileY) === TileId.Path) {
+    note(`hub prop ${prop.prop} at ${at} stands on a path`);
+  }
+  if (stationTiles.has(at) || portalTiles.has(at)) {
+    note(`hub prop ${prop.prop} at ${at} stands on a building or a gate`);
+  }
+}
+
+for (const map of TERRAIN.maps) {
+  const named = map.decor ?? [];
+  const resolved = decorFor(map.map);
+  if (named.length !== resolved.length) {
+    const missing = named.filter((id) => !resolved.some((piece) => piece.id === id));
+    note(`map ${map.map} lists decor its "${map.pack}" pack does not have: ${missing.join(", ")}`);
+  }
+  if (!dressingFor(map.map)) note(`map ${map.map} has terrain but no dressing settings`);
+  if (!lifeFor(map.map)) note(`map ${map.map} has terrain but no ambient particles`);
+}
+
+const stops = AMBIENCE.dayNight.stops;
+if (AMBIENCE.dayNight.cycleMinutes <= 0) note("the day-night cycle is zero minutes long");
+if (stops.length < 2) note("the day-night cycle needs at least two stops to blend between");
+if (stops[0]?.at !== 0 || stops[stops.length - 1]?.at !== 1) {
+  note("the day-night stops must run from 0 to 1 so the loop joins up");
+}
+for (let i = 1; i < stops.length; i += 1) {
+  if (stops[i]!.at <= stops[i - 1]!.at) {
+    note(`day-night stop "${stops[i]!.label}" is not after "${stops[i - 1]!.label}"`);
+  }
+}
+if (stops[0]?.tint !== stops[stops.length - 1]?.tint) {
+  note("the day-night loop ends on a different colour than it starts, so it will jump");
+}
+
+const cueIds = new Set<string>();
+for (const cue of AMBIENCE.sound.cues) {
+  if (cueIds.has(cue.id)) note(`duplicate sound cue: ${cue.id}`);
+  cueIds.add(cue.id);
+  if (cue.tone <= 0 || cue.ms <= 0) note(`sound cue ${cue.id} has no fallback tone to play`);
+}
+for (const [channel, level] of Object.entries(AMBIENCE.sound.defaults)) {
+  if (level < 0 || level > 1) note(`default ${channel} volume ${level} is outside 0..1`);
+}
+
 // --- report ----------------------------------------------------------------
 console.log(
   `content: ${INGREDIENTS.length} ingredients, ${RECIPES.length} recipes, ${SECTIONS.length} sections, ${SECTIONS.reduce((n, s) => n + s.nodes.length, 0)} nodes`,
+);
+console.log(
+  `ambience: ${AMBIENCE.villagers.roster.length} villagers, ${AMBIENCE.hubProps.items.length} hub props, ${TERRAIN.maps.reduce((n, m) => n + decorFor(m.map).length, 0)} decor pieces`,
 );
 
 if (problems.length === 0) {

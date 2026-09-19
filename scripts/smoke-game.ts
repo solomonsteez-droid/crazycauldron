@@ -30,6 +30,8 @@ import {
   MSG_GATHER,
   MSG_GATHER_RESULT,
   MSG_GATHER_STARTED,
+  MSG_GREET,
+  MSG_GREETED,
   MSG_HEAT_BAR,
   MSG_MOVE,
   MSG_NODES,
@@ -39,12 +41,14 @@ import {
   MSG_SOLD,
   MSG_UNLOCKED,
   MSG_TRAVEL,
+  AMBIENCE,
   findSection,
   type AtePayload,
   type CookPreparedPayload,
   type CookResultPayload,
   type GatherResultPayload,
   type GatherStartedPayload,
+  type GreetedPayload,
   type HeatBarPayload,
   type NodesPayload,
   type ProfilePayload,
@@ -156,6 +160,25 @@ interface SelfView {
   tileX: number;
   tileY: number;
   section: number;
+}
+
+interface VillagerView {
+  id: string;
+  name: string;
+  tileX: number;
+  tileY: number;
+}
+
+interface VillagerMap {
+  size: number;
+  forEach(callback: (value: VillagerView, key: string) => void): void;
+}
+
+function villagers(room: Room): VillagerView[] {
+  const state = room.state as { villagers?: VillagerMap };
+  const out: VillagerView[] = [];
+  state.villagers?.forEach((villager) => out.push({ ...villager }));
+  return out;
 }
 
 function self(room: Room): SelfView {
@@ -334,6 +357,8 @@ async function main() {
     MSG_NODES,
     MSG_REJECTED,
     MSG_GATHER_STARTED,
+  MSG_GREET,
+  MSG_GREETED,
     MSG_GATHER_RESULT,
     MSG_COOK_PREPARED,
     MSG_HEAT_BAR,
@@ -341,6 +366,7 @@ async function main() {
     MSG_SOLD,
   MSG_UNLOCKED,
     MSG_ATE,
+    MSG_GREETED,
   ]) {
     mail.listen(room, type);
   }
@@ -649,6 +675,53 @@ async function main() {
   room.send(MSG_DEV, { command: "nonsense" });
   await sleep(300);
   check("an unknown dev command is refused", rejected("unknown_command"));
+
+  // --- villagers -----------------------------------------------------------
+  console.log(`
+-- villagers --`);
+  const crowd = villagers(room);
+  const settings = AMBIENCE.villagers;
+  check(
+    `the hub is populated`,
+    crowd.length >= settings.min && crowd.length <= settings.max,
+    `${crowd.length} villagers (want ${settings.min}-${settings.max})`,
+  );
+  check(
+    "each is one of the authored residents",
+    crowd.every((v) => settings.roster.some((def) => def.id === v.id && def.name === v.name)),
+    crowd.map((v) => v.name).join(", "),
+  );
+  check(
+    "no two share an id",
+    new Set(crowd.map((v) => v.id)).size === crowd.length,
+  );
+  check(
+    "none of them is in the room count",
+    typeof (room.state as { players: { size: number } }).players.size === "number" &&
+      (room.state as { players: { size: number } }).players.size === 1,
+  );
+
+  // They stroll on their own clock, so a few seconds is enough to see one move.
+  const before = crowd.map((v) => `${v.id}:${v.tileX},${v.tileY}`).join("|");
+  await sleep(6000);
+  const after = villagers(room)
+    .map((v) => `${v.id}:${v.tileX},${v.tileY}`)
+    .join("|");
+  check("they wander on their own", before !== after);
+
+  const subject = crowd[0];
+  if (subject) {
+    room.send(MSG_GREET, { villagerId: subject.id });
+    const greeted = await mail.next<GreetedPayload>(MSG_GREETED);
+    const lines = settings.roster.find((def) => def.id === subject.id)?.lines ?? [];
+    check("greeting one answers", greeted.villagerId === subject.id, greeted.line);
+    check("with a line from the roster", lines.includes(greeted.line));
+  }
+
+  mail.drain(MSG_GREETED);
+  room.send(MSG_GREET, { villagerId: "nobody_here" });
+  await sleep(300);
+  check("greeting nobody says nothing", mail.peekAll(MSG_GREETED).length === 0);
 
   // --- leaderboard ---------------------------------------------------------
   console.log("\n-- leaderboard --");

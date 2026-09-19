@@ -1,0 +1,191 @@
+{
+  "_comment": "Everything that makes the world feel inhabited without changing a rule. Villagers are simulated on the server so every client sees the same person in the same place; dressing, life and sound are client-side decoration seeded from these numbers.",
+  "villagers": {
+    "_comment": "How many wander a hub, and how they move. Slower than a player on purpose: a villager overtaking you reads as a race.",
+    "min": 6,
+    "max": 8,
+    "stepMs": 420,
+    "pauseMsMin": 2600,
+    "pauseMsMax": 7000,
+    "strollTilesMin": 3,
+    "strollTilesMax": 9,
+    "roster": [
+      {
+        "id": "marta",
+        "name": "Old Marta",
+        "body": "female",
+        "hat": "hat_02_straw",
+        "apron": "apron_01_linen",
+        "lines": [
+          "Mind the cauldron, it bites.",
+          "Sunwheat's thick in the Meadows this week.",
+          "I cooked here before you were a thought."
+        ]
+      },
+      {
+        "id": "pip",
+        "name": "Pip",
+        "body": "male",
+        "hat": "hat_03_mushroom",
+        "apron": "",
+        "lines": [
+          "Did you see the glowcaps? Did you?",
+          "I'm not lost. I'm scouting.",
+          "Tavern pays better for the fancy ones."
+        ]
+      },
+      {
+        "id": "brannoc",
+        "name": "Brannoc",
+        "body": "male",
+        "hat": "",
+        "apron": "apron_04_rugged",
+        "lines": [
+          "Caves are cold. Bring something hot.",
+          "Rock salt keeps. Berries don't.",
+          "Good day for a walk, bad day for a climb."
+        ]
+      },
+      {
+        "id": "sefa",
+        "name": "Sefa the Grocer",
+        "body": "female",
+        "hat": "hat_04_acorn",
+        "apron": "apron_02_patched",
+        "lines": [
+          "Fresh today, cheap tomorrow.",
+          "Outfitter's got a bigger bag if you've the coin.",
+          "You look like you're carrying too much."
+        ]
+      },
+      {
+        "id": "dorn",
+        "name": "Dorn",
+        "body": "male",
+        "hat": "hat_01_chef",
+        "apron": "apron_03_berry",
+        "lines": [
+          "Heat's everything. Timing's the rest.",
+          "Burnt three of those this morning.",
+          "Watch the bar, not the pan."
+        ]
+      },
+      {
+        "id": "nell",
+        "name": "Nell",
+        "body": "female",
+        "hat": "",
+        "apron": "apron_01_linen",
+        "lines": [
+          "Somebody left a pot boiling. Again.",
+          "Mind how you go.",
+          "The well's sweeter than the stream."
+        ]
+      },
+      {
+        "id": "hobb",
+        "name": "Hobb",
+        "body": "male",
+        "hat": "hat_02_straw",
+        "apron": "apron_02_patched",
+        "lines": [
+          "Cart's fixed. Mostly.",
+          "Long road from the Deep Forest.",
+          "Seen stranger things than you."
+        ]
+      },
+      {
+        "id": "wren",
+        "name": "Wren",
+        "body": "female",
+        "hat": "hat_05_circlet",
+        "apron": "",
+        "lines": [
+          "The crystals sing, if you're quiet.",
+          "I only cook by moonlight.",
+          "Chef thirty, one day. You watch."
+        ]
+      }
+    ]
+  },
+  "hubProps": {
+    "_comment": "Named decoration with a fixed home in the plaza. Any missing art falls back to a generated chip; a tile that turns out to be a path or a building is skipped rather than drawn over.",
+    "items": [
+      { "prop": "prop_well", "tileX": 9, "tileY": 6, "label": "The old well" },
+      { "prop": "prop_campfire", "tileX": 15, "tileY": 5, "label": "", "glow": "#f2b53b" },
+      { "prop": "prop_lantern", "tileX": 17, "tileY": 9, "label": "", "glow": "#f2b53b" },
+      { "prop": "prop_signpost", "tileX": 9, "tileY": 13, "label": "" },
+      { "prop": "prop_cart", "tileX": 6, "tileY": 16, "label": "" },
+      { "prop": "prop_cottage", "tileX": 19, "tileY": 18, "label": "" }
+    ]
+  },
+  "dressing": {
+    "_comment": "Scattered pack art. Seeded so every player sees the same shrub in the same place, and biased outward so the middle of a map stays clear to play in.",
+    "seed": 20260919,
+    "maps": [
+      { "map": 0, "count": 26, "edgeBias": 2.4 },
+      { "map": 1, "count": 40, "edgeBias": 1.8 },
+      { "map": 2, "count": 54, "edgeBias": 1.4 },
+      { "map": 3, "count": 44, "edgeBias": 1.6 }
+    ]
+  },
+  "life": {
+    "_comment": "Per-map particles. everyMs is how often one is emitted; 0 disables it. All of them draw from the same 200-particle pool as cooking, and cooking wins.",
+    "maps": [
+      {
+        "map": 0,
+        "kind": "smoke",
+        "everyMs": 420,
+        "colour": "#cbbfa6",
+        "_comment": "Chimney smoke over the kitchen roof."
+      },
+      {
+        "map": 1,
+        "kind": "leaves",
+        "everyMs": 900,
+        "colour": "#c9d67a"
+      },
+      {
+        "map": 2,
+        "kind": "fireflies",
+        "everyMs": 700,
+        "colour": "#f2e36b"
+      },
+      {
+        "map": 3,
+        "kind": "motes",
+        "everyMs": 650,
+        "colour": "#a6bce4"
+      }
+    ]
+  },
+  "dayNight": {
+    "_comment": "A 20 minute loop applied to the ground only. Sprites, labels and the HUD keep their own colours, so nothing ever becomes unreadable - the floor simply turns from dawn through noon to dusk and a blue night.",
+    "cycleMinutes": 20,
+    "stops": [
+      { "at": 0.0, "tint": "#ffd9b0", "label": "dawn" },
+      { "at": 0.2, "tint": "#ffffff", "label": "morning" },
+      { "at": 0.45, "tint": "#fff6e0", "label": "noon" },
+      { "at": 0.65, "tint": "#ffc79a", "label": "dusk" },
+      { "at": 0.8, "tint": "#8fa0d6", "label": "night" },
+      { "at": 1.0, "tint": "#ffd9b0", "label": "dawn" }
+    ]
+  },
+  "sound": {
+    "_comment": "Hooks only. Nothing here has to exist: a missing file leaves the cue silent, and the UI cues fall back to the synthesised blip the cooking chime already uses.",
+    "defaults": { "master": 0.6, "ambient": 0.5, "effects": 0.8 },
+    "ambient": [
+      { "map": 0, "file": "amb_hub.ogg" },
+      { "map": 1, "file": "amb_meadows.ogg" },
+      { "map": 2, "file": "amb_forest.ogg" },
+      { "map": 3, "file": "amb_caves.ogg" }
+    ],
+    "cues": [
+      { "id": "click", "file": "ui_click.ogg", "tone": 660, "ms": 60 },
+      { "id": "panel", "file": "ui_panel.ogg", "tone": 440, "ms": 90 },
+      { "id": "gather", "file": "gather.ogg", "tone": 520, "ms": 120 },
+      { "id": "cook", "file": "cook.ogg", "tone": 380, "ms": 140 },
+      { "id": "sell", "file": "sell.ogg", "tone": 780, "ms": 90 }
+    ]
+  }
+}

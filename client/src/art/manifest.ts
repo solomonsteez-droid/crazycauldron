@@ -21,6 +21,12 @@ export interface OverlayEntry {
   offset: Vec2;
 }
 
+/** Scenery the pipeline cut for one map, with the size each piece came out. */
+export interface DecorEntry {
+  map: number;
+  items: { id: string; width: number; height: number }[];
+}
+
 export interface TerrainEntry {
   map: number;
   name: string;
@@ -43,6 +49,7 @@ export interface Manifest {
   /** Node archetypes, with the layout each drop turned out to use. */
   nodes: { id: string; layout: string }[];
   terrain: TerrainEntry[];
+  decor: DecorEntry[];
   optional: Record<string, string[]>;
 }
 
@@ -95,6 +102,7 @@ const EMPTY_MANIFEST: Manifest = {
   ingredients: [],
   nodes: [],
   terrain: [],
+  decor: [],
   optional: {},
 };
 

@@ -10,10 +10,35 @@
       "tileSize": 32
     }
   },
+  "_decorComment": "Scenery cut from the same CC0 packs, one file each rather than atlas indices - the packs ship them separately and a named file survives a pack update that renumbers the atlas. tiles is the footprint in map tiles; height follows the art.",
+  "decor": {
+    "forest": [
+      { "id": "tree_tall", "file": "terrain/forest/Forest Isometric Pack Free/Trees/Tree_1.png", "tiles": 1.5 },
+      { "id": "tree_round", "file": "terrain/forest/Forest Isometric Pack Free/Trees/Tree_2.png", "tiles": 2 },
+      { "id": "tree_small", "file": "terrain/forest/Forest Isometric Pack Free/Trees/Tree_3.png", "tiles": 1.5 },
+      { "id": "tree_dead", "file": "terrain/forest/Forest Isometric Pack Free/Trees/death_Tree_2.png", "tiles": 2 },
+      { "id": "tree_stump", "file": "terrain/forest/Forest Isometric Pack Free/Trees/death_Tree_3.png", "tiles": 1.5 },
+      { "id": "boulder", "file": "terrain/forest/Forest Isometric Pack Free/Rocks/Slice 1.png", "tiles": 1 },
+      { "id": "rock", "file": "terrain/forest/Forest Isometric Pack Free/Rocks/Slice 3.png", "tiles": 0.5 },
+      { "id": "pebble", "file": "terrain/forest/Forest Isometric Pack Free/Rocks/Slice 4.png", "tiles": 0.5 },
+      { "id": "shrub", "file": "terrain/forest/Forest Isometric Pack Free/Leaves/Slice 1.png", "tiles": 0.5 },
+      { "id": "fern", "file": "terrain/forest/Forest Isometric Pack Free/Leaves/Slice 5.png", "tiles": 0.5 },
+      { "id": "flowers", "file": "terrain/forest/Forest Isometric Pack Free/Leaves/Slice 9.png", "tiles": 0.5 }
+    ],
+    "cave": [
+      { "id": "stalagmite", "file": "terrain/cave/Free/Decorations/Slice 29.png", "tiles": 1 },
+      { "id": "column", "file": "terrain/cave/Free/Decorations/Slice 34.png", "tiles": 2 },
+      { "id": "shard", "file": "terrain/cave/Free/Decorations/Slice 30.png", "tiles": 1 },
+      { "id": "rubble", "file": "terrain/cave/Free/Decorations/Slice 3.png", "tiles": 0.5 },
+      { "id": "emerald", "file": "terrain/cave/Free/Minerals/Big_emerald_rock.png", "tiles": 1 },
+      { "id": "ruby", "file": "terrain/cave/Free/Minerals/Big_rubi_rock.png", "tiles": 1 },
+      { "id": "topaz", "file": "terrain/cave/Free/Minerals/small_topacio_rock.png", "tiles": 0.5 }
+    ]
+  },
   "maps": [
-    { "map": 0, "name": "hub", "pack": "forest", "tint": "#ffffff", "tiles": { "grass": 0, "path": 74, "rock": 30 } },
-    { "map": 1, "name": "meadows", "pack": "forest", "tint": "#fff0cc", "tiles": { "grass": 3, "path": 74, "rock": 30 } },
-    { "map": 2, "name": "deep_forest", "pack": "forest", "tint": "#8fae9c", "tiles": { "grass": 2, "path": 5, "rock": 31 } },
-    { "map": 3, "name": "mystical_caves", "pack": "cave", "tint": "#a6bce4", "tiles": { "grass": 25, "path": 0, "rock": 29 } }
+    { "map": 0, "name": "hub", "pack": "forest", "tint": "#ffffff", "tiles": { "grass": 0, "path": 74, "rock": 30 }, "decor": ["tree_round", "tree_small", "shrub", "flowers", "rock", "pebble"] },
+    { "map": 1, "name": "meadows", "pack": "forest", "tint": "#fff0cc", "tiles": { "grass": 3, "path": 74, "rock": 30 }, "decor": ["tree_small", "shrub", "fern", "flowers", "pebble", "rock"] },
+    { "map": 2, "name": "deep_forest", "pack": "forest", "tint": "#8fae9c", "tiles": { "grass": 2, "path": 5, "rock": 31 }, "decor": ["tree_tall", "tree_round", "tree_dead", "tree_stump", "fern", "shrub", "boulder"] },
+    { "map": 3, "name": "mystical_caves", "pack": "cave", "tint": "#a6bce4", "tiles": { "grass": 25, "path": 0, "rock": 29 }, "decor": ["stalagmite", "column", "shard", "rubble", "emerald", "ruby", "topaz"] }
   ]
 }

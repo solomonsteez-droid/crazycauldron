@@ -234,9 +234,95 @@ export interface TerrainMap {
   pack: string;
   tint: string;
   tiles: { grass: number; path: number; rock: number };
+  /** Decor ids from the map's pack that its dressing may draw from. */
+  decor?: string[];
+}
+
+/** One piece of scenery in a pack, by file rather than by atlas index. */
+export interface DecorPiece {
+  id: string;
+  file: string;
+  /** Footprint in map tiles; the height follows the art's own proportions. */
+  tiles: number;
 }
 
 export interface TerrainFile {
   packs: Record<string, TerrainPack>;
+  decor: Record<string, DecorPiece[]>;
   maps: TerrainMap[];
+}
+
+// --- ambience --------------------------------------------------------------
+
+/** One of the hub's residents, as authored. */
+export interface VillagerDef {
+  id: string;
+  name: string;
+  body: string;
+  hat: string;
+  apron: string;
+  lines: string[];
+}
+
+export interface VillagerSettings {
+  min: number;
+  max: number;
+  /** Milliseconds per tile. Larger than MOVE_STEP_MS so nobody outpaces you. */
+  stepMs: number;
+  pauseMsMin: number;
+  pauseMsMax: number;
+  strollTilesMin: number;
+  strollTilesMax: number;
+  roster: VillagerDef[];
+}
+
+export interface HubPropDef {
+  prop: string;
+  tileX: number;
+  tileY: number;
+  label: string;
+  glow?: string;
+}
+
+export interface DressingMap {
+  map: number;
+  count: number;
+  /** How strongly scenery is pushed to the edges; 1 is an even scatter. */
+  edgeBias: number;
+}
+
+export type LifeKind = "smoke" | "leaves" | "fireflies" | "motes";
+
+export interface LifeMap {
+  map: number;
+  kind: LifeKind;
+  everyMs: number;
+  colour: string;
+}
+
+export interface DayNightStop {
+  at: number;
+  tint: string;
+  label: string;
+}
+
+export interface SoundCue {
+  id: string;
+  file: string;
+  /** Fallback tone in Hz, synthesised when the file is missing. */
+  tone: number;
+  ms: number;
+}
+
+export interface AmbienceFile {
+  villagers: VillagerSettings;
+  hubProps: { items: HubPropDef[] };
+  dressing: { seed: number; maps: DressingMap[] };
+  life: { maps: LifeMap[] };
+  dayNight: { cycleMinutes: number; stops: DayNightStop[] };
+  sound: {
+    defaults: { master: number; ambient: number; effects: number };
+    ambient: { map: number; file: string }[];
+    cues: SoundCue[];
+  };
 }

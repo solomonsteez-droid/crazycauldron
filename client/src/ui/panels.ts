@@ -22,6 +22,7 @@ import { defaultOffsets, loadArt, type Manifest, type OffsetsFile } from "../art
 import { fetchLeaderboard } from "../net/api.js";
 import { gameStore } from "../net/game.js";
 import { openModal, toast, type ModalHandle } from "./overlay.js";
+import { sound, type Channel } from "../world/sound.js";
 
 export interface PanelCallbacks {
   onEat(stackKey: string): void;
@@ -460,10 +461,11 @@ export interface DockActions {
   skills(): void;
   codex(): void;
   leaderboard(): void;
+  settings(): void;
 }
 
 /**
- * The always-present toolbar. Stations are walked to; these four are things a
+ * The always-present toolbar. Stations are walked to; these are things a
  * player checks constantly, so they get a button and a key each.
  */
 export class Dock {
@@ -478,6 +480,7 @@ export class Dock {
       ["Skills", "KeyK", actions.skills],
       ["Codex", "KeyC", actions.codex],
       ["Top chefs", "KeyL", actions.leaderboard],
+      ["Settings", "KeyO", actions.settings],
     ];
 
     for (const [label, code, handler] of entries) {
@@ -508,6 +511,60 @@ export class Dock {
 /** Shown when a station panel is opened from too far away. */
 export function tooFar(name: string) {
   toast(`Walk over to the ${name} first.`, "bad");
+}
+
+// --- settings --------------------------------------------------------------
+
+/**
+ * Volume, and nothing else yet.
+ *
+ * The sliders work whether or not any audio exists: with no files in place the
+ * UI cues fall back to a synthesised tone and the ambient beds stay silent, so
+ * turning the ambient channel down still does exactly what it says.
+ */
+export function openSettings(): ModalHandle {
+  const modal = openModal("Settings");
+
+  const note = document.createElement("p");
+  note.textContent = "Volume is remembered on this device.";
+  modal.body.append(note);
+
+  const rows: [Channel, string][] = [
+    ["master", "Overall"],
+    ["ambient", "Ambience"],
+    ["effects", "Effects"],
+  ];
+
+  for (const [channel, label] of rows) {
+    const row = document.createElement("label");
+    row.className = "cc-slider";
+
+    const name = document.createElement("span");
+    name.textContent = label;
+
+    const input = document.createElement("input");
+    input.type = "range";
+    input.min = "0";
+    input.max = "100";
+    input.step = "5";
+    input.value = String(Math.round(sound.levels[channel] * 100));
+
+    const readout = document.createElement("small");
+    readout.textContent = `${input.value}%`;
+
+    input.addEventListener("input", () => {
+      const value = Number(input.value) / 100;
+      sound.setVolume(channel, value);
+      readout.textContent = `${input.value}%`;
+    });
+    // A cue on release, so the slider demonstrates what it just changed.
+    input.addEventListener("change", () => sound.play("panel"));
+
+    row.append(name, input, readout);
+    modal.body.append(row);
+  }
+
+  return modal;
 }
 
 // --- wardrobe --------------------------------------------------------------

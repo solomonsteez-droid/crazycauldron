@@ -24,7 +24,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { QUANTISE_RAMP, RECIPES, INGREDIENTS, TERRAIN } from "@crazycauldron/shared";
+import { QUANTISE_RAMP, RECIPES, INGREDIENTS, TERRAIN, TILE_WIDTH, decorFor } from "@crazycauldron/shared";
 import {
   alphaBounds,
   blank,
@@ -416,8 +416,8 @@ function buildOverlay(
 // Props
 // --------------------------------------------------------------------------
 
-/** Buildings take a 2x2 tile footprint, portals 1x2. Height is free. */
-function buildProp(file: string, id: string, footprint: "building" | "portal"): void {
+/** Buildings take a 2x2 tile footprint, portals 1x2, small props one. Height is free. */
+function buildProp(file: string, id: string, footprint: "building" | "portal" | "small"): void {
   const cleaned = denoise(removeChroma(load(file)));
   const bounds = alphaBounds(cleaned);
   if (!bounds) {
@@ -435,6 +435,57 @@ function buildProp(file: string, id: string, footprint: "building" | "portal"): 
 
   save(path.join(OUT, "props", `${id}.png`), flat);
   note("made", `generated/props/${id}.png ${targetW}x${height}`);
+}
+
+interface DecorOut {
+  map: number;
+  items: { id: string; width: number; height: number }[];
+}
+
+/**
+ * Scenery from the CC0 packs, one sprite per piece per map.
+ *
+ * Cut per map rather than once per pack because the maps tint differently and
+ * a piece is only ever drawn on the map that lists it - so a missing file
+ * costs that map one shrub rather than failing the pack for everyone.
+ */
+function buildDecor(): DecorOut[] {
+  const out: DecorOut[] = [];
+
+  for (const map of TERRAIN.maps) {
+    const items: DecorOut["items"] = [];
+
+    for (const piece of decorFor(map.map)) {
+      const file = path.join(ASSETS, piece.file);
+      if (!exists(file)) {
+        note("skipped", `decor ${piece.id} - ${piece.file} is missing`);
+        continue;
+      }
+
+      const cleaned = denoise(removeChroma(load(file)));
+      const bounds = alphaBounds(cleaned);
+      if (!bounds) {
+        note("skipped", `decor ${piece.id} - nothing left after keying`);
+        continue;
+      }
+
+      const cut = crop(cleaned, bounds);
+      const width = Math.max(4, Math.round(piece.tiles * TILE_WIDTH));
+      const height = Math.max(4, Math.round((cut.height / cut.width) * width));
+
+      // Pack art is already pixel art at roughly this size, so nearest keeps
+      // the edges crisp where the painterly building drops needed averaging.
+      const small = width >= cut.width ? scaleNearest(cut, width, height) : downscaleAveraged(cut, width, height);
+      save(path.join(OUT, "decor", `${map.map}_${piece.id}.png`), small);
+      items.push({ id: piece.id, width, height });
+    }
+
+    if (items.length === 0) continue;
+    note("made", `generated/decor/map ${map.map}: ${items.map((i) => i.id).join(", ")}`);
+    out.push({ map: map.map, items });
+  }
+
+  return out;
 }
 
 
@@ -798,13 +849,20 @@ function main() {
   }
 
   // --- props --------------------------------------------------------------
-  const propSpec: [string, "building" | "portal"][] = [
+  const propSpec: [string, "building" | "portal" | "small"][] = [
     ["kitchen", "building"],
     ["tavern", "building"],
     ["shop", "building"],
     ["portal_meadows", "portal"],
     ["portal_forest", "portal"],
     ["portal_caves", "portal"],
+    // Named plaza dressing. Absent art costs the hub one prop, nothing else.
+    ["prop_well", "small"],
+    ["prop_lantern", "small"],
+    ["prop_campfire", "small"],
+    ["prop_signpost", "small"],
+    ["prop_cottage", "building"],
+    ["prop_cart", "small"],
   ];
   const props: string[] = [];
   /*
@@ -834,6 +892,7 @@ function main() {
 
   // --- terrain ------------------------------------------------------------
   const terrain = buildTerrain();
+  const decor = buildDecor();
 
   // --- manifest -----------------------------------------------------------
   const optional = surveyOptional();
@@ -848,6 +907,7 @@ function main() {
     ingredients: ingredientIcons,
     nodes,
     terrain,
+    decor,
     optional,
   };
   fs.writeFileSync(path.join(OUT, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);

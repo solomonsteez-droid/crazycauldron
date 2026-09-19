@@ -110,6 +110,55 @@ export class Effects {
     });
   }
 
+  /**
+   * A general drifting particle, for ambience rather than feedback.
+   *
+   * Cooking effects have opinions about colour and speed because they mean
+   * something; a firefly or a falling leaf only has to move plausibly, so the
+   * caller supplies the motion and this supplies the pooling. Returns false
+   * when the budget is spent, which is how the ambience knows to stop asking:
+   * a dropped leaf is invisible, a dropped frame is not.
+   */
+  float(options: {
+    x: number;
+    y: number;
+    dx: number;
+    dy: number;
+    colour: number;
+    durationMs: number;
+    scale?: number;
+    alpha?: number;
+    spin?: number;
+    fadeIn?: boolean;
+    texture?: string;
+    depth?: number;
+  }): boolean {
+    const particle = this.take(options.texture ?? TEX_SPARK);
+    if (!particle) return false;
+
+    const alpha = options.alpha ?? 0.8;
+    particle.image
+      .setPosition(options.x, options.y)
+      .setTint(options.colour)
+      .setAlpha(options.fadeIn ? 0 : alpha)
+      .setScale(options.scale ?? 1)
+      .setAngle(0)
+      .setDepth(options.depth ?? 10000);
+
+    particle.tween = this.scene.tweens.add({
+      targets: particle.image,
+      x: options.x + options.dx,
+      y: options.y + options.dy,
+      angle: options.spin ?? 0,
+      alpha: options.fadeIn ? { from: 0, to: alpha } : 0,
+      duration: options.durationMs,
+      ease: "Sine.easeInOut",
+      yoyo: options.fadeIn === true,
+      onComplete: () => this.release(particle),
+    });
+    return true;
+  }
+
   /** A spark thrown off the pan; short, fast and warm. */
   spark(x: number, y: number, depth = 10000): void {
     const particle = this.take(TEX_SPARK);

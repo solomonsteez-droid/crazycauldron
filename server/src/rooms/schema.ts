@@ -34,8 +34,31 @@ export class Player extends Schema {
   @type("string") apronId = "";
 }
 
+/**
+ * A hub resident. Simulated on the server for the same reason players are:
+ * everyone in the room must see Old Marta in the same spot, and a client that
+ * invented her position would put her somewhere else on every screen.
+ *
+ * Deliberately not a Player - villagers have no wallet, no progress and no
+ * session, and giving them one would put them in the room count and on the
+ * leaderboard.
+ */
+export class Villager extends Schema {
+  @type("string") id = "";
+  @type("string") name = "";
+  @type("number") tileX = 0;
+  @type("number") tileY = 0;
+  @type("string") facing: Facing = "s";
+  @type("boolean") moving = false;
+  @type("string") body = "male";
+  @type("string") hatId = "";
+  @type("string") apronId = "";
+}
+
 export class HubState extends Schema {
   @type({ map: Player }) players = new MapSchema<Player>();
+  /** Hub-only; the gathering sections are deliberately empty of people. */
+  @type({ map: Villager }) villagers = new MapSchema<Villager>();
 }
 
 /** The waiting room replicates only the queue length and each player's place. */

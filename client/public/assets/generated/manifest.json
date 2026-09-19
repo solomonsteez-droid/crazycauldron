@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-19T09:23:00.914Z",
+  "generatedAt": "2026-09-19T09:45:37.287Z",
   "bodyFrame": {
     "width": 32,
     "height": 48
@@ -210,7 +210,13 @@
     "shop",
     "portal_meadows",
     "portal_forest",
-    "portal_caves"
+    "portal_caves",
+    "prop_well",
+    "prop_lantern",
+    "prop_campfire",
+    "prop_signpost",
+    "prop_cottage",
+    "prop_cart"
   ],
   "dishes": [
     "meadow_flatbread",
@@ -333,6 +339,158 @@
         20,
         22,
         7
+      ]
+    }
+  ],
+  "decor": [
+    {
+      "map": 0,
+      "items": [
+        {
+          "id": "tree_round",
+          "width": 64,
+          "height": 69
+        },
+        {
+          "id": "tree_small",
+          "width": 48,
+          "height": 60
+        },
+        {
+          "id": "shrub",
+          "width": 16,
+          "height": 23
+        },
+        {
+          "id": "flowers",
+          "width": 16,
+          "height": 21
+        },
+        {
+          "id": "rock",
+          "width": 16,
+          "height": 13
+        },
+        {
+          "id": "pebble",
+          "width": 16,
+          "height": 15
+        }
+      ]
+    },
+    {
+      "map": 1,
+      "items": [
+        {
+          "id": "tree_small",
+          "width": 48,
+          "height": 60
+        },
+        {
+          "id": "shrub",
+          "width": 16,
+          "height": 23
+        },
+        {
+          "id": "fern",
+          "width": 16,
+          "height": 16
+        },
+        {
+          "id": "flowers",
+          "width": 16,
+          "height": 21
+        },
+        {
+          "id": "pebble",
+          "width": 16,
+          "height": 15
+        },
+        {
+          "id": "rock",
+          "width": 16,
+          "height": 13
+        }
+      ]
+    },
+    {
+      "map": 2,
+      "items": [
+        {
+          "id": "tree_tall",
+          "width": 48,
+          "height": 83
+        },
+        {
+          "id": "tree_round",
+          "width": 64,
+          "height": 69
+        },
+        {
+          "id": "tree_dead",
+          "width": 64,
+          "height": 107
+        },
+        {
+          "id": "tree_stump",
+          "width": 48,
+          "height": 69
+        },
+        {
+          "id": "fern",
+          "width": 16,
+          "height": 16
+        },
+        {
+          "id": "shrub",
+          "width": 16,
+          "height": 23
+        },
+        {
+          "id": "boulder",
+          "width": 32,
+          "height": 34
+        }
+      ]
+    },
+    {
+      "map": 3,
+      "items": [
+        {
+          "id": "stalagmite",
+          "width": 32,
+          "height": 30
+        },
+        {
+          "id": "column",
+          "width": 64,
+          "height": 64
+        },
+        {
+          "id": "shard",
+          "width": 32,
+          "height": 27
+        },
+        {
+          "id": "rubble",
+          "width": 16,
+          "height": 18
+        },
+        {
+          "id": "emerald",
+          "width": 32,
+          "height": 29
+        },
+        {
+          "id": "ruby",
+          "width": 32,
+          "height": 29
+        },
+        {
+          "id": "topaz",
+          "width": 16,
+          "height": 14
+        }
       ]
     }
   ],

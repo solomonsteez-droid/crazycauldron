@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import type { Room } from "colyseus.js";
 import {
+  AMBIENCE,
   HUB_MAP,
   KICK_AUTH_EXPIRED,
   KICK_INSUFFICIENT_HOLD,
@@ -15,6 +16,8 @@ import {
   MSG_GATHER,
   MSG_GATHER_RESULT,
   MSG_GATHER_STARTED,
+  MSG_GREET,
+  MSG_GREETED,
   MSG_HEAT_BAR,
   MSG_KICK,
   MSG_MOVE,
@@ -37,6 +40,7 @@ import {
   type CookResultPayload,
   type GatherResultPayload,
   type GatherStartedPayload,
+  type GreetedPayload,
   type HeatBarPayload,
   type MoveIntent,
   type NodesPayload,
@@ -53,10 +57,12 @@ import { gameStore } from "../net/game.js";
 import { GameMap, type MapFeature } from "../map/gameMap.js";
 import { Avatar } from "../world/avatar.js";
 import { Effects } from "../world/effects.js";
+import { Ambience } from "../world/ambience.js";
+import { sound } from "../world/sound.js";
 import { directionFor, loadArt, type Manifest, type OffsetsFile } from "../art/manifest.js";
 import { LABEL_SCREEN_PX, labelScale, planCamera } from "../map/camera.js";
 import { TEX_MARKER } from "../map/textures.js";
-import type { HubStateView, KickNotice, PlayerView } from "../net/state.js";
+import type { HubStateView, KickNotice, PlayerView, VillagerView } from "../net/state.js";
 import { clearSession, type Session } from "../net/session.js";
 import { Hud } from "../ui/hud.js";
 import { openKitchen, runHeatBar, runPrep, showCookResult, type KitchenCallbacks } from "../ui/cooking.js";
@@ -67,6 +73,7 @@ import {
   openLeaderboard,
   openShop,
   openSkills,
+  openSettings,
   openTavern,
   openWardrobe,
   type PanelCallbacks,
@@ -94,6 +101,12 @@ interface AvatarEntry {
 /** How hard the camera chases the player. Low enough to glide, high enough to keep up. */
 const FOLLOW_LERP = 0.12;
 
+/** Matches the server's villager clock, so their walk tweens do not stutter. */
+const VILLAGER_STEP_MS = AMBIENCE.villagers.stepMs;
+
+/** Click radius around a villager, in world pixels - about a tile and a half. */
+const VILLAGER_PICK_PX = 24;
+
 /** A click on something out of reach: walk there, then do the thing. */
 interface PendingAction {
   kind: "gather" | "travel";
@@ -117,11 +130,13 @@ export class HubScene extends Phaser.Scene {
   private manifest!: Manifest;
   private artOffsets!: OffsetsFile;
   private fx!: Effects;
+  private ambience!: Ambience;
+  /** Hub residents, kept apart from players so neither list has to filter. */
+  private readonly villagers = new Map<string, AvatarEntry>();
   /** Coins and XP before the current cook, so the reveal card can show the gain. */
   private beforeCook: { coins: number; chefXp: number } | null = null;
   /** Chef level last seen, to notice a level-up. */
   private lastChefLevel = 0;
-  private steamTimer?: Phaser.Time.TimerEvent;
   private departing = false;
   private currentSection = HUB_MAP;
   private pending: PendingAction | null = null;
@@ -153,6 +168,7 @@ export class HubScene extends Phaser.Scene {
 
     this.cameras.main.setBackgroundColor("#101a14");
     this.fx = new Effects(this);
+    this.ambience = new Ambience(this, this.fx);
     this.buildMap(HUB_MAP);
     this.layoutCamera();
 
@@ -181,6 +197,7 @@ export class HubScene extends Phaser.Scene {
       skills: () => openSkills(),
       codex: () => openCodex(),
       leaderboard: () => openLeaderboard(this.session.wallet),
+      settings: () => openSettings(),
     });
 
     this.bindState();
@@ -196,20 +213,12 @@ export class HubScene extends Phaser.Scene {
       callback: () => this.refreshNodes(),
     });
 
-    // A pot is always on at the kitchen. Slow enough to read as steam rather
-    // than smoke, and cheap enough to leave running.
     // The buff pill counts down between server messages, so it needs its own
     // tick; the value itself still comes from the server's expiry timestamp.
     this.time.addEvent({
       delay: 1000,
       loop: true,
       callback: () => this.hud.update({}),
-    });
-
-    this.steamTimer = this.time.addEvent({
-      delay: 420,
-      loop: true,
-      callback: () => this.steamOverKitchen(),
     });
 
     this.installDevConsole();
@@ -242,6 +251,7 @@ export class HubScene extends Phaser.Scene {
     // Everyone in the room breathes, fidgets and dances - the motion is
     // procedural, so it costs the same for one player or thirty.
     for (const entry of this.avatars.values()) entry.avatar.tick(now);
+    for (const entry of this.villagers.values()) entry.avatar.tick(now);
   }
 
   private buildMap(mapId: number) {
@@ -250,6 +260,8 @@ export class HubScene extends Phaser.Scene {
     this.currentSection = mapId;
     this.map.applyLabelScale(this.zoom);
     this.refreshNodes();
+    this.ambience.start(this.map);
+    sound.enterMap(mapId);
   }
 
   private bindState() {
@@ -262,6 +274,12 @@ export class HubScene extends Phaser.Scene {
       this.removeAvatar(sessionId);
       this.refreshCrowd();
     });
+
+    // Villagers arrive the same way players do and are drawn the same way, but
+    // they are not players: they never reach refreshCrowd, so the room count
+    // stays a count of people who are actually playing.
+    this.room.state.villagers.onAdd((villager, id) => this.addVillager(villager, id), true);
+    this.room.state.villagers.onRemove((_villager, id) => this.removeVillager(id));
   }
 
   /**
@@ -284,6 +302,15 @@ export class HubScene extends Phaser.Scene {
       // missed click on a node still gathers rather than walking past it.
       const feature = this.map.pickFeature(pointer.worldX, pointer.worldY);
       if (feature) return this.onFeatureClicked(feature);
+
+      // Villagers are checked after features and before the ground, so they
+      // can be talked to without ever standing between a player and a node.
+      const villagerId = this.pickVillager(pointer.worldX, pointer.worldY);
+      if (villagerId) {
+        this.room.send(MSG_GREET, { villagerId });
+        sound.play("click");
+        return;
+      }
 
       const tile = this.map.tileAt(pointer.worldX, pointer.worldY);
       if (!tile) return;
@@ -411,8 +438,13 @@ export class HubScene extends Phaser.Scene {
       });
       this.refreshNodes();
 
+      sound.play("gather");
       const doubled = result.doubled ? " (double drop!)" : "";
       toast(`+${result.qty} ${result.name}${doubled} · +${result.skillXp} ${result.skill} XP`);
+    });
+
+    this.room.onMessage(MSG_GREETED, (greeting: GreetedPayload) => {
+      this.villagers.get(greeting.villagerId)?.avatar.say(greeting.line);
     });
 
     this.room.onMessage(MSG_REJECTED, (rejection: RejectedPayload) => {
@@ -486,6 +518,7 @@ export class HubScene extends Phaser.Scene {
 
     this.room.onMessage(MSG_COOK_RESULT, (result: CookResultPayload) => {
       this.cookModal?.close();
+      sound.play("cook");
       this.celebrateCook(result);
       // The profile arrives just after this, so the card reads the gain from
       // what was true before the cook rather than from a value already updated.
@@ -493,6 +526,7 @@ export class HubScene extends Phaser.Scene {
     });
 
     this.room.onMessage(MSG_SOLD, (sold: SoldPayload) => {
+      sound.play("sell");
       toast(`Sold ${sold.qty} x ${sold.name} for ${sold.coins}c · ${sold.totalCoins} coins`);
     });
 
@@ -561,19 +595,10 @@ export class HubScene extends Phaser.Scene {
     const scale = labelScale(this.zoom);
     const resolution = Math.max(1, Math.ceil(this.zoom));
     for (const entry of this.avatars.values()) entry.avatar.setLabelScale(scale, resolution);
+    for (const entry of this.villagers.values()) entry.avatar.setLabelScale(scale, resolution);
   }
 
   // --- feel ----------------------------------------------------------------
-
-  /** A puff over the kitchen, whenever the player can see it. */
-  private steamOverKitchen() {
-    if (this.currentSection !== HUB_MAP) return;
-    const kitchen = this.map.features.find((f) => f.id === "kitchen");
-    if (!kitchen) return;
-
-    const at = this.map.tileCentre(kitchen.tile.tileX, kitchen.tile.tileY);
-    this.fx.steam(at.x, at.y - 26, "common", kitchen.tile.tileX + kitchen.tile.tileY + 1);
-  }
 
   /** Sparks off the pan while the heat bar runs. */
   private startSizzle(durationMs: number) {
@@ -630,6 +655,84 @@ export class HubScene extends Phaser.Scene {
       const total = gameStore.cooldownTotalSeconds(this.currentSection, node.id);
       this.map.setNodeReady(node.id, seconds === 0, node.available, seconds, total);
     }
+  }
+
+  // --- villagers -----------------------------------------------------------
+
+  private addVillager(villager: VillagerView, id: string) {
+    const at = this.map.tileCentre(villager.tileX, villager.tileY);
+    const avatar = new Avatar(
+      this,
+      this.manifest,
+      this.artOffsets,
+      {
+        body: villager.body || "male",
+        hatId: villager.hatId ?? "",
+        apronId: villager.apronId ?? "",
+        displayName: villager.name,
+        isSelf: false,
+      },
+      at.x,
+      at.y,
+    );
+    avatar.container.setDepth(villager.tileX + villager.tileY);
+    avatar.container.setVisible(this.currentSection === HUB_MAP);
+    avatar.setDirection(directionFor(villager.facing), villager.moving);
+
+    const entry: AvatarEntry = { avatar };
+    this.villagers.set(id, entry);
+    villager.onChange(() => this.onVillagerChanged(id, villager));
+  }
+
+  private onVillagerChanged(id: string, villager: VillagerView) {
+    const entry = this.villagers.get(id);
+    if (!entry) return;
+
+    entry.avatar.container.setVisible(this.currentSection === HUB_MAP);
+    entry.avatar.setDirection(directionFor(villager.facing), villager.moving);
+
+    const target = this.map.tileCentre(villager.tileX, villager.tileY);
+    if (entry.avatar.container.x === target.x && entry.avatar.container.y === target.y) return;
+
+    entry.tween?.stop();
+    entry.tween = this.tweens.add({
+      targets: entry.avatar.container,
+      x: target.x,
+      y: target.y,
+      // Matched to the server's villager step, not the player's: a tween that
+      // finishes early leaves them standing still between tiles.
+      duration: VILLAGER_STEP_MS,
+      ease: "Linear",
+      onUpdate: () => entry.avatar.container.setDepth(villager.tileX + villager.tileY),
+    });
+  }
+
+  private removeVillager(id: string) {
+    const entry = this.villagers.get(id);
+    if (!entry) return;
+    entry.tween?.stop();
+    entry.avatar.destroy();
+    this.villagers.delete(id);
+  }
+
+  /** The villager nearest a pointer, within the same radius features use. */
+  private pickVillager(worldX: number, worldY: number): string | null {
+    if (this.currentSection !== HUB_MAP) return null;
+
+    let best: string | null = null;
+    let bestDistance = VILLAGER_PICK_PX;
+    for (const [id, entry] of this.villagers) {
+      const container = entry.avatar.container;
+      if (!container.visible) continue;
+      // Measured against the middle of the body rather than the feet, which is
+      // where the pointer naturally lands.
+      const distance = Phaser.Math.Distance.Between(worldX, worldY, container.x, container.y - 20);
+      if (distance <= bestDistance) {
+        bestDistance = distance;
+        best = id;
+      }
+    }
+    return best;
   }
 
   private addAvatar(player: PlayerView, sessionId: string) {
@@ -722,6 +825,15 @@ export class HubScene extends Phaser.Scene {
   }
 
   private rebuildAvatarsForMap() {
+    this.room.state.villagers.forEach((villager, id) => {
+      const entry = this.villagers.get(id);
+      if (!entry) return;
+      const at = this.map.tileCentre(villager.tileX, villager.tileY);
+      entry.tween?.stop();
+      entry.avatar.container.setPosition(at.x, at.y);
+      entry.avatar.container.setVisible(this.currentSection === HUB_MAP);
+    });
+
     this.room.state.players.forEach((player, sessionId) => {
       const entry = this.avatars.get(sessionId);
       if (!entry) return;
@@ -775,11 +887,13 @@ export class HubScene extends Phaser.Scene {
   private teardown() {
     this.input.removeAllListeners();
     this.cooldownTimer?.remove();
-    this.steamTimer?.remove();
     this.progress?.done();
     this.cookModal?.close();
     this.dock?.destroy();
     for (const sessionId of [...this.avatars.keys()]) this.removeAvatar(sessionId);
+    for (const id of [...this.villagers.keys()]) this.removeVillager(id);
+    this.ambience?.stop();
+    sound.stop();
     this.hud.destroy();
     if (!this.departing) {
       this.departing = true;

@@ -52,6 +52,17 @@ export interface BuyIntent {
   tier: number;
 }
 
+/** Say hello to a villager; the reply carries the line they answer with. */
+export interface GreetIntent {
+  villagerId: string;
+}
+
+export interface GreetedPayload {
+  villagerId: string;
+  name: string;
+  line: string;
+}
+
 /**
  * A development-only cheat. The server refuses to register the handler at all
  * when NODE_ENV=production, so this cannot be sent to a live room.

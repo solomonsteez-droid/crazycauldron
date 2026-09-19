@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import {
+  AMBIENCE,
   HUB_PORTALS,
   HUB_STATIONS,
   HUB_MAP,
@@ -12,7 +13,11 @@ import {
   sectionTiles,
   tileToWorld,
   worldToTile,
+  dayTint,
+  mixTint,
+  planDressing,
   PALETTE,
+  TileId,
   type GatherNodeDef,
   type TilePos,
 } from "@crazycauldron/shared";
@@ -21,6 +26,7 @@ import { TEX_CAULDRON, TEX_GLOW, TEX_NODE, TEX_NODE_SPENT, TEX_TILE } from "./te
 import {
   PORTAL_PROP,
   STATION_PROP,
+  decorKey,
   hasProcessedNode,
   nodeArchetype,
   nodeKey,
@@ -42,6 +48,8 @@ const TERRAIN_PAD = 24;
 /** Pick radius in tiles: a feature is about 1.5 tiles wide to the pointer. */
 const PICK_TILES = 0.75;
 const HIGHLIGHT_TINT = 0xfff3c4;
+
+
 
 
 /**
@@ -76,6 +84,8 @@ export class GameMap {
   private accentColour = 0xffffff;
   /** Cooldown rings, one per node. */
   private readonly nodeRings = new Map<string, Phaser.GameObjects.Graphics>();
+  /** The map's own colour, before the time of day is applied on top. */
+  private readonly baseTint: number;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -119,10 +129,32 @@ export class GameMap {
     // One tint per map: the packs are shared, so the palette is what makes the
     // Meadows warm, the Deep Forest cool and the Caves cold.
     const tint = terrain?.tint ?? findSection(mapId)?.groundColor;
-    if (tint) this.floor.setTint(Phaser.Display.Color.HexStringToColor(tint).color);
+    this.baseTint = tint ? Phaser.Display.Color.HexStringToColor(tint).color : 0xffffff;
+    this.floor.setTint(this.baseTint);
 
     if (mapId === HUB_MAP) this.buildHub();
     else this.buildSection(mapId);
+
+    // Scenery last: it needs to know where everything else ended up so it can
+    // keep off the paths and out of the doorways.
+    this.dress(mapId);
+  }
+
+  /**
+   * Multiplies the map's own colour by the time of day.
+   *
+   * Only the floor is tinted. Characters, labels, nodes and the HUD keep their
+   * authored colours, so midnight makes the ground blue without making the
+   * game unreadable - which is what happens the moment a full-screen overlay
+   * gets involved.
+   */
+  setDayTint(colour: number) {
+    this.floor.setTint(mixTint(this.baseTint, colour));
+  }
+
+  /** Puts the ground back to the current time of day. */
+  applyDaylight(now = Date.now()) {
+    this.setDayTint(dayTint(now));
   }
 
   /** Terrain settings for this map, if the manifest has been read. */
@@ -183,6 +215,42 @@ export class GameMap {
         section: portal.section,
       });
     }
+
+    this.addHubProps();
+  }
+
+  /**
+   * The well, the campfire, the signpost and the rest.
+   *
+   * Authored positions rather than scattered ones, because these are landmarks
+   * - "meet me at the well" only works if the well is always in the same
+   * place. Each is skipped if its tile turns out to be a path or a doorway, and
+   * a missing texture is not possible: the placeholder pass draws a stand-in
+   * for every prop named in ambience.json.
+   */
+  private addHubProps() {
+    for (const item of AMBIENCE.hubProps.items) {
+      const onFeature = this.features.some(
+        (f) => f.tile.tileX === item.tileX && f.tile.tileY === item.tileY,
+      );
+      const onPath = HUB_TILES[item.tileY]?.[item.tileX] === TileId.Path;
+      if (onFeature || onPath || !isWalkableOn(HUB_MAP, item.tileX, item.tileY)) {
+        console.warn(`hub prop ${item.prop} sits on a path or a building; skipped`);
+        continue;
+      }
+
+      const texture = propKey(item.prop);
+      if (!this.scene.textures.exists(texture)) continue;
+
+      this.addProp(
+        texture,
+        item.tileX,
+        item.tileY,
+        item.label,
+        "#cbbfa6",
+        item.glow,
+      );
+    }
   }
 
   private buildSection(mapId: number) {
@@ -217,6 +285,34 @@ export class GameMap {
         name: node.ingredient,
         tile: { tileX: node.tileX, tileY: node.tileY },
       });
+    }
+  }
+
+  // --- dressing ------------------------------------------------------------
+
+  /**
+   * Draws the scenery the shared planner chose for this map.
+   *
+   * The *where* is decided in shared/src/dressing.ts, so it can be asserted
+   * without a renderer and so every client agrees. All that happens here is the
+   * drawing - and a piece whose art never made it through the pipeline is
+   * simply skipped, which costs the map one shrub and nothing else.
+   */
+  private dress(mapId: number) {
+    for (const placement of planDressing(mapId)) {
+      const key = decorKey(mapId, placement.decorId);
+      if (!this.scene.textures.exists(key)) continue;
+
+      const at = this.tileCentre(placement.tileX, placement.tileY);
+      const sprite = this.scene.add
+        .image(at.x, at.y + TILE_HEIGHT / 2, key)
+        .setOrigin(0.5, 1)
+        // Behind anything standing on the same tile, so a villager who walks
+        // past a shrub walks in front of it.
+        .setDepth(placement.tileX + placement.tileY - 0.5)
+        .setFlipX(placement.flip);
+
+      this.decorations.push(sprite);
     }
   }
 

@@ -69,6 +69,10 @@ export class Avatar {
   private dancing = false;
   /** Random per-avatar so a crowd does not breathe in unison. */
   private readonly phase = Math.random() * BREATH_MS;
+  private bubble: Phaser.GameObjects.Text | null = null;
+  private bubbleTimer?: Phaser.Time.TimerEvent;
+  private labelScaleValue = 1;
+  private labelResolution = 1;
   private fidgetUntil = 0;
   private fidgetKind: Fidget = "squash";
   private nextFidgetAt = 0;
@@ -123,9 +127,43 @@ export class Avatar {
     this.dancing = activity === "cooking";
   }
 
+  /**
+   * A speech bubble above the head, for a few seconds.
+   *
+   * Parented to the container so it travels with whoever said it, but placed
+   * from the label rather than the pose - a bubble that breathes with the
+   * character is distracting to read.
+   */
+  say(text: string, ms = 3500) {
+    this.bubbleTimer?.remove();
+
+    if (!this.bubble) {
+      this.bubble = this.scene.add
+        .text(0, 0, "", {
+          fontFamily: "monospace",
+          fontSize: "10px",
+          color: hex(PALETTE.night),
+          backgroundColor: hex(PALETTE.parchment),
+          padding: { x: 4, y: 3 },
+          align: "center",
+          wordWrap: { width: 130 },
+        })
+        .setOrigin(0.5, 1);
+      this.container.add(this.bubble);
+      this.bubble.setScale(this.labelScaleValue).setResolution(this.labelResolution);
+    }
+
+    this.bubble.setText(text).setVisible(true);
+    this.bubble.setY(this.label.y - this.label.displayHeight - 3);
+    this.bubbleTimer = this.scene.time.delayedCall(ms, () => this.bubble?.setVisible(false));
+  }
+
   /** Counter-scales the name so it reads the same at any camera zoom. */
   setLabelScale(scale: number, resolution: number) {
+    this.labelScaleValue = scale;
+    this.labelResolution = resolution;
     this.label.setScale(scale).setResolution(resolution);
+    this.bubble?.setScale(scale).setResolution(resolution);
   }
 
   get labelObject(): Phaser.GameObjects.Text {
@@ -133,6 +171,7 @@ export class Avatar {
   }
 
   destroy() {
+    this.bubbleTimer?.remove();
     this.container.destroy(true);
   }
 

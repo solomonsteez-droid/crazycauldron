@@ -31,6 +31,10 @@ ingredients.json   24 ingredients, 8 per section
 recipes.json       20 recipes: ingredients, technique, requirements, XP, price
 sections.json      the three maps, their gates, and 12 gather nodes each
 skills.json        both XP curves, every unlock, and the tuning constants
+wardrobe.json      hats and aprons, and what earns each one
+terrain.json       which pack tiles and scenery each map is built from
+ambience.json      villagers, hub props, scatter density, particles, day length,
+                   and every sound cue
 ```
 
 Change a number there and the server, the client and the simulation all agree
@@ -60,10 +64,14 @@ Other useful scripts:
 
 ```bash
 npm run typecheck
+npm run sprites                            # art drops -> game-ready sprites
 npx tsx scripts/validate-content.ts        # content sanity
 npx tsx scripts/smoke-game.ts              # end-to-end, needs a running server
 npx tsx scripts/simulate-progression.ts    # hours-to-level report
 npx tsx scripts/simulate-progression.ts --tune
+npx tsx scripts/test-cooking.ts            # heat bar outcome rates
+npx tsx scripts/test-camera.ts             # zoom and clamping maths
+npx tsx scripts/test-ambience.ts           # scenery, day-night and villagers
 ```
 
 ## How a player gets in
@@ -181,15 +189,17 @@ AUTH_RATE_LIMIT=1000 npm run dev
 
 ## What is deliberately left open
 
-- **Art.** Every texture is drawn at runtime in `client/src/map/textures.ts`.
-  Replacing those texture keys with a real sprite sheet is the whole job.
-- **The map.** One 24×24 grid with a cauldron in the middle, defined in
-  `shared/src/map.ts`. Everyone spawns on the same tile.
-- **Gameplay.** Players can walk and see each other. That is all.
+- **Art that has not landed yet.** `npm run sprites` turns whatever is in
+  `client/public/assets/sprites/` into game-ready output, and anything still
+  missing is drawn as a lettered placeholder at boot — so no lookup in the game
+  ever has to ask whether the art exists.
+- **Spawning.** Everyone still lands on the same hub tile.
 - **Horizontal scale.** Nonces, rate-limit buckets and the balance cache are
   in-process, and capacity is counted per node. A second node needs Redis
   (`@colyseus/redis-driver` plus shared stores for those three).
 - **Reconnection.** A dropped socket returns to sign-in; there is no
   `allowReconnection` grace window.
-- **Tests.** None. `shared/src/path.ts` and `siwsVerify.ts` are the two places
-  where unit tests would pay for themselves immediately.
+- **Tests.** No unit-test runner. What exists are the scripts above: a headless
+  end-to-end pass, a content validator, and three that assert pure maths
+  (progression, the heat bar, the camera and the ambience). `siwsVerify.ts` is
+  the one place a real unit test would pay for itself immediately.

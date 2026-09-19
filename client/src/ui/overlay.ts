@@ -148,6 +148,17 @@ const CSS = `
 
 /* Scrolling rows shared by the kitchen, tavern, shop and inventory. */
 .cc-list { display: flex; flex-direction: column; gap: 6px; }
+/* Settings rows: label, slider, readout. */
+.cc-slider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  color: #cbbfa6;
+}
+.cc-slider > span { flex: 0 0 74px; font-size: 12px; }
+.cc-slider > input { flex: 1 1 auto; accent-color: #7ce08a; }
+.cc-slider > small { flex: 0 0 38px; text-align: right; color: #6f6656; }
 .cc-row {
   display: flex;
   align-items: center;
