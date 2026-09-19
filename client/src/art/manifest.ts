@@ -21,8 +21,30 @@ export interface OverlayEntry {
   offset: Vec2;
   /** True when an <id>_back.png was processed for the up direction. */
   back?: boolean;
-  /** Cloaks only: how many rows of the art are collar rather than drape. */
-  collarRows?: number;
+}
+
+/**
+ * How one direction's four walk frames are played.
+ *
+ * Decided by the pipeline from the finished frames, not here: it measures how
+ * different each frame is from the others, and where two of them are the same
+ * pose twice it hands back a ping-pong order instead of a loop. The client
+ * plays what it is given rather than knowing which sheets are weak.
+ */
+export interface WalkCycle {
+  /** Source frame numbers, in the order they are played. */
+  order: number[];
+  frameRate: number;
+  pingPong: boolean;
+  /** Pairs of frames too alike to read as separate poses. */
+  duplicates: [number, number][];
+}
+
+export interface BodyEntry {
+  scale: number;
+  frames: string[];
+  /** Missing for a body whose walk sheets did not all arrive. */
+  walk?: Record<string, WalkCycle>;
 }
 
 /** Scenery the pipeline cut for one map, with the size each piece came out. */
@@ -42,7 +64,7 @@ export interface TerrainEntry {
 export interface Manifest {
   generatedAt: string;
   bodyFrame: { width: number; height: number };
-  bodies: Record<string, { scale: number; frames: string[] }>;
+  bodies: Record<string, BodyEntry>;
   hats: OverlayEntry[];
   cloaks: OverlayEntry[];
   props: string[];

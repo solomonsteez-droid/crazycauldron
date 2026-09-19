@@ -301,6 +301,12 @@ async function main() {
           !js.includes("cc.level(n) sets Chef Level"),
           "run npm run build first if this is stale",
         );
+        // The walk-debug overlay is a development tool: it draws a readout
+        // over every character, and shipping it would be shipping that.
+        check(
+          "nor the walk-debug overlay",
+          !js.includes("walk debug") && !js.includes("dev/walkDebug"),
+        );
       } else {
         console.log("  skip  the built bundle - run npm run build to include this check");
       }

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-19T20:40:27.085Z",
+  "generatedAt": "2026-09-19T22:45:51.676Z",
   "bodyFrame": {
     "width": 32,
     "height": 48
@@ -28,7 +28,216 @@
         "male_walk_right_1",
         "male_walk_right_2",
         "male_walk_right_3"
-      ]
+      ],
+      "walk": {
+        "down": {
+          "order": [
+            0,
+            1,
+            2,
+            3,
+            2,
+            1
+          ],
+          "frameRate": 10,
+          "pingPong": true,
+          "duplicates": [
+            [
+              0,
+              1
+            ],
+            [
+              2,
+              3
+            ]
+          ],
+          "pairs": [
+            {
+              "a": 0,
+              "b": 1,
+              "silhouette": 0.039663461538461536,
+              "intensity": 15.477463942307692
+            },
+            {
+              "a": 0,
+              "b": 2,
+              "silhouette": 0.07177615571776155,
+              "intensity": 25.915754257907544
+            },
+            {
+              "a": 0,
+              "b": 3,
+              "silhouette": 0.072992700729927,
+              "intensity": 25.48205596107056
+            },
+            {
+              "a": 1,
+              "b": 2,
+              "silhouette": 0.09134615384615384,
+              "intensity": 32.34735576923077
+            },
+            {
+              "a": 1,
+              "b": 3,
+              "silhouette": 0.09025270758122744,
+              "intensity": 31.98616125150421
+            },
+            {
+              "a": 2,
+              "b": 3,
+              "silhouette": 0.00904392764857881,
+              "intensity": 8.532945736434108
+            }
+          ]
+        },
+        "up": {
+          "order": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "frameRate": 10,
+          "pingPong": false,
+          "duplicates": [],
+          "pairs": [
+            {
+              "a": 0,
+              "b": 1,
+              "silhouette": 0.18414634146341463,
+              "intensity": 38.76280487804878
+            },
+            {
+              "a": 0,
+              "b": 2,
+              "silhouette": 0.15504807692307693,
+              "intensity": 32.9921875
+            },
+            {
+              "a": 0,
+              "b": 3,
+              "silhouette": 0.12311557788944724,
+              "intensity": 30.65452261306533
+            },
+            {
+              "a": 1,
+              "b": 2,
+              "silhouette": 0.1251596424010217,
+              "intensity": 25.89080459770115
+            },
+            {
+              "a": 1,
+              "b": 3,
+              "silhouette": 0.13219895287958114,
+              "intensity": 30.56086387434555
+            },
+            {
+              "a": 2,
+              "b": 3,
+              "silhouette": 0.14015151515151514,
+              "intensity": 33.63131313131313
+            }
+          ]
+        },
+        "left": {
+          "order": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "frameRate": 10,
+          "pingPong": false,
+          "duplicates": [],
+          "pairs": [
+            {
+              "a": 0,
+              "b": 1,
+              "silhouette": 0.05831265508684864,
+              "intensity": 15.049007444168735
+            },
+            {
+              "a": 0,
+              "b": 2,
+              "silhouette": 0.15632754342431762,
+              "intensity": 36.6712158808933
+            },
+            {
+              "a": 0,
+              "b": 3,
+              "silhouette": 0.12606060606060607,
+              "intensity": 31.361515151515153
+            },
+            {
+              "a": 1,
+              "b": 2,
+              "silhouette": 0.15489467162329615,
+              "intensity": 37.221189591078065
+            },
+            {
+              "a": 1,
+              "b": 3,
+              "silhouette": 0.12696493349455865,
+              "intensity": 30.45677146311971
+            },
+            {
+              "a": 2,
+              "b": 3,
+              "silhouette": 0.13924050632911392,
+              "intensity": 36.79398734177215
+            }
+          ]
+        },
+        "right": {
+          "order": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "frameRate": 10,
+          "pingPong": false,
+          "duplicates": [],
+          "pairs": [
+            {
+              "a": 0,
+              "b": 1,
+              "silhouette": 0.18421052631578946,
+              "intensity": 42.61904761904762
+            },
+            {
+              "a": 0,
+              "b": 2,
+              "silhouette": 0.19924812030075187,
+              "intensity": 46.7249373433584
+            },
+            {
+              "a": 0,
+              "b": 3,
+              "silhouette": 0.09578544061302682,
+              "intensity": 22.521711366538952
+            },
+            {
+              "a": 1,
+              "b": 2,
+              "silhouette": 0.10178817056396149,
+              "intensity": 22.614855570839065
+            },
+            {
+              "a": 1,
+              "b": 3,
+              "silhouette": 0.1685823754789272,
+              "intensity": 42.538633461047255
+            },
+            {
+              "a": 2,
+              "b": 3,
+              "silhouette": 0.20454545454545456,
+              "intensity": 48.00852272727273
+            }
+          ]
+        }
+      }
     },
     "female": {
       "scale": 0.05693950177935943,
@@ -53,7 +262,205 @@
         "female_walk_right_1",
         "female_walk_right_2",
         "female_walk_right_3"
-      ]
+      ],
+      "walk": {
+        "down": {
+          "order": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "frameRate": 10,
+          "pingPong": false,
+          "duplicates": [],
+          "pairs": [
+            {
+              "a": 0,
+              "b": 1,
+              "silhouette": 0.07692307692307693,
+              "intensity": 32.359935897435896
+            },
+            {
+              "a": 0,
+              "b": 2,
+              "silhouette": 0.11483870967741935,
+              "intensity": 32.24935483870968
+            },
+            {
+              "a": 0,
+              "b": 3,
+              "silhouette": 0.0990990990990991,
+              "intensity": 27.276705276705275
+            },
+            {
+              "a": 1,
+              "b": 2,
+              "silhouette": 0.1397984886649874,
+              "intensity": 43.73362720403023
+            },
+            {
+              "a": 1,
+              "b": 3,
+              "silhouette": 0.12672521957340024,
+              "intensity": 38.76066499372647
+            },
+            {
+              "a": 2,
+              "b": 3,
+              "silhouette": 0.07926023778071334,
+              "intensity": 26.193196829590487
+            }
+          ]
+        },
+        "up": {
+          "order": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "frameRate": 10,
+          "pingPong": false,
+          "duplicates": [],
+          "pairs": [
+            {
+              "a": 0,
+              "b": 1,
+              "silhouette": 0.1348314606741573,
+              "intensity": 29.307116104868914
+            },
+            {
+              "a": 0,
+              "b": 2,
+              "silhouette": 0.12700369913686807,
+              "intensity": 30.818125770653513
+            },
+            {
+              "a": 0,
+              "b": 3,
+              "silhouette": 0.10201511335012595,
+              "intensity": 28.016372795969772
+            },
+            {
+              "a": 1,
+              "b": 2,
+              "silhouette": 0.08375,
+              "intensity": 22.9925
+            },
+            {
+              "a": 1,
+              "b": 3,
+              "silhouette": 0.10112359550561797,
+              "intensity": 26.085518102372035
+            },
+            {
+              "a": 2,
+              "b": 3,
+              "silhouette": 0.06508135168961202,
+              "intensity": 15.198998748435544
+            }
+          ]
+        },
+        "left": {
+          "order": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "frameRate": 10,
+          "pingPong": false,
+          "duplicates": [],
+          "pairs": [
+            {
+              "a": 0,
+              "b": 1,
+              "silhouette": 0.09398496240601503,
+              "intensity": 22.301065162907268
+            },
+            {
+              "a": 0,
+              "b": 2,
+              "silhouette": 0.14233576642335766,
+              "intensity": 32.634732360097324
+            },
+            {
+              "a": 0,
+              "b": 3,
+              "silhouette": 0.09339975093399751,
+              "intensity": 23.36892901618929
+            },
+            {
+              "a": 1,
+              "b": 2,
+              "silhouette": 0.09911054637865312,
+              "intensity": 25.57115628970775
+            },
+            {
+              "a": 1,
+              "b": 3,
+              "silhouette": 0.07692307692307693,
+              "intensity": 20.880128205128205
+            },
+            {
+              "a": 2,
+              "b": 3,
+              "silhouette": 0.08396946564885496,
+              "intensity": 21.501908396946565
+            }
+          ]
+        },
+        "right": {
+          "order": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "frameRate": 10,
+          "pingPong": false,
+          "duplicates": [],
+          "pairs": [
+            {
+              "a": 0,
+              "b": 1,
+              "silhouette": 0.1487603305785124,
+              "intensity": 34.64817001180638
+            },
+            {
+              "a": 0,
+              "b": 2,
+              "silhouette": 0.1965909090909091,
+              "intensity": 40.221022727272725
+            },
+            {
+              "a": 0,
+              "b": 3,
+              "silhouette": 0.18076477404403243,
+              "intensity": 40.730011587485514
+            },
+            {
+              "a": 1,
+              "b": 2,
+              "silhouette": 0.11028500619578686,
+              "intensity": 20.88351920693928
+            },
+            {
+              "a": 1,
+              "b": 3,
+              "silhouette": 0.08386277001270648,
+              "intensity": 18.347522236340534
+            },
+            {
+              "a": 2,
+              "b": 3,
+              "silhouette": 0.10074626865671642,
+              "intensity": 21.490671641791046
+            }
+          ]
+        }
+      }
     }
   },
   "hats": [
@@ -151,80 +558,73 @@
   "cloaks": [
     {
       "id": "cloak_01_wool",
-      "width": 24,
-      "height": 31,
+      "width": 26,
+      "height": 22,
       "offset": {
-        "x": 4,
+        "x": 3,
         "y": 22
       },
-      "widthPct": 0.96,
-      "collarRows": 8
+      "widthPct": 1.04
     },
     {
       "id": "cloak_02_patched",
-      "width": 24,
-      "height": 30,
+      "width": 26,
+      "height": 22,
       "offset": {
-        "x": 4,
+        "x": 3,
         "y": 22
       },
-      "widthPct": 0.96,
-      "collarRows": 8
+      "widthPct": 1.04
     },
     {
       "id": "cloak_03_berry",
-      "width": 24,
-      "height": 28,
+      "width": 26,
+      "height": 22,
       "offset": {
-        "x": 4,
+        "x": 3,
         "y": 22
       },
-      "widthPct": 0.96,
-      "collarRows": 7
+      "widthPct": 1.04
     },
     {
       "id": "cloak_04_rugged",
-      "width": 24,
-      "height": 32,
+      "width": 26,
+      "height": 22,
       "offset": {
-        "x": 4,
+        "x": 3,
         "y": 22
       },
-      "widthPct": 0.96,
-      "collarRows": 10
+      "widthPct": 1.04
     },
     {
       "id": "cloak_05_midnight",
-      "width": 24,
-      "height": 33,
+      "width": 26,
+      "height": 22,
       "offset": {
-        "x": 4,
+        "x": 3,
         "y": 22
       },
-      "widthPct": 0.96,
-      "collarRows": 9
+      "widthPct": 1.04
     },
     {
       "id": "cloak_06_silver",
-      "width": 24,
-      "height": 30,
+      "width": 26,
+      "height": 22,
       "offset": {
-        "x": 4,
+        "x": 3,
         "y": 22
       },
-      "widthPct": 0.96,
-      "collarRows": 10
+      "widthPct": 1.04
     },
     {
       "id": "cloak_07_gold",
-      "width": 24,
-      "height": 27,
+      "width": 26,
+      "height": 22,
       "offset": {
-        "x": 4,
+        "x": 3,
         "y": 22
       },
-      "widthPct": 0.96,
-      "collarRows": 9
+      "widthPct": 1.04
     }
   ],
   "props": [

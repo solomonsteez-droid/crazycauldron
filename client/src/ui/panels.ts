@@ -115,17 +115,15 @@ function wardrobePreview(kind: "hat" | "cloak", id: string, size = 48): HTMLCanv
   };
 
   /*
-   * Where the garment sits, resolved before anything is drawn: a cloak's
-   * drape goes down before the body and its collar after, so the preview
-   * layers the same way the character on screen does.
+   * Where the garment sits, resolved before anything is drawn so the preview
+   * layers the same way the character on screen does: body first, then the
+   * garment over it.
    */
   const art = wardrobeArt;
   const list = kind === "hat" ? art?.manifest.hats : art?.manifest.cloaks;
   const entry = id ? list?.find((e) => e.id === id) : undefined;
   const saved = (kind === "hat" ? art?.offsets.hats : art?.offsets.cloaks)?.[id] ??
     defaultOffsets(entry);
-
-  if (id && kind === "cloak") draw(cloakKey(id, "drape"), saved.down.x, saved.down.y);
 
   // The body frame is a cell inside the atlas, so it is drawn by hand.
   const bodyTexture = game.textures.get(bodyKey("male"));
@@ -149,10 +147,7 @@ function wardrobePreview(kind: "hat" | "cloak", id: string, size = 48): HTMLCanv
     );
   }
 
-  if (id) {
-    const front = kind === "hat" ? hatKey(id) : cloakKey(id, "collar");
-    draw(front, saved.down.x, saved.down.y);
-  }
+  if (id) draw(kind === "hat" ? hatKey(id) : cloakKey(id), saved.down.x, saved.down.y);
   return canvas;
 }
 

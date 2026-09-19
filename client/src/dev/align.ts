@@ -281,12 +281,7 @@ class AlignTool {
       );
     }
 
-    /*
-     * The whole cloak over the body, then the hat. The game splits the
-     * cloak in two and hangs half of it behind the character; here the
-     * point is to see where the garment lands, so it is drawn in one
-     * piece and nothing is hidden behind a torso.
-     */
+    // Cloak over the body, then the hat: the order the game composites them.
     this.drawOverlay(context, "cloaks", this.cloakId, originX, originY);
     this.drawOverlay(context, "hats", this.hatId, originX, originY);
 

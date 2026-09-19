@@ -4,21 +4,41 @@
   "_fields": {
     "widthPx": "finished width on the 32px body canvas; height follows the art",
     "bottomRow": "hats: the row the brim lands on. The crown is rows 2-10, but the hair sits proud of it, so 11 is where a hat looks worn rather than hovering",
-    "topRow": "cloaks: the row the collar's top edge lands on. The neck pinches at row 23, so 22 puts the collar around the neck rather than over the jaw",
-    "collarSplit": "cloaks: where the collar ends as a fraction of the art's height. Above it draws in front of the body, below it behind"
+    "topRow": "cloaks: the row the garment's neckline lands on. The neck pinches at row 23 and the shoulders are rows 24-27, so 22 puts the neckline at the throat with the shoulders covered below it",
+    "hemRow": "cloaks: the row the hem lands on. The legs are rows 39-47, so 44 puts the hem at the shins - past the knees, clear of the feet, so the figure still reads as standing on the ground rather than floating in a bag",
+    "_cloakScale": "cloaks are scaled to widthPx and to (hemRow - topRow) independently, which is not uniform. The drawings are portrait - about 1.3 times as tall as they are wide - and this body is chibi, 25px across and 46 tall, where shoulders to shins is 22 rows. No single scale both covers the shoulders and stops at the shins. A cloak is a trapezoid of cloth, so the squash is invisible; the alternatives are a hem below the feet or a garment too narrow to cover the body"
   },
   "defaults": {
-    "hat": { "widthPx": 20, "bottomRow": 11 },
-    "cloak": { "widthPx": 24, "topRow": 22, "collarSplit": 0.26 }
+    "hat": {
+      "widthPx": 20,
+      "bottomRow": 11
+    },
+    "cloak": {
+      "widthPx": 26,
+      "topRow": 22,
+      "hemRow": 44
+    }
   },
   "items": {
-    "hat_02_straw": { "widthPx": 24, "bottomRow": 10 },
-    "hat_03_mushroom": { "widthPx": 22, "bottomRow": 10 },
-    "hat_06_dragonscale": { "widthPx": 18, "bottomRow": 12 },
-    "hat_07_moonpetal": { "widthPx": 22, "bottomRow": 11 },
-    "hat_09_gold": { "widthPx": 21, "bottomRow": 12 },
-    "cloak_04_rugged": { "collarSplit": 0.3 },
-    "cloak_06_silver": { "collarSplit": 0.34 },
-    "cloak_07_gold": { "collarSplit": 0.32 }
+    "hat_02_straw": {
+      "widthPx": 24,
+      "bottomRow": 10
+    },
+    "hat_03_mushroom": {
+      "widthPx": 22,
+      "bottomRow": 10
+    },
+    "hat_06_dragonscale": {
+      "widthPx": 18,
+      "bottomRow": 12
+    },
+    "hat_07_moonpetal": {
+      "widthPx": 22,
+      "bottomRow": 11
+    },
+    "hat_09_gold": {
+      "widthPx": 21,
+      "bottomRow": 12
+    }
   }
 }

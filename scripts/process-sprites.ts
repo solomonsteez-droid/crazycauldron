@@ -250,6 +250,157 @@ function writeSheet(name: string, frames: Frame[]): void {
 // Overlays
 // --------------------------------------------------------------------------
 
+// --------------------------------------------------------------------------
+// Walk cycles
+// --------------------------------------------------------------------------
+
+/** How the four frames of one direction are played. */
+interface WalkCycle {
+  /** Source frame numbers, in the order they are played. */
+  order: number[];
+  frameRate: number;
+  pingPong: boolean;
+  /** Pairs of frames too alike to read as separate poses. */
+  duplicates: [number, number][];
+  /** Every pair, for the report and for anyone deciding to redraw a sheet. */
+  pairs: { a: number; b: number; silhouette: number; intensity: number }[];
+}
+
+/**
+ * Two frames are the same pose twice when the outline barely moves and the
+ * pixels barely change.
+ *
+ * Both tests, not either. A pixel count on its own is useless here: these are
+ * four independently hand-drawn poses scaled down to 32x48, so almost every
+ * pixel is a different blend and a naive count calls frames 50% different
+ * when they are plainly the same walk. Silhouette catches a leg that did not
+ * move; intensity catches shading that did not change. A pair that fails
+ * neither is a frame the animation gets nothing from.
+ */
+const DUPLICATE_SILHOUETTE = 0.04;
+const DUPLICATE_INTENSITY = 16;
+
+/** Frames per second. Fast enough to read as walking at this stride length. */
+const WALK_FPS = 10;
+
+/**
+ * How different two frames are, measured two ways.
+ *
+ * silhouette: the fraction of covered pixels one frame has and the other does
+ * not, over the union - the shape of the motion, which is what reads at this
+ * size.
+ *
+ * intensity: the mean per-channel difference over those same pixels - the
+ * shading, which is what makes a redrawn pose feel redrawn.
+ */
+function compareFrames(a: Img, b: Img): { silhouette: number; intensity: number } {
+  let differing = 0;
+  let union = 0;
+  let sum = 0;
+
+  const pixels = Math.min(a.data.length, b.data.length) / 4;
+  for (let i = 0; i < pixels; i += 1) {
+    const at = i * 4;
+    const aCovered = a.data[at + 3]! >= 8;
+    const bCovered = b.data[at + 3]! >= 8;
+    if (!aCovered && !bCovered) continue;
+
+    union += 1;
+    if (aCovered !== bCovered) differing += 1;
+    for (let c = 0; c < 4; c += 1) sum += Math.abs(a.data[at + c]! - b.data[at + c]!);
+  }
+
+  if (union === 0) return { silhouette: 0, intensity: 0 };
+  return { silhouette: differing / union, intensity: sum / union / 4 };
+}
+
+/**
+ * Decides how one direction's cycle is played, and says why.
+ *
+ * Four distinct poses loop 0-1-2-3. When two of them are the same pose twice
+ * the loop has three poses in four slots and the stride visibly hitches, so it
+ * is played as a ping-pong instead - 0-1-2-3-2-1 - which turns the dead frame
+ * into a turning point rather than a stumble. It is not a fix; it is what
+ * makes a weak sheet usable until it is redrawn.
+ */
+function analyseWalk(frames: Img[]): WalkCycle {
+  const pairs: WalkCycle["pairs"] = [];
+  const duplicates: [number, number][] = [];
+
+  for (let a = 0; a < frames.length; a += 1) {
+    for (let b = a + 1; b < frames.length; b += 1) {
+      const { silhouette, intensity } = compareFrames(frames[a]!, frames[b]!);
+      pairs.push({ a, b, silhouette, intensity });
+      if (silhouette <= DUPLICATE_SILHOUETTE && intensity <= DUPLICATE_INTENSITY) {
+        duplicates.push([a, b]);
+      }
+    }
+  }
+
+  const pingPong = duplicates.length > 0 && frames.length === 4;
+  return {
+    order: pingPong ? [0, 1, 2, 3, 2, 1] : frames.map((_, i) => i),
+    frameRate: WALK_FPS,
+    pingPong,
+    duplicates,
+    pairs,
+  };
+}
+
+/**
+ * The report the brief asks for: every pair of every cycle, so a weak sheet
+ * can be found and redrawn rather than guessed at.
+ */
+function auditWalkCycles(cycles: Record<string, Record<string, WalkCycle>>): void {
+  console.log("\n  walk cycles - how different each frame is from the others:");
+  console.log(
+    "    (silhouette = outline that moved, intensity = mean pixel change; a pair under " +
+      Math.round(DUPLICATE_SILHOUETTE * 100) + "% and " + DUPLICATE_INTENSITY +
+      " is the same pose twice)",
+  );
+
+  for (const [body, directions] of Object.entries(cycles)) {
+    console.log("\n    " + body);
+    for (const [direction, cycle] of Object.entries(directions)) {
+      const worst = [...cycle.pairs].sort(
+        (x, y) => x.silhouette + x.intensity / 400 - (y.silhouette + y.intensity / 400),
+      )[0];
+
+      const line = cycle.pairs
+        .map(
+          (pair) =>
+            pair.a + "-" + pair.b + " " +
+            Math.round(pair.silhouette * 100) + "%/" + Math.round(pair.intensity),
+        )
+        .join("  ");
+
+      console.log("      " + direction.padEnd(6) + line);
+
+      if (cycle.duplicates.length > 0) {
+        const named = cycle.duplicates.map(([a, b]) => "frames " + a + " and " + b).join(", ");
+        console.log(
+          "      " + "".padEnd(6) + "-> ping-pong " + cycle.order.join("-") + " at " +
+            cycle.frameRate + " fps; " + named + " are near-duplicates",
+        );
+        suspect.push(
+          body + " walk_" + direction + ": " + named + " are near-duplicates - the sheet " +
+            "is worth redrawing; played as a ping-pong until it is",
+        );
+      } else {
+        console.log(
+          "      " + "".padEnd(6) + "-> " + cycle.order.join("-") + " at " + cycle.frameRate +
+            " fps; all four distinct" +
+            (worst
+              ? " (closest pair " + worst.a + "-" + worst.b + " at " +
+                Math.round(worst.silhouette * 100) + "%/" + Math.round(worst.intensity) + ")"
+              : ""),
+        );
+      }
+    }
+  }
+}
+
+
 interface OverlayResult {
   id: string;
   width: number;
@@ -258,14 +409,6 @@ interface OverlayResult {
   offset: { x: number; y: number };
   /** True when an <id>_back.png was processed for the up direction. */
   back?: boolean;
-  /**
-   * Cloaks only: how many rows of the finished art are collar and shoulders.
-   *
-   * Everything above this line is drawn in front of the body and everything
-   * below it behind, which is what makes a cloak hang off a character rather
-   * than being painted onto one.
-   */
-  collarRows?: number;
   /** Finished width as a fraction of the body figure's own width. */
   widthPct: number;
 }
@@ -275,10 +418,10 @@ interface Fit {
   widthPx: number;
   /** Hats: the row the brim lands on. */
   bottomRow?: number;
-  /** Cloaks: the row the collar's top edge lands on. */
+  /** Cloaks: the row the garment's neckline lands on. */
   topRow?: number;
-  /** Cloaks: where in the art the collar ends, as a fraction of its height. */
-  collarSplit?: number;
+  /** Cloaks: the row the hem lands on. */
+  hemRow?: number;
 }
 
 interface FitFile {
@@ -314,15 +457,16 @@ const MIN_ISLAND_PX = 6;
  * to a stated width.
  *
  * Where it sits comes from the body's own rows rather than from a fraction. A
- * hat's brim lands on the crown at row 11; a cloak's collar lands on the
- * shoulders at row 20. Those are measured numbers, written down in
- * overlay-bands.json next to the row profile they came from.
+ * hat's brim lands on the crown at row 11; a cloak's neckline lands at the
+ * throat on row 22, with the shoulders covered below it. Those are measured
+ * numbers, written down in overlay-bands.json next to the row profile they
+ * came from.
  *
- * A cloak is written out three times: whole, for the view from behind where
- * the entire cloak is between you and the character; and split at the collar
- * line into a piece that draws in front of the body and a piece that draws
- * behind it, which is the only way a cape hangs off shoulders rather than
- * being stuck to a chest.
+ * One file per cloak. It was three for a while - a collar in front of the
+ * body and a drape behind it, so the garment hung off the shoulders - but at
+ * 26 pixels wide the seam cost more than the depth bought: the body showed
+ * through a cloak that is meant to be closed at the front. A cloak is now a
+ * full-front garment, drawn whole and drawn in front.
  */
 function buildOverlay(
   file: string,
@@ -336,34 +480,16 @@ function buildOverlay(
 
   save(path.join(OUT, folder, id + ".png"), cut.image);
 
-  let collarRows: number | undefined;
-  if (kind === "cloak") {
-    const fit = fitFor(kind, id);
-    const split = Math.max(1, Math.round(cut.height * (fit.collarSplit ?? 0.26)));
-    collarRows = split;
-
-    /*
-     * The same pixels, cut in two. Each half keeps the full canvas size so
-     * both drop at the same offset and line up without the client having to
-     * know where the seam was.
-     */
-    const collar = blank(cut.width, cut.height);
-    const drape = blank(cut.width, cut.height);
-    for (let y = 0; y < cut.height; y += 1) {
-      for (let x = 0; x < cut.width; x += 1) {
-        const i = (y * cut.width + x) * 4;
-        const into = y < split ? collar : drape;
-        cut.image.data.copy(into.data, i, i, i + 4);
-      }
-    }
-    save(path.join(OUT, folder, id + "_collar.png"), collar);
-    save(path.join(OUT, folder, id + "_drape.png"), drape);
-  }
-
-  // The same item drawn from behind, when the artist has provided one.
-  const backFile = file.replace(/\.png$/i, "_back.png");
+  /*
+   * The same item drawn from behind, when the artist has provided one.
+   *
+   * Hats only. A cloak is closed at the front and roughly symmetric from
+   * behind, so the up view uses the same image rather than a second drawing
+   * that would have to be kept in step with the first.
+   */
+  const backFile = kind === "hat" ? file.replace(/\.png$/i, "_back.png") : "";
   let back = false;
-  if (exists(backFile)) {
+  if (backFile && exists(backFile)) {
     const rear = cutItem(backFile, kind, id, base);
     if (rear) {
       save(path.join(OUT, folder, id + "_back.png"), rear.image);
@@ -378,7 +504,6 @@ function buildOverlay(
     "generated/" + folder + "/" + id + ".png " + cut.width + "x" + cut.height +
       " at (" + cut.offset.x + "," + cut.offset.y + ") - " +
       Math.round(widthPct * 100) + "% of body width" +
-      (collarRows ? ", collar " + collarRows + " rows" : "") +
       (back ? ", with a back view" : "") +
       (cut.dropped > 0 ? ", " + cut.dropped + " speckle(s) dropped" : ""),
   );
@@ -389,7 +514,6 @@ function buildOverlay(
     height: cut.height,
     offset: cut.offset,
     widthPct,
-    ...(collarRows ? { collarRows } : {}),
     ...(back ? { back: true } : {}),
   };
 }
@@ -431,7 +555,23 @@ function cutItem(
   const tight = crop(keyed, bounds);
   const fit = fitFor(kind, id);
   const w = Math.max(1, fit.widthPx);
-  const h = Math.max(1, Math.round((tight.height / tight.width) * w));
+
+  /*
+   * A hat keeps the proportions it was drawn at. A cloak does not, and the
+   * reason is arithmetic rather than taste: the drawings are portrait, about
+   * 1.3 times as tall as they are wide, while this body is chibi - 25px
+   * across, 46 tall, with shoulders to shins spanning 22 rows. Scaled
+   * uniformly to 26px wide a cloak finishes 30-37 rows tall and its hem lands
+   * below the feet; scaled uniformly to 22 rows tall it finishes 16px wide
+   * and does not cover the shoulders it is supposed to hang from.
+   *
+   * So both axes are fitted. On a trapezoid of cloth the squash does not
+   * read; a hem trailing under the boots very much does.
+   */
+  const h =
+    kind === "cloak"
+      ? Math.max(1, (fit.hemRow ?? 44) - (fit.topRow ?? 22))
+      : Math.max(1, Math.round((tight.height / tight.width) * w));
 
   // Averaged down, not nearest: these are 2048px drawings going to 24px, and
   // nearest at that ratio throws away nine pixels in ten and shimmers.
@@ -440,7 +580,7 @@ function cutItem(
   const image = quantise(small, palette);
 
   const offsetX = Math.round(base.centreX - w / 2);
-  const offsetY = kind === "hat" ? (fit.bottomRow ?? 11) - h : (fit.topRow ?? 20);
+  const offsetY = kind === "hat" ? (fit.bottomRow ?? 11) - h : (fit.topRow ?? 22);
 
   return { image, width: w, height: h, offset: { x: offsetX, y: offsetY }, dropped };
 }
@@ -465,7 +605,7 @@ function auditOverlays(overlays: { hats: OverlayResult[]; cloaks: OverlayResult[
         "    " + (ok ? "ok  " : "FLAG") + " " + item.id.padEnd(20) +
           String(Math.round(pct * 100)).padStart(4) + "%  " + item.width + "x" + item.height +
           " at y" + item.offset.y +
-          (item.collarRows ? "  collar " + item.collarRows : "") +
+          "  covers rows " + item.offset.y + "-" + (item.offset.y + item.height) +
           (item.back ? "  +back" : ""),
       );
       if (!ok) {
@@ -870,14 +1010,33 @@ function main() {
   fs.mkdirSync(OUT, { recursive: true });
 
   // --- bodies -------------------------------------------------------------
-  const bodies: Record<string, { scale: number; frames: string[] }> = {};
+  const bodies: Record<
+    string,
+    { scale: number; frames: string[]; walk: Record<string, WalkCycle> }
+  > = {};
+  const cycles: Record<string, Record<string, WalkCycle>> = {};
   let baseForOverlays: OverlayBase | null = null;
 
   for (const body of ["male", "female"] as const) {
     const built = buildBody(body);
     if (!built) continue;
     writeSheet(body, built.frames);
-    bodies[body] = { scale: built.scale, frames: built.frames.map((f) => f.name) };
+
+    /*
+     * How each direction is played, decided from the finished frames rather
+     * than assumed. The client reads this out of the manifest, so a sheet
+     * with a dead frame in it gets a ping-pong without anybody editing code.
+     */
+    const walk: Record<string, WalkCycle> = {};
+    for (const direction of DIRECTIONS) {
+      const ordered = [0, 1, 2, 3]
+        .map((i) => built.frames.find((f) => f.name === body + "_walk_" + direction + "_" + i))
+        .filter((f): f is Frame => f !== undefined);
+      if (ordered.length === 4) walk[direction] = analyseWalk(ordered.map((f) => f.img));
+    }
+    cycles[body] = walk;
+
+    bodies[body] = { scale: built.scale, frames: built.frames.map((f) => f.name), walk };
 
     // The overlays are diffed against the male front pose, which is the figure
     // every hat and cloak drop is fitted against.
@@ -931,6 +1090,8 @@ function main() {
   } else {
     note("skipped", "hats and cloaks - no base body to size against");
   }
+
+  if (Object.keys(cycles).length > 0) auditWalkCycles(cycles);
 
   if (only) return finishOne(overlays);
 

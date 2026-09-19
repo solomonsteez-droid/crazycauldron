@@ -327,6 +327,9 @@ Before switching it on in production:
   `generated/` and to the map JSON. These live in a Vite dev-server plugin
   (`apply: "serve"`) and their pages are excluded from `rollupOptions.input`.
   They cannot be built.
+- **The walk-debug overlay** on the D key, which draws an animation readout
+  over every character. It lives behind `import.meta.env.DEV` and the bundler
+  drops the whole module.
 - **`/dev level <n>`** and the `cc.*` console helpers. The server only
   registers the handler when `NODE_ENV !== "production"`; an unregistered
   message type is dropped by Colyseus before any game code runs, so there is no

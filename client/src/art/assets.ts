@@ -33,16 +33,16 @@ export const bodyKey = (body: string) => `body:${body}`;
 export const hatKey = (id: string, back = false) => `hat:${id}${back ? ":back" : ""}`;
 
 /**
- * A cloak, in one of its three pieces.
+ * A cloak. One image, drawn whole and drawn in front of the body.
  *
- * "collar" is the collar and shoulders, drawn in front of the body; "drape"
- * is everything below that, drawn behind it. The whole garment is the third,
- * used for the view from behind where the cloak is entirely between you and
- * the character.
+ * It was three for a while - a collar in front and a drape behind, so the
+ * garment hung off the shoulders. At 26 pixels wide the seam cost more than
+ * the depth bought, and the body showed through a garment that is closed at
+ * the front. The up view uses the same image; a cloak is near enough
+ * symmetric from behind that a second drawing would only be one more thing to
+ * keep in step.
  */
-export type CloakPart = "whole" | "collar" | "drape";
-export const cloakKey = (id: string, part: CloakPart = "whole") =>
-  part === "whole" ? `cloak:${id}` : `cloak:${id}:${part}`;
+export const cloakKey = (id: string) => `cloak:${id}`;
 export const ingredientKey = (id: string) => `ingredient:${id}`;
 export const dishKey = (recipeId: string) => `dish:${recipeId}`;
 /**
@@ -137,8 +137,6 @@ export function queueArt(scene: Phaser.Scene, manifest: Manifest): void {
   }
   for (const cloak of manifest.cloaks) {
     scene.load.image(cloakKey(cloak.id), `${GENERATED}/cloaks/${cloak.id}.png`);
-    scene.load.image(cloakKey(cloak.id, "collar"), `${GENERATED}/cloaks/${cloak.id}_collar.png`);
-    scene.load.image(cloakKey(cloak.id, "drape"), `${GENERATED}/cloaks/${cloak.id}_drape.png`);
   }
   /*
    * Of the generated props only the three gate arches are loaded. The
@@ -344,29 +342,44 @@ function effectStrip(scene: Phaser.Scene, key: string, name: string): void {
   for (let f = 0; f < frames; f += 1) texture.add(f, 0, f * size, 0, size, size);
 }
 
-/** Registers one walk animation per body and direction. */
+/**
+ * Registers one walk animation per body and direction.
+ *
+ * The order comes from the manifest rather than from a literal here. The
+ * pipeline measures how different each of the four frames is from the others,
+ * and where two are the same pose twice it hands back 0-1-2-3-2-1 instead of
+ * 0-1-2-3 - a ping-pong, which turns a dead frame into a turning point rather
+ * than a stumble. Everything else loops as drawn.
+ */
 export function createBodyAnimations(scene: Phaser.Scene, manifest: Manifest): void {
-  for (const body of Object.keys(manifest.bodies)) {
+  for (const [body, entry] of Object.entries(manifest.bodies)) {
     if (!scene.textures.exists(bodyKey(body))) continue;
+    const texture = scene.textures.get(bodyKey(body));
 
     for (const direction of ["down", "up", "left", "right"]) {
       const key = `${body}_walk_${direction}`;
       if (scene.anims.exists(key)) continue;
 
-      const frames = [0, 1, 2, 3]
+      const cycle = entry.walk?.[direction];
+      const order = cycle?.order ?? [0, 1, 2, 3];
+
+      const frames = order
         .map((i) => `${key}_${i}`)
-        .filter((name) => scene.textures.get(bodyKey(body)).has(name));
+        .filter((name) => texture.has(name));
       if (frames.length === 0) continue;
 
       scene.anims.create({
         key,
         frames: frames.map((name) => ({ key: bodyKey(body), frame: name })),
-        frameRate: 8,
+        frameRate: cycle?.frameRate ?? WALK_FPS,
         repeat: -1,
       });
     }
   }
 }
+
+/** Used only when a body predates the manifest carrying its own cycle. */
+const WALK_FPS = 10;
 
 export function ingredientOf(id: string): Ingredient | undefined {
   return INGREDIENTS.find((i) => i.id === id);

@@ -1,12 +1,12 @@
 /**
- * One player on screen: the drape of their cloak, the body, the collar of
- * their cloak, a hat, and a name - in that order, which is the order they
- * overlap in.
+ * One player on screen: body, cloak, hat and name, in that order, which is the
+ * order they overlap in.
  *
- * A cloak is two sprites rather than one because it hangs. Everything below
- * the collar line is behind the character and everything above it is in
- * front, so the cape falls past the shoulders and the body stands inside it.
- * Painted as a single sprite it would be a cape-shaped sticker on a chest.
+ * The cloak is a full-front garment - one image, entirely in front of the
+ * body, neckline at the throat and hem at the shins. It was split in two for
+ * a while, a collar in front and a drape behind, so that the cloth hung off
+ * the shoulders; at 26 pixels wide that seam cost more than the depth bought,
+ * and the body showed through a garment that is closed at the front.
  *
  * The sprites are separate so a wardrobe change is a texture swap rather than
  * a re-render, and so the garments can sit at hand-tuned offsets per
@@ -25,7 +25,13 @@ import {
   type OffsetsFile,
 } from "../art/manifest.js";
 
-/** Frames of the walk cycle where the body is at the top of its bob. */
+/**
+ * Source frames of the walk cycle where the body is at the top of its bob.
+ *
+ * Numbered by the frame the artist drew, not by its position in the played
+ * sequence: a ping-pong cycle plays six frames from four drawings, so a
+ * position-based rule would bob at the wrong moments on the way back.
+ */
 const BOB_FRAMES = new Set([1, 3]);
 
 /**
@@ -64,8 +70,7 @@ export interface AvatarLook {
 export class Avatar {
   readonly container: Phaser.GameObjects.Container;
   private readonly body: Phaser.GameObjects.Sprite;
-  private readonly drape: Phaser.GameObjects.Image;
-  private readonly collar: Phaser.GameObjects.Image;
+  private readonly cloak: Phaser.GameObjects.Image;
   private readonly hat: Phaser.GameObjects.Image;
   private readonly label: Phaser.GameObjects.Text;
 
@@ -73,6 +78,8 @@ export class Avatar {
   private moving = false;
   /** True while a move tween is running, whatever the server last said. */
   private tweening = false;
+  /** Where the client has decided this character is going, before the server agrees. */
+  private intent: Direction | null = null;
   private look: AvatarLook;
 
   /** Set while the server says this player is cooking, which drives the dance. */
@@ -103,8 +110,7 @@ export class Avatar {
       .sprite(0, 0, bodyKey(look.body), `${look.body}_idle_down`)
       .setOrigin(0.5, 1);
 
-    this.drape = scene.add.image(0, 0, "__MISSING").setOrigin(0, 0).setVisible(false);
-    this.collar = scene.add.image(0, 0, "__MISSING").setOrigin(0, 0).setVisible(false);
+    this.cloak = scene.add.image(0, 0, "__MISSING").setOrigin(0, 0).setVisible(false);
     this.hat = scene.add.image(0, 0, "__MISSING").setOrigin(0, 0).setVisible(false);
 
     this.label = scene.add
@@ -115,20 +121,27 @@ export class Avatar {
       })
       .setOrigin(0.5, 1);
 
-    // Drape, body, collar, hat: the order they overlap in, back to front.
+    // Body, cloak, hat: the order they overlap in, back to front.
     this.container = scene.add.container(x, y, [
-      this.drape,
       this.body,
-      this.collar,
+      this.cloak,
       this.hat,
       this.label,
     ]);
     this.apply();
   }
 
-  /** Walking if the server says so, or if a tween has not finished yet. */
+  /**
+   * Walking if the client has decided so, if the server says so, or if a tween
+   * has not finished yet.
+   *
+   * Three sources because each covers a gap the others leave. The intent
+   * covers the round trip between clicking and the server's first reply; the
+   * server's flag covers the middle of a route; the tween covers the last
+   * step, which the server clears one step early.
+   */
   private get walking(): boolean {
-    return this.moving || this.tweening;
+    return this.intent !== null || this.moving || this.tweening;
   }
 
   /** Swaps garments without rebuilding the container. */
@@ -161,7 +174,31 @@ export class Avatar {
   setTweening(tweening: boolean) {
     if (tweening === this.tweening) return;
     this.tweening = tweening;
+    // A step has just finished and the client already knows where the next one
+    // goes: face that way now rather than after the server says so.
+    if (!tweening && this.intent) this.direction = this.intent;
     this.playBody();
+  }
+
+  /**
+   * The direction the client believes this character is about to walk in.
+   *
+   * Set the moment a move is asked for, from the path the client works out
+   * for itself, so the stride starts on the click rather than a round trip
+   * later. Position is not predicted - that stays the server's to decide, and
+   * the tween still only ever moves between cells the server has confirmed.
+   *
+   * A running tween outranks it for the direction: the tween is describing
+   * motion that is actually on screen, while the intent is describing the
+   * step after it. When the tween ends with an intent still live, the intent
+   * takes over, so a character never idles in a gap between steps.
+   */
+  setIntent(direction: Direction | null) {
+    if (direction === this.intent) return;
+    this.intent = direction;
+    if (direction && !this.tweening) this.direction = direction;
+    this.playBody();
+    this.placeOverlays();
   }
 
   /** Cooking replaces the idle motion with a little two-step. */
@@ -212,6 +249,16 @@ export class Avatar {
     return this.label;
   }
 
+  /** What this avatar is doing right now, for the debug overlay. */
+  debugState(): { animation: string; frame: number; direction: Direction; walking: boolean } {
+    return {
+      animation: this.body.anims.currentAnim?.key ?? `${this.look.body}_idle_${this.direction}`,
+      frame: this.sourceFrame(),
+      direction: this.direction,
+      walking: this.walking,
+    };
+  }
+
   destroy() {
     this.bubbleTimer?.remove();
     this.container.destroy(true);
@@ -221,10 +268,10 @@ export class Avatar {
 
   private apply() {
     /*
-     * Facing away uses the back art when the artist drew one. Without it the
-     * front is mirrored, which is fine for a toque and wrong for anything with
-     * a brooch on it - so which items have a back view is recorded by the
-     * pipeline rather than assumed here.
+     * A hat facing away uses the back art when the artist drew one. Without
+     * it the front is mirrored, which is fine for a toque and wrong for
+     * anything with a brooch on it - so which items have a back view is
+     * recorded by the pipeline rather than assumed here.
      */
     const facingAway = this.direction === "up";
     const hatEntry = this.manifest.hats.find((e) => e.id === this.look.hatId);
@@ -234,24 +281,15 @@ export class Avatar {
     if (this.hat.visible) this.hat.setTexture(hatTexture);
 
     /*
-     * Facing away, the whole cloak is between the viewer and the character,
-     * so it is drawn once in the collar slot and the drape slot is empty.
-     * From every other angle it is split: drape behind, collar in front.
+     * One image at every angle. Left and right are the same art flipped, and
+     * the view from behind is the same art again - a cloak is close enough to
+     * symmetric from the back that a second drawing would be one more thing
+     * to keep in step for no visible gain.
      */
     const cloak = this.look.cloakId;
-    const has = (part: "whole" | "collar" | "drape") =>
-      Boolean(cloak) && this.scene.textures.exists(cloakKey(cloak, part));
-
-    if (facingAway) {
-      this.drape.setVisible(false);
-      this.collar.setVisible(has("whole"));
-      if (this.collar.visible) this.collar.setTexture(cloakKey(cloak));
-    } else {
-      this.drape.setVisible(has("drape"));
-      if (this.drape.visible) this.drape.setTexture(cloakKey(cloak, "drape"));
-      this.collar.setVisible(has("collar"));
-      if (this.collar.visible) this.collar.setTexture(cloakKey(cloak, "collar"));
-    }
+    const cloakTexture = cloakKey(cloak);
+    this.cloak.setVisible(Boolean(cloak) && this.scene.textures.exists(cloakTexture));
+    if (this.cloak.visible) this.cloak.setTexture(cloakTexture);
 
     this.label.setText(this.look.displayName);
     this.label.setColor(this.look.isSelf ? hex(PALETTE.accent) : hex(PALETTE.ink));
@@ -274,6 +312,18 @@ export class Avatar {
   }
 
   /**
+   * Which of the four drawings is on screen, by the number in its name.
+   *
+   * The played sequence is not the answer - a ping-pong cycle runs six frames
+   * over four drawings - so the frame's own texture name is what is read.
+   */
+  private sourceFrame(): number {
+    const name = String(this.body.anims.currentFrame?.textureFrame ?? "");
+    const match = /_(\d+)$/.exec(name);
+    return match ? Number(match[1]) : 0;
+  }
+
+  /**
    * Places the garments for the current direction.
    *
    * Offsets are measured from the body frame's top-left corner, which sits at
@@ -284,12 +334,10 @@ export class Avatar {
     // Garments hang off the body, so they inherit whatever the pose did to it.
     const left = -BODY_FRAME.width / 2 + this.pose.dx;
     const top = -BODY_FRAME.height + this.pose.dy;
-    const frameIndex = this.body.anims.currentFrame?.index ?? 0;
-    const bob = this.walking && BOB_FRAMES.has(frameIndex % 4) ? -1 : 0;
+    const bob = this.walking && BOB_FRAMES.has(this.sourceFrame()) ? -1 : 0;
 
     for (const [kind, sprite, id] of [
-      ["cloaks", this.drape, this.look.cloakId],
-      ["cloaks", this.collar, this.look.cloakId],
+      ["cloaks", this.cloak, this.look.cloakId],
       ["hats", this.hat, this.look.hatId],
     ] as const) {
       if (!sprite.visible || !id) continue;

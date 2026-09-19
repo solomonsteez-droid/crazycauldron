@@ -39,6 +39,8 @@ import {
   MSG_UNLOCKED,
   findSection,
   isAdjacentOrOn,
+  CELL,
+  findPath,
   isWalkableOn,
   type CookPreparedPayload,
   type CookResultPayload,
@@ -64,6 +66,7 @@ import { Effects } from "../world/effects.js";
 import { Ambience } from "../world/ambience.js";
 import { sound } from "../world/sound.js";
 import { directionFor, directionForVector, loadArt, type Manifest, type OffsetsFile } from "../art/manifest.js";
+import { WalkDebug, type VectorSource } from "../dev/walkDebug.js";
 import { LABEL_SCREEN_PX, labelScale, planCamera } from "../map/camera.js";
 import { TEX_MARKER } from "../map/textures.js";
 import type { HubStateView, KickNotice, PlayerView, VillagerView } from "../net/state.js";
@@ -100,10 +103,21 @@ interface HubSceneData {
 interface AvatarEntry {
   avatar: Avatar;
   tween?: Phaser.Tweens.Tween;
+  /** The last vector a walk direction was chosen from, for the debug overlay. */
+  vector?: { dx: number; dy: number; source: VectorSource };
 }
 
 /** How hard the camera chases the player. Low enough to glide, high enough to keep up. */
 const FOLLOW_LERP = 0.12;
+
+/**
+ * How long a predicted route waits for the server before giving up.
+ *
+ * Three steps' worth: long enough that a slow round trip or a batched patch
+ * does not abandon a walk that is really happening, short enough that a move
+ * the server refused stops the legs within half a second.
+ */
+const PREDICTION_GRACE_MS = MOVE_STEP_MS * 3;
 
 /** Matches the server's villager clock, so their walk tweens do not stutter. */
 const VILLAGER_STEP_MS = AMBIENCE.villagers.stepMs;
@@ -147,6 +161,20 @@ export class HubScene extends Phaser.Scene {
   private lastChefLevel = 0;
   private departing = false;
   private currentSection = HUB_MAP;
+  /**
+   * The route the client worked out for itself, so the stride can start on the
+   * click instead of a round trip later.
+   *
+   * Only the animation is predicted. Position stays the server's to decide -
+   * the tween never moves to a cell the server has not confirmed - so a
+   * mispredicted path costs a wrong-footed stride for a frame or two and
+   * nothing else.
+   */
+  private predicted: { path: TilePos[]; giveUpAt: number } | null = null;
+
+  /** Dev-only readout over each character; null in a production build. */
+  private walkDebug: WalkDebug | null = null;
+
   private pending: PendingAction | null = null;
   /** A station clicked from across the map, opened once we arrive. */
   private pendingStation: string | null = null;
@@ -230,6 +258,8 @@ export class HubScene extends Phaser.Scene {
     });
 
     this.installDevConsole();
+    // Compiled out of production along with everything else behind this flag.
+    if (import.meta.env.DEV) this.walkDebug = new WalkDebug(this);
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.teardown());
   }
@@ -256,10 +286,20 @@ export class HubScene extends Phaser.Scene {
   }
 
   override update(now: number) {
+    /*
+     * A prediction that the server never acted on is a move it refused -
+     * blocked ground, out of range, too many messages - and the character
+     * would otherwise march on the spot forever. The clock is pushed forward
+     * every time the server confirms a cell, so this only fires on silence.
+     */
+    if (this.predicted && now > this.predicted.giveUpAt) this.clearPrediction();
+
     // Everyone in the room breathes, fidgets and dances - the motion is
     // procedural, so it costs the same for one player or thirty.
     for (const entry of this.avatars.values()) entry.avatar.tick(now);
     for (const entry of this.villagers.values()) entry.avatar.tick(now);
+
+    this.walkDebug?.update([...this.avatars.values(), ...this.villagers.values()]);
   }
 
   private buildMap(mapId: number) {
@@ -348,6 +388,78 @@ export class HubScene extends Phaser.Scene {
     const intent: MoveIntent = tile;
     this.room.send(MSG_MOVE, intent);
     this.flashMarker(tile.tileX, tile.tileY);
+    this.predict(tile);
+  }
+
+  /**
+   * Starts the walk animation now, from a route the client works out itself.
+   *
+   * The same pathfinder the server runs, over the same grid, so the two agree
+   * except where the world changed between them. Without this the character
+   * stands still for a round trip after every click and then jerks into a
+   * stride, which is the single most noticeable thing about moving.
+   */
+  private predict(destination: TilePos) {
+    const me = this.self();
+    const entry = me && this.avatars.get(this.room.sessionId);
+    if (!me || !entry) return;
+
+    const from = { tileX: me.tileX, tileY: me.tileY };
+    const path = findPath(from, destination, (x, y) =>
+      isWalkableOn(this.currentSection, x, y),
+    );
+
+    if (path.length === 0) {
+      this.clearPrediction();
+      return;
+    }
+
+    this.predicted = { path, giveUpAt: this.time.now + PREDICTION_GRACE_MS };
+    const dx = path[0]!.tileX - from.tileX;
+    const dy = path[0]!.tileY - from.tileY;
+    entry.vector = { dx, dy, source: "intent" };
+    entry.avatar.setIntent(directionForVector(dx, dy, directionFor(me.facing)));
+  }
+
+  /**
+   * Keeps the predicted route level with where the server says the player is.
+   *
+   * Cells the server has reached are dropped, and the intent becomes the
+   * direction of the step after them - the one the character is about to
+   * take. When the route runs out, or the server goes somewhere the route
+   * does not, the prediction is abandoned and the server's own facing takes
+   * over again.
+   */
+  private advancePrediction(player: PlayerView) {
+    if (!this.predicted) return;
+    const entry = this.avatars.get(this.room.sessionId);
+    if (!entry) return;
+
+    const reached = this.predicted.path.findIndex(
+      (cell) => cell.tileX === player.tileX && cell.tileY === player.tileY,
+    );
+
+    if (reached >= 0) {
+      this.predicted.path = this.predicted.path.slice(reached + 1);
+      this.predicted.giveUpAt = this.time.now + PREDICTION_GRACE_MS;
+    }
+
+    const next = this.predicted.path[0];
+    if (!next) {
+      this.clearPrediction();
+      return;
+    }
+
+    const dx = next.tileX - player.tileX;
+    const dy = next.tileY - player.tileY;
+    entry.vector = { dx, dy, source: "intent" };
+    entry.avatar.setIntent(directionForVector(dx, dy, directionFor(player.facing)));
+  }
+
+  /** Forgets the route and lets the server decide again. */
+  private clearPrediction() {
+    this.predicted = null;
+    this.avatars.get(this.room.sessionId)?.avatar.setIntent(null);
   }
 
   /**
@@ -736,6 +848,14 @@ export class HubScene extends Phaser.Scene {
     const moved =
       entry.avatar.container.x !== target.x || entry.avatar.container.y !== target.y;
 
+    entry.vector = moved
+      ? {
+          dx: (target.x - entry.avatar.container.x) / CELL,
+          dy: (target.y - entry.avatar.container.y) / CELL,
+          source: "tween",
+        }
+      : { dx: 0, dy: 0, source: "facing" };
+
     entry.avatar.setDirection(
       moved
         ? directionForVector(
@@ -863,19 +983,18 @@ export class HubScene extends Phaser.Scene {
      * construction, and falls back to the facing when there is no delta - a
      * player who turned on the spot.
      */
-    const target = this.map.tileCentre(player.tileX, player.tileY);
-    const moved = avatar.container.x !== target.x || avatar.container.y !== target.y;
+    if (isSelf) this.advancePrediction(player);
 
-    avatar.setDirection(
-      moved
-        ? directionForVector(
-            target.x - avatar.container.x,
-            target.y - avatar.container.y,
-            directionFor(player.facing),
-          )
-        : directionFor(player.facing),
-      player.moving,
-    );
+    const target = this.map.tileCentre(player.tileX, player.tileY);
+    const dx = target.x - avatar.container.x;
+    const dy = target.y - avatar.container.y;
+    const moved = dx !== 0 || dy !== 0;
+
+    // In cells, like the predicted vector, so the two can be read against
+    // each other in the debug overlay rather than compared in different units.
+    entry.vector = moved
+      ? { dx: dx / CELL, dy: dy / CELL, source: "tween" }
+      : { dx: 0, dy: 0, source: "facing" };
 
     if (moved) {
       entry.tween?.stop();
@@ -894,6 +1013,20 @@ export class HubScene extends Phaser.Scene {
       });
     }
 
+    /*
+     * After the tween, not before it.
+     *
+     * Stopping the previous tween fires its onStop, which hands the direction
+     * to the predicted route - the step *after* this one. That is right in a
+     * gap between steps and wrong here, because this step is about to be
+     * drawn. Setting the direction last means the motion on screen decides,
+     * and the prediction only fills the silence.
+     */
+    avatar.setDirection(
+      moved ? directionForVector(dx, dy, directionFor(player.facing)) : directionFor(player.facing),
+      player.moving,
+    );
+
     // Arriving is what triggers the queued action. A node has to be adjacent;
     // a gate or a counter only has to be within reach of its edge.
     if (isSelf && this.pending && !player.moving && this.hasArrived(this.pending)) {
@@ -911,6 +1044,10 @@ export class HubScene extends Phaser.Scene {
   }
 
   private rebuildAvatarsForMap() {
+    // The avatars are about to be thrown away and rebuilt, so any route
+    // predicted against the old map is about to be a route to nowhere.
+    this.predicted = null;
+
     this.room.state.villagers.forEach((villager, id) => {
       const entry = this.villagers.get(id);
       if (!entry) return;
@@ -976,6 +1113,8 @@ export class HubScene extends Phaser.Scene {
     this.progress?.done();
     this.cookModal?.close();
     this.dock?.destroy();
+    this.walkDebug?.destroy();
+    this.walkDebug = null;
     for (const sessionId of [...this.avatars.keys()]) this.removeAvatar(sessionId);
     for (const id of [...this.villagers.keys()]) this.removeVillager(id);
     this.ambience?.stop();

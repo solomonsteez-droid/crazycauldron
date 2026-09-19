@@ -35,7 +35,7 @@ recipes.json       20 recipes: ingredients, technique, requirements, XP, price
 sections.json      what each gathering area *is*: its name, its price of entry,
                    and the 12 things that grow there
 skills.json        both XP curves, every unlock, and the tuning constants
-wardrobe.json      hats and aprons, and what earns each one
+wardrobe.json      hats and cloaks, and what earns each one
 ambience.json      villagers, particles, day length, and every sound cue
 maps/*.json        the four painted areas: a walkable mask, the spawn, the
                    gates and counters, and where each node stands
@@ -186,11 +186,28 @@ without them, both documented where they are implemented:
 ## The parts worth knowing about
 
 **Movement is server-authoritative in the strict sense.** A client sends a
-*destination tile* and nothing else. The server pathfinds with BFS, rejects
-anything unwalkable, unreachable or longer than `MAX_PATH_TILES`, then walks
-the player one tile per `MOVE_STEP_MS`. No position ever travels from client to
-server, so there is nothing to falsify. The cost is one round trip of input
-latency, which is why the client tweens each step over exactly `MOVE_STEP_MS`.
+*destination tile* and nothing else. The server pathfinds over the grid,
+rejects anything unwalkable, unreachable or longer than `MAX_PATH_TILES`, then
+walks the player one cell per `MOVE_STEP_MS`. No position ever travels from
+client to server, so there is nothing to falsify.
+
+**The animation is predicted; the position is not.** The cost of the above is a
+round trip before the first step, and a character who stands still through it
+looks broken. So the client runs the same pathfinder over the same grid on the
+click, and starts the stride from its own answer - while the tween still only
+ever moves between cells the server has confirmed. A mispredicted route costs a
+wrong-footed stride for a frame; a mispredicted *position* would cost a player
+walking through a wall, which is why only one of the two is guessed at.
+
+**Which frames a walk cycle plays is measured, not assumed.** `npm run sprites`
+compares the four drawings of each direction two ways - how much of the outline
+moved, and how much the pixels changed - and where two of them are the same
+pose twice it writes a ping-pong order (0-1-2-3-2-1) into the manifest instead
+of a loop, so a weak sheet reads as a turning point rather than a stumble. The
+report names the pairs, so the sheet can be redrawn rather than worked around
+forever. In development the **D** key puts the animation key, the frame and the
+movement vector over every character, which is what makes a walk fault
+reportable from a screenshot.
 
 **Sign-in resists replay and message substitution.** The nonce is single-use and
 is consumed *before* the signature is checked, so a replayed message fails the
