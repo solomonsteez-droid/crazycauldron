@@ -67,9 +67,7 @@ export function lifeFor(mapId: number) {
   return AMBIENCE.life.maps.find((m) => m.map === mapId) ?? null;
 }
 
-export function dressingFor(mapId: number) {
-  return AMBIENCE.dressing.maps.find((m) => m.map === mapId) ?? null;
-}
+
 
 const ingredientById = new Map(INGREDIENTS.map((i) => [i.id, i]));
 const recipeById = new Map(RECIPES.map((r) => [r.id, r]));

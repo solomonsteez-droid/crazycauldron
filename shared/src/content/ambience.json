@@ -1,5 +1,5 @@
 {
-  "_comment": "Everything that makes the world feel inhabited without changing a rule. Villagers are simulated on the server so every client sees the same person in the same place; dressing, life and sound are client-side decoration seeded from these numbers.",
+  "_comment": "Everything that makes the world feel inhabited without changing a rule. Villagers are simulated on the server so every client sees the same person in the same place; the particles, the day and the sound are client-side decoration driven by these numbers. The well, the cart, the signpost and the scattered shrubs used to live here as placements; they are painted into the maps now, and what is left is what paint cannot do.",
   "villagers": {
     "_comment": "How many wander a hub, and how they move. Slower than a player on purpose: a villager overtaking you reads as a race. keepAwayTiles holds them out of the plaza centre and off the three shop fronts, so nobody is ever standing between you and the kitchen door.",
     "min": 4,
@@ -109,27 +109,6 @@
       }
     ]
   },
-  "hubProps": {
-    "_comment": "Named decoration, out on the ring of the plaza rather than in the middle of it: the centre is where the game is played and where the camera sits. Every one of these is checked by the layout validator at startup - on a path, on a doorway, or within three tiles of a building or the cauldron and the server refuses to start.",
-    "items": [
-      { "prop": "prop_well", "tileX": 6, "tileY": 2, "label": "The old well" },
-      { "prop": "prop_lantern", "tileX": 17, "tileY": 2, "label": "", "glow": "#f2b53b" },
-      { "prop": "prop_cottage", "tileX": 20, "tileY": 9, "label": "" },
-      { "prop": "prop_campfire", "tileX": 3, "tileY": 20, "label": "", "glow": "#f2b53b" },
-      { "prop": "prop_signpost", "tileX": 18, "tileY": 20, "label": "" },
-      { "prop": "prop_cart", "tileX": 6, "tileY": 20, "label": "" }
-    ]
-  },
-  "dressing": {
-    "_comment": "Scattered pack art. Seeded so every player sees the same shrub in the same place, and biased outward so the middle of a map stays clear to play in.",
-    "seed": 20260919,
-    "maps": [
-      { "map": 0, "count": 26, "edgeBias": 2.4 },
-      { "map": 1, "count": 40, "edgeBias": 1.8 },
-      { "map": 2, "count": 54, "edgeBias": 1.4 },
-      { "map": 3, "count": 44, "edgeBias": 1.6 }
-    ]
-  },
   "life": {
     "_comment": "Per-map particles. everyMs is how often one is emitted; 0 disables it. All of them draw from the same 200-particle pool as cooking, and cooking wins.",
     "maps": [
@@ -164,29 +143,94 @@
     "_comment": "A 20 minute loop applied to the ground only. Sprites, labels and the HUD keep their own colours, so nothing ever becomes unreadable - the floor simply turns from dawn through noon to dusk and a blue night.",
     "cycleMinutes": 20,
     "stops": [
-      { "at": 0.0, "tint": "#ffd9b0", "label": "dawn" },
-      { "at": 0.2, "tint": "#ffffff", "label": "morning" },
-      { "at": 0.45, "tint": "#fff6e0", "label": "noon" },
-      { "at": 0.65, "tint": "#ffc79a", "label": "dusk" },
-      { "at": 0.8, "tint": "#8fa0d6", "label": "night" },
-      { "at": 1.0, "tint": "#ffd9b0", "label": "dawn" }
+      {
+        "at": 0.0,
+        "tint": "#ffd9b0",
+        "label": "dawn"
+      },
+      {
+        "at": 0.2,
+        "tint": "#ffffff",
+        "label": "morning"
+      },
+      {
+        "at": 0.45,
+        "tint": "#fff6e0",
+        "label": "noon"
+      },
+      {
+        "at": 0.65,
+        "tint": "#ffc79a",
+        "label": "dusk"
+      },
+      {
+        "at": 0.8,
+        "tint": "#8fa0d6",
+        "label": "night"
+      },
+      {
+        "at": 1.0,
+        "tint": "#ffd9b0",
+        "label": "dawn"
+      }
     ]
   },
   "sound": {
     "_comment": "Hooks only. Nothing here has to exist: a missing file leaves the cue silent, and the UI cues fall back to the synthesised blip the cooking chime already uses.",
-    "defaults": { "master": 0.6, "ambient": 0.5, "effects": 0.8 },
+    "defaults": {
+      "master": 0.6,
+      "ambient": 0.5,
+      "effects": 0.8
+    },
     "ambient": [
-      { "map": 0, "file": "amb_hub.ogg" },
-      { "map": 1, "file": "amb_meadows.ogg" },
-      { "map": 2, "file": "amb_forest.ogg" },
-      { "map": 3, "file": "amb_caves.ogg" }
+      {
+        "map": 0,
+        "file": "amb_hub.ogg"
+      },
+      {
+        "map": 1,
+        "file": "amb_meadows.ogg"
+      },
+      {
+        "map": 2,
+        "file": "amb_forest.ogg"
+      },
+      {
+        "map": 3,
+        "file": "amb_caves.ogg"
+      }
     ],
     "cues": [
-      { "id": "click", "file": "ui_click.ogg", "tone": 660, "ms": 60 },
-      { "id": "panel", "file": "ui_panel.ogg", "tone": 440, "ms": 90 },
-      { "id": "gather", "file": "gather.ogg", "tone": 520, "ms": 120 },
-      { "id": "cook", "file": "cook.ogg", "tone": 380, "ms": 140 },
-      { "id": "sell", "file": "sell.ogg", "tone": 780, "ms": 90 }
+      {
+        "id": "click",
+        "file": "ui_click.ogg",
+        "tone": 660,
+        "ms": 60
+      },
+      {
+        "id": "panel",
+        "file": "ui_panel.ogg",
+        "tone": 440,
+        "ms": 90
+      },
+      {
+        "id": "gather",
+        "file": "gather.ogg",
+        "tone": 520,
+        "ms": 120
+      },
+      {
+        "id": "cook",
+        "file": "cook.ogg",
+        "tone": 380,
+        "ms": 140
+      },
+      {
+        "id": "sell",
+        "file": "sell.ogg",
+        "tone": 780,
+        "ms": 90
+      }
     ]
   }
 }

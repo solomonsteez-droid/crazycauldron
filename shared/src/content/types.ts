@@ -314,21 +314,6 @@ export interface VillagerSettings {
   roster: VillagerDef[];
 }
 
-export interface HubPropDef {
-  prop: string;
-  tileX: number;
-  tileY: number;
-  label: string;
-  glow?: string;
-}
-
-export interface DressingMap {
-  map: number;
-  count: number;
-  /** How strongly scenery is pushed to the edges; 1 is an even scatter. */
-  edgeBias: number;
-}
-
 export type LifeKind = "smoke" | "leaves" | "fireflies" | "motes";
 
 export interface LifeMap {
@@ -354,8 +339,6 @@ export interface SoundCue {
 
 export interface AmbienceFile {
   villagers: VillagerSettings;
-  hubProps: { items: HubPropDef[] };
-  dressing: { seed: number; maps: DressingMap[] };
   life: { maps: LifeMap[] };
   dayNight: { cycleMinutes: number; stops: DayNightStop[] };
   sound: {

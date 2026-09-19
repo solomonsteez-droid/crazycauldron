@@ -32,7 +32,6 @@ export const bodyKey = (body: string) => `body:${body}`;
  */
 export const hatKey = (id: string, back = false) => `hat:${id}${back ? ":back" : ""}`;
 export const apronKey = (id: string, back = false) => `apron:${id}${back ? ":back" : ""}`;
-export const propKey = (id: string) => `prop:${id}`;
 export const ingredientKey = (id: string) => `ingredient:${id}`;
 export const dishKey = (recipeId: string) => `dish:${recipeId}`;
 /**
@@ -61,34 +60,7 @@ export const nodeArchetype = (ingredientId: string): string =>
 export const uiKey = (name: string) => `ui:${name}`;
 /** One painting per area, loaded straight from client/public/assets/maps. */
 export const mapKey = (areaId: string) => `map:${areaId}`;
-/** Decor is cut per map, so the key carries the map it was cut for. */
-export const decorKey = (mapId: number, id: string) => `decor:${mapId}:${id}`;
 export const effectKey = (name: string) => `fx:${name}`;
-export const terrainKey = (mapId: number) => `terrain:${mapId}`;
-
-/** Side of one tile cell in the packs. */
-export const TERRAIN_TILE = 32;
-
-/**
- * Section index to the prop drawn at its gate, and station id to its building.
- *
- * Defined once here because both the real art and the placeholders are keyed by
- * it - deriving the name from the section id instead produced "portal_deep"
- * against art called "portal_forest", which only showed up when the art was
- * missing.
- */
-export const PORTAL_PROP: Record<number, string> = {
-  1: "portal_meadows",
-  2: "portal_forest",
-  3: "portal_caves",
-};
-
-export const STATION_PROP: Record<string, string> = {
-  kitchen: "kitchen",
-  tavern: "tavern",
-  outfitter: "shop",
-};
-
 /** Recipe ids in authoring order, so dishes/recipe_NN.png maps to a recipe. */
 const RECIPE_BY_INDEX = RECIPES.map((r) => r.id);
 const recipeFile = (index: number) => `recipe_${String(index + 1).padStart(2, "0")}.png`;
@@ -100,6 +72,18 @@ const recipeFile = (index: number) => `recipe_${String(index + 1).padStart(2, "0
  * the placeholder generated afterwards fills the gap.
  */
 export function queueArt(scene: Phaser.Scene, manifest: Manifest): void {
+  /*
+   * The four paintings, before anything else.
+   *
+   * They are ~6MB each and the game cannot draw a frame without one, so they
+   * are queued first and the boot screen waits on them. Nothing generates a
+   * fallback: an area with no painting has no ground, and a coloured rectangle
+   * would only hide which file is missing.
+   */
+  for (const area of AREAS) {
+    scene.load.image(mapKey(area.id), `/assets/maps/${area.image}`);
+  }
+
   /*
    * The four paintings, before anything else.
    *
@@ -130,30 +114,18 @@ export function queueArt(scene: Phaser.Scene, manifest: Manifest): void {
       scene.load.image(apronKey(apron.id, true), `${GENERATED}/aprons/${apron.id}_back.png`);
     }
   }
-  for (const prop of manifest.props) scene.load.image(propKey(prop), `${GENERATED}/props/${prop}.png`);
-
-  for (const terrain of manifest.terrain ?? []) {
-    scene.load.spritesheet(terrainKey(terrain.map), `${GENERATED}/terrain/map${terrain.map}.png`, {
-      frameWidth: TERRAIN_TILE,
-      frameHeight: TERRAIN_TILE,
-    });
-  }
-
+  /*
+   * The generated props, terrain strips and decor are not loaded any more:
+   * the buildings, the ground and the shrubs are painted into the maps. The
+   * pipeline still produces them and they still sit in generated/, so nothing
+   * has to be re-cut if they are ever wanted again.
+   */
   for (const recipeId of manifest.dishes ?? []) {
     scene.load.image(dishKey(recipeId), `${GENERATED}/dishes/${recipeId}.png`);
   }
 
   for (const id of manifest.ingredients ?? []) {
     scene.load.image(ingredientKey(id), `${GENERATED}/ingredients/${id}.png`);
-  }
-
-  for (const entry of manifest.decor ?? []) {
-    for (const item of entry.items) {
-      scene.load.image(
-        decorKey(entry.map, item.id),
-        `${GENERATED}/decor/${entry.map}_${item.id}.png`,
-      );
-    }
   }
 
   for (const node of manifest.nodes ?? []) {
@@ -275,41 +247,6 @@ export function drawPlaceholders(scene: Phaser.Scene): void {
 
 }
 
-/**
- * A stand-in for a named hub prop.
- *
- * Deliberately crude - a post, a box or a mound in the palette - because its
- * only job is to hold the spot until the drop lands, and anything more
- * elaborate would be mistaken for finished art.
- */
-function smallPropChip(scene: Phaser.Scene, key: string, id: string): void {
-  if (scene.textures.exists(key)) return;
-  const g = scene.add.graphics();
-
-  g.fillStyle(PALETTE.shadow, 0.3);
-  g.fillEllipse(16, 30, 22, 6);
-
-  if (id === "prop_lantern" || id === "prop_signpost") {
-    g.fillStyle(PALETTE.rock, 1);
-    g.fillRect(14, 10, 4, 20);
-    g.fillStyle(id === "prop_lantern" ? PALETTE.saffron : PALETTE.parchment, 1);
-    g.fillRect(10, 4, 12, 8);
-  } else if (id === "prop_campfire") {
-    g.fillStyle(PALETTE.rock, 1);
-    g.fillRect(8, 24, 16, 5);
-    g.fillStyle(PALETTE.danger, 1);
-    g.fillTriangle(16, 10, 23, 25, 9, 25);
-  } else {
-    g.fillStyle(PALETTE.path, 1);
-    g.fillRect(7, 12, 18, 18);
-    g.fillStyle(PALETTE.night, 0.6);
-    g.fillRect(7, 12, 18, 4);
-  }
-
-  g.generateTexture(key, 32, 32);
-  g.destroy();
-}
-
 function nodeChip(scene: Phaser.Scene, key: string, colour: number, full: boolean): void {
   if (scene.textures.exists(key)) return;
   const g = scene.add.graphics();
@@ -376,41 +313,6 @@ function effectStrip(scene: Phaser.Scene, key: string, name: string): void {
   // Register the four frames so it can drive an animation directly.
   const texture = scene.textures.get(key);
   for (let f = 0; f < frames; f += 1) texture.add(f, 0, f * size, 0, size, size);
-}
-
-function buildingChip(scene: Phaser.Scene, key: string, id: string): void {
-  if (scene.textures.exists(key)) return;
-  const g = scene.add.graphics();
-  const roof =
-    id === "kitchen" ? PALETTE.danger : id === "tavern" ? PALETTE.saffron : PALETTE.skyGlow;
-
-  g.fillStyle(PALETTE.shadow, 0.3);
-  g.fillEllipse(32, 60, 52, 10);
-  g.fillStyle(PALETTE.path, 1);
-  g.fillRect(10, 26, 44, 34);
-  g.fillStyle(roof, 1);
-  g.fillTriangle(6, 28, 32, 6, 58, 28);
-  g.fillStyle(PALETTE.night, 0.8);
-  g.fillRect(26, 40, 12, 20);
-  g.generateTexture(key, 64, 64);
-  g.destroy();
-}
-
-function portalChip(scene: Phaser.Scene, key: string, accent: string): void {
-  if (scene.textures.exists(key)) return;
-  const colour = Phaser.Display.Color.HexStringToColor(accent).color;
-  const g = scene.add.graphics();
-
-  g.fillStyle(PALETTE.shadow, 0.3);
-  g.fillEllipse(16, 42, 24, 6);
-  g.fillStyle(PALETTE.rock, 1);
-  g.fillRect(2, 10, 5, 32);
-  g.fillRect(25, 10, 5, 32);
-  g.fillRect(2, 4, 28, 7);
-  g.fillStyle(colour, 0.45);
-  g.fillRect(7, 11, 18, 31);
-  g.generateTexture(key, 32, 48);
-  g.destroy();
 }
 
 /** Registers one walk animation per body and direction. */

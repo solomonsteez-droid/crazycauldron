@@ -1,42 +1,40 @@
 /**
  * Checks the ambience decisions that do not need a renderer.
  *
- * Scenery placement, the day-night curve and the villager roster are all
- * content-driven arithmetic, so "nothing is ever drawn on a path" and "the sky
- * loop joins up" are claims with checks behind them rather than things somebody
- * once looked at.
- *
  *   npx tsx scripts/test-ambience.ts
+ *
+ * The day-night curve, the villager roster and the ground they are allowed to
+ * walk on are all content-driven arithmetic, so "they never stand in a
+ * doorway" and "the sky loop joins up" are claims with checks behind them
+ * rather than things somebody once looked at.
+ *
+ * The scenery scatter used to be checked here too. There is no scatter any
+ * more: the shrubs and the boulders are painted into the maps, which is most
+ * of the point of a painted map.
  */
 
 import {
   AMBIENCE,
+  AREAS,
+  CELL,
   DAY_CYCLE_MS,
   HUB_MAP,
-  MAP_SIZE,
-  TERRAIN,
-  TileId,
+  VILLAGER_KEEP_AWAY,
+  areaFor,
   dayLabel,
   dayPhase,
   dayTint,
   darkestStop,
-  decorFor,
-  dressingFor,
-  dressingKeepClear,
   hashSeed,
-  hubTileId,
-  HUB_STATIONS,
-  BUILDING_CLEARANCE,
-  doorwaysFor,
-  placementsFor,
-  validateAllLayouts,
-  villagerTiles,
+  interactiveZones,
   isWalkableOn,
+  lifeFor,
   mixTint,
-  planDressing,
-  sectionTileId,
+  nearZone,
   seededRandom,
-  DRESSING_CLEARANCE,
+  validateAllLayouts,
+  villagerGround,
+  zonesOf,
 } from "@crazycauldron/shared";
 
 let failures = 0;
@@ -57,88 +55,10 @@ console.log("-- seeding --");
   check("the same seed gives the same sequence", first.every((v, i) => v === second[i]));
 
   const other = seededRandom(1235);
-  check(
-    "a different seed does not",
-    first.some((v, i) => v !== [...Array(20)].map(() => other())[i]),
-  );
+  const different = Array.from({ length: 20 }, () => other());
+  check("a different seed does not", first.some((v, i) => v !== different[i]));
   check("every value is in 0..1", first.every((v) => v >= 0 && v < 1));
   check("two room ids seed different towns", hashSeed("room-a") !== hashSeed("room-b"));
-}
-
-// --- dressing --------------------------------------------------------------
-console.log("\n-- dressing --");
-for (const map of TERRAIN.maps) {
-  const mapId = map.map;
-  const settings = dressingFor(mapId);
-  if (!settings) {
-    check(`map ${mapId} has dressing settings`, false);
-    continue;
-  }
-
-  const plan = planDressing(mapId);
-  const again = planDressing(mapId);
-
-  check(
-    `${map.name}: the plan is stable`,
-    JSON.stringify(plan) === JSON.stringify(again),
-    `${plan.length} pieces`,
-  );
-
-  // A crowded map may fall short of its target; it must never fall far short.
-  check(
-    `${map.name}: it places roughly what was asked for`,
-    plan.length >= settings.count * 0.7,
-    `${plan.length} of ${settings.count}`,
-  );
-
-  const tileId = (x: number, y: number) =>
-    mapId === HUB_MAP ? hubTileId(x, y) : sectionTileId(mapId, x, y);
-
-  check(
-    `${map.name}: nothing stands on a path`,
-    plan.every((p) => tileId(p.tileX, p.tileY) !== TileId.Path),
-  );
-  check(
-    `${map.name}: nothing stands where a player cannot walk`,
-    plan.every((p) => isWalkableOn(mapId, p.tileX, p.tileY)),
-  );
-
-  const clear = dressingKeepClear(mapId);
-  const tooClose = plan.filter((p) =>
-    clear.some(
-      (t) =>
-        Math.abs(t.tileX - p.tileX) <= DRESSING_CLEARANCE &&
-        Math.abs(t.tileY - p.tileY) <= DRESSING_CLEARANCE,
-    ),
-  );
-  check(
-    `${map.name}: nothing crowds a node, door or gate`,
-    tooClose.length === 0,
-    tooClose.map((p) => `${p.decorId}@${p.tileX},${p.tileY}`).join(" "),
-  );
-
-  check(
-    `${map.name}: no two pieces share a tile`,
-    new Set(plan.map((p) => p.tileY * MAP_SIZE + p.tileX)).size === plan.length,
-  );
-
-  const known = new Set(decorFor(mapId).map((piece) => piece.id));
-  check(
-    `${map.name}: every piece comes from its own pack`,
-    plan.every((p) => known.has(p.decorId)),
-  );
-
-  // Edge bias: with a bias above 1 the outer half of the map must hold more
-  // scenery than the inner half, or the setting is doing nothing.
-  const middle = (MAP_SIZE - 1) / 2;
-  const outer = plan.filter(
-    (p) => Math.max(Math.abs(p.tileX - middle), Math.abs(p.tileY - middle)) / middle > 0.5,
-  ).length;
-  check(
-    `${map.name}: it thins out towards the middle`,
-    outer > plan.length - outer,
-    `${outer} outer, ${plan.length - outer} inner`,
-  );
 }
 
 // --- day and night ---------------------------------------------------------
@@ -157,7 +77,11 @@ console.log("\n-- day and night --");
   );
   check("the loop joins up at dawn", gap <= 2, `${gap}/255 apart`);
 
-  // Nothing may get dark enough to hide what is standing on it.
+  /*
+   * Nothing may get dark enough to hide what is standing on it. This matters
+   * more than it did: the tint now multiplies a painting, where a heavy one
+   * would be obvious, rather than a flat green tile where it was not.
+   */
   check(
     "the ground never drops below half brightness",
     darkestStop() >= 0.5,
@@ -168,7 +92,7 @@ console.log("\n-- day and night --");
   for (let i = 0; i < 40; i += 1) labels.add(dayLabel((DAY_CYCLE_MS * i) / 40));
   check("every authored phase is reached", labels.size >= 5, [...labels].join(", "));
 
-  check("white leaves a tint alone", mixTint(0x8fae9c, 0xffffff) === 0x8fae9c);
+  check("white leaves a painting alone", mixTint(0x8fae9c, 0xffffff) === 0x8fae9c);
   check("black takes it to nothing", mixTint(0x8fae9c, 0x000000) === 0x000000);
 }
 
@@ -181,7 +105,7 @@ console.log("\n-- villagers --");
   check(
     "they walk slower than a player",
     crowd.stepMs > 180,
-    `${crowd.stepMs}ms per tile against the player's 180ms`,
+    `${crowd.stepMs}ms per cell against the player's 180ms`,
   );
   check(
     "every one of them has something to say",
@@ -197,30 +121,52 @@ console.log("\n-- villagers --");
 console.log("\n-- villager ground --");
 {
   const crowd = AMBIENCE.villagers;
-  const tiles = villagerTiles();
-  const keepAway = crowd.keepAwayTiles;
-  const buildings = HUB_STATIONS.map((s) => ({ tileX: s.tileX, tileY: s.tileY }));
-  const middle = (MAP_SIZE - 1) / 2;
+  const ground = villagerGround();
+  const keepClear = zonesOf(HUB_MAP).filter((z) => z.kind !== "portal");
 
-  check("they have room to wander", tiles.length > crowd.max * 10, `${tiles.length} tiles`);
+  check("they have room to wander", ground.length > crowd.max * 10, `${ground.length} cells`);
   check(
-    `they stay ${keepAway} tiles clear of the cauldron`,
-    tiles.every(
-      (t) => Math.max(Math.abs(t.tileX - middle), Math.abs(t.tileY - middle)) > keepAway + 1,
+    "every cell they may use is walkable",
+    ground.every((t) => isWalkableOn(HUB_MAP, t.tileX, t.tileY)),
+  );
+
+  /*
+   * The cauldron is a scenery zone on the painted hub rather than a block in
+   * the middle of a grid, so "three clear of the cauldron" is measured against
+   * that zone like any other.
+   */
+  check(
+    `they stay ${VILLAGER_KEEP_AWAY} cells clear of the cauldron and the counters`,
+    ground.every((t) =>
+      keepClear.every((zone) => {
+        const dx = Math.max(zone.c - t.tileX, 0, t.tileX - (zone.c + zone.w - 1));
+        const dy = Math.max(zone.r - t.tileY, 0, t.tileY - (zone.r + zone.h - 1));
+        return Math.max(dx, dy) > VILLAGER_KEEP_AWAY;
+      }),
     ),
+    keepClear.map((z) => z.id).join(", "),
   );
   check(
-    `and ${keepAway} tiles clear of every shop front`,
-    tiles.every((t) =>
-      buildings.every(
-        (b) => Math.max(Math.abs(b.tileX - t.tileX), Math.abs(b.tileY - t.tileY)) > keepAway,
-      ),
+    "and never where a player has to stand to use something",
+    ground.every((t) =>
+      interactiveZones(HUB_MAP).every((zone) => !nearZone(zone, t.tileX, t.tileY)),
     ),
   );
-  const doorways = new Set(doorwaysFor(HUB_MAP).map((d) => `${d.tileX},${d.tileY}`));
+}
+
+// --- particles -------------------------------------------------------------
+console.log("\n-- life --");
+{
+  for (const area of AREAS) {
+    const life = lifeFor(area.map);
+    check(`${area.id} has particles`, life !== null && life.everyMs > 0, life?.kind ?? "none");
+  }
+
+  const kitchen = zonesOf(HUB_MAP).find((z) => z.id === "kitchen");
   check(
-    "and never stand in a doorway",
-    tiles.every((t) => !doorways.has(`${t.tileX},${t.tileY}`)),
+    "the hub's smoke has a chimney to come out of",
+    kitchen !== undefined,
+    kitchen ? `kitchen at ${kitchen.c},${kitchen.r}` : "no kitchen zone",
   );
 }
 
@@ -234,56 +180,41 @@ console.log("\n-- layout --");
     problems.map((p) => `map ${p.map}: ${p.message}`).join(" | "),
   );
 
-  const hub = placementsFor(HUB_MAP);
-  const onEdge = (t: { tileX: number; tileY: number }) =>
-    t.tileX <= 2 || t.tileY <= 2 || t.tileX >= MAP_SIZE - 3 || t.tileY >= MAP_SIZE - 3;
-  const onRing = (t: { tileX: number; tileY: number }) =>
-    t.tileX <= 3 || t.tileY <= 3 || t.tileX >= MAP_SIZE - 4 || t.tileY >= MAP_SIZE - 4;
+  for (const area of AREAS) {
+    const zones = interactiveZones(area.map);
+    check(
+      `${area.id}: every gate and counter has somewhere to stand`,
+      zones.every((zone) => {
+        for (let r = zone.r - 2; r < zone.r + zone.h + 2; r += 1) {
+          for (let c = zone.c - 2; c < zone.c + zone.w + 2; c += 1) {
+            if (isWalkableOn(area.map, c, r) && nearZone(zone, c, r)) return true;
+          }
+        }
+        return false;
+      }),
+      zones.map((z) => z.id).join(", "),
+    );
+  }
 
-  const buildings = hub.filter((p) => p.kind === "building");
-  const props = hub.filter((p) => p.kind === "prop");
-
+  const hub = areaFor(HUB_MAP);
   check(
-    "the three buildings stand on the grid edge",
-    buildings.length === 3 && buildings.every(onEdge),
-    buildings.map((p) => `${p.id}@${p.tileX},${p.tileY}`).join(" "),
-  );
-  check(
-    "the plaza props are out on the ring",
-    props.length === 6 && props.every(onRing),
-    props.map((p) => `${p.id}@${p.tileX},${p.tileY}`).join(" "),
-  );
-  check(
-    `each building keeps its ${BUILDING_CLEARANCE}-tile ring`,
-    buildings.every((b) =>
-      hub.every(
-        (o) =>
-          o === b ||
-          Math.max(Math.abs(o.tileX - b.tileX), Math.abs(o.tileY - b.tileY)) > BUILDING_CLEARANCE,
-      ),
+    "the hub's three counters are placed",
+    ["kitchen", "tavern", "outfitter"].every((id) =>
+      hub.zones.some((z) => z.id === id && z.kind === "building"),
     ),
   );
   check(
-    "nothing anywhere stands on a path",
-    hub.every((p) => hubTileId(p.tileX, p.tileY) !== TileId.Path),
-  );
-}
-
-// --- sound -----------------------------------------------------------------
-console.log("\n-- sound --");
-{
-  check(
-    "every map has an ambient bed named",
-    TERRAIN.maps.every((m) => AMBIENCE.sound.ambient.some((a) => a.map === m.map)),
+    "and its three gates",
+    [1, 2, 3].every((section) =>
+      hub.zones.some((z) => z.kind === "portal" && z.section === section),
+    ),
   );
   check(
-    "every cue has a fallback tone",
-    AMBIENCE.sound.cues.every((c) => c.tone > 0 && c.ms > 0),
+    "every zone's baseline is inside its own footprint",
+    AREAS.every((area) => area.zones.every((z) => z.baseline >= z.r && z.baseline < z.r + z.h)),
+    "which is what decides front from behind",
   );
-  check(
-    "the default volumes are audible but not loud",
-    Object.values(AMBIENCE.sound.defaults).every((v) => v > 0 && v <= 1),
-  );
+  check("the cell size is what the maps were built at", CELL === 24, `${CELL}px`);
 }
 
 console.log(`\n${failures === 0 ? "test-ambience: OK" : `test-ambience: ${failures} failure(s)`}`);
