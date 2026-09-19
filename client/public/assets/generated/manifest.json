@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-19T18:45:53.701Z",
+  "generatedAt": "2026-09-19T20:40:27.085Z",
   "bodyFrame": {
     "width": 32,
     "height": 48
@@ -148,76 +148,83 @@
       "widthPct": 0.84
     }
   ],
-  "aprons": [
+  "cloaks": [
     {
-      "id": "apron_01_linen",
-      "width": 16,
-      "height": 24,
+      "id": "cloak_01_wool",
+      "width": 24,
+      "height": 31,
       "offset": {
-        "x": 8,
-        "y": 19
-      },
-      "widthPct": 0.64
-    },
-    {
-      "id": "apron_02_patched",
-      "width": 16,
-      "height": 20,
-      "offset": {
-        "x": 8,
-        "y": 21
-      },
-      "widthPct": 0.64
-    },
-    {
-      "id": "apron_03_berry",
-      "width": 16,
-      "height": 19,
-      "offset": {
-        "x": 8,
+        "x": 4,
         "y": 22
       },
-      "widthPct": 0.64
+      "widthPct": 0.96,
+      "collarRows": 8
     },
     {
-      "id": "apron_04_rugged",
-      "width": 18,
-      "height": 22,
+      "id": "cloak_02_patched",
+      "width": 24,
+      "height": 30,
       "offset": {
-        "x": 7,
-        "y": 20
+        "x": 4,
+        "y": 22
       },
-      "widthPct": 0.72
+      "widthPct": 0.96,
+      "collarRows": 8
     },
     {
-      "id": "apron_05_midnight",
-      "width": 16,
-      "height": 24,
-      "offset": {
-        "x": 8,
-        "y": 19
-      },
-      "widthPct": 0.64
-    },
-    {
-      "id": "apron_06_silver",
-      "width": 17,
+      "id": "cloak_03_berry",
+      "width": 24,
       "height": 28,
       "offset": {
-        "x": 8,
-        "y": 17
+        "x": 4,
+        "y": 22
       },
-      "widthPct": 0.68
+      "widthPct": 0.96,
+      "collarRows": 7
     },
     {
-      "id": "apron_07_gold",
-      "width": 18,
-      "height": 21,
+      "id": "cloak_04_rugged",
+      "width": 24,
+      "height": 32,
       "offset": {
-        "x": 7,
-        "y": 21
+        "x": 4,
+        "y": 22
       },
-      "widthPct": 0.72
+      "widthPct": 0.96,
+      "collarRows": 10
+    },
+    {
+      "id": "cloak_05_midnight",
+      "width": 24,
+      "height": 33,
+      "offset": {
+        "x": 4,
+        "y": 22
+      },
+      "widthPct": 0.96,
+      "collarRows": 9
+    },
+    {
+      "id": "cloak_06_silver",
+      "width": 24,
+      "height": 30,
+      "offset": {
+        "x": 4,
+        "y": 22
+      },
+      "widthPct": 0.96,
+      "collarRows": 10
+    },
+    {
+      "id": "cloak_07_gold",
+      "width": 24,
+      "height": 27,
+      "offset": {
+        "x": 4,
+        "y": 22
+      },
+      "widthPct": 0.96,
+      "collarRows": 9
     }
   ],
   "props": [

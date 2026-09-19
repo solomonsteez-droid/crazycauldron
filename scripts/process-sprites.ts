@@ -109,7 +109,7 @@ function readGrid(file: string): { clean: Img; cells: Rect[] } | null {
  * Per frame rather than per body. A single shared scale preserves the bob the
  * artist drew, but it also preserves any difference in how large the figure was
  * drawn between one drop and another - and the female idle came in visibly
- * shorter than her walk, which pushed hat and apron offsets out of line the
+ * shorter than her walk, which pushed hat and cloak offsets out of line the
  * moment she started moving. Normalising each frame to exactly 48px and
  * anchoring at the feet means a garment offset is true in every frame; the bob
  * is supplied procedurally instead.
@@ -256,8 +256,16 @@ interface OverlayResult {
   height: number;
   /** Where the overlay sits relative to the body frame, top-left to top-left. */
   offset: { x: number; y: number };
-  /** True when an <id>_back.png was processed alongside it. */
+  /** True when an <id>_back.png was processed for the up direction. */
   back?: boolean;
+  /**
+   * Cloaks only: how many rows of the finished art are collar and shoulders.
+   *
+   * Everything above this line is drawn in front of the body and everything
+   * below it behind, which is what makes a cloak hang off a character rather
+   * than being painted onto one.
+   */
+  collarRows?: number;
   /** Finished width as a fraction of the body figure's own width. */
   widthPct: number;
 }
@@ -267,12 +275,14 @@ interface Fit {
   widthPx: number;
   /** Hats: the row the brim lands on. */
   bottomRow?: number;
-  /** Aprons: the row the garment is centred on. */
-  centreRow?: number;
+  /** Cloaks: the row the collar's top edge lands on. */
+  topRow?: number;
+  /** Cloaks: where in the art the collar ends, as a fraction of its height. */
+  collarSplit?: number;
 }
 
 interface FitFile {
-  defaults: Record<"hat" | "apron", Fit>;
+  defaults: Record<"hat" | "cloak", Fit>;
   items: Record<string, Partial<Fit>>;
 }
 
@@ -280,7 +290,7 @@ const FITS = JSON.parse(
   fs.readFileSync(path.join(here, "overlay-bands.json"), "utf8"),
 ) as FitFile;
 
-function fitFor(kind: "hat" | "apron", id: string): Fit {
+function fitFor(kind: "hat" | "cloak", id: string): Fit {
   return { ...FITS.defaults[kind], ...(FITS.items[id] ?? {}) };
 }
 
@@ -298,30 +308,57 @@ const MIN_ISLAND_PX = 6;
 /**
  * Fits one cosmetic to the body.
  *
- * The items arrive as standalone art on magenta - a hat, an apron, nothing
- * else - so there is no character to subtract and no band to guess at. Three
- * steps: key the magenta, drop the speckle it leaves behind, and scale what is
- * left to a stated width.
+ * The items arrive as standalone art on magenta - a hat, a cloak, nothing else
+ * - so there is no character to subtract and no band to guess at. Three steps:
+ * key the magenta, drop the speckle it leaves behind, and scale what is left
+ * to a stated width.
  *
  * Where it sits comes from the body's own rows rather than from a fraction. A
- * hat's brim lands on the crown at row 9; an apron is centred on the torso at
- * row 31. Those are measured numbers, written down in overlay-bands.json next
- * to the row profile they came from.
+ * hat's brim lands on the crown at row 11; a cloak's collar lands on the
+ * shoulders at row 20. Those are measured numbers, written down in
+ * overlay-bands.json next to the row profile they came from.
  *
- * An <id>_back.png, if one exists, is fitted identically and used for the up
- * direction - which is the honest answer for anything with a face, a bow or a
- * brooch that a mirrored front view would put on backwards.
+ * A cloak is written out three times: whole, for the view from behind where
+ * the entire cloak is between you and the character; and split at the collar
+ * line into a piece that draws in front of the body and a piece that draws
+ * behind it, which is the only way a cape hangs off shoulders rather than
+ * being stuck to a chest.
  */
 function buildOverlay(
   file: string,
   id: string,
-  kind: "hat" | "apron",
+  kind: "hat" | "cloak",
   base: OverlayBase,
 ): OverlayResult | null {
+  const folder = kind === "hat" ? "hats" : "cloaks";
   const cut = cutItem(file, kind, id, base);
   if (!cut) return null;
 
-  save(path.join(OUT, kind === "hat" ? "hats" : "aprons", id + ".png"), cut.image);
+  save(path.join(OUT, folder, id + ".png"), cut.image);
+
+  let collarRows: number | undefined;
+  if (kind === "cloak") {
+    const fit = fitFor(kind, id);
+    const split = Math.max(1, Math.round(cut.height * (fit.collarSplit ?? 0.26)));
+    collarRows = split;
+
+    /*
+     * The same pixels, cut in two. Each half keeps the full canvas size so
+     * both drop at the same offset and line up without the client having to
+     * know where the seam was.
+     */
+    const collar = blank(cut.width, cut.height);
+    const drape = blank(cut.width, cut.height);
+    for (let y = 0; y < cut.height; y += 1) {
+      for (let x = 0; x < cut.width; x += 1) {
+        const i = (y * cut.width + x) * 4;
+        const into = y < split ? collar : drape;
+        cut.image.data.copy(into.data, i, i, i + 4);
+      }
+    }
+    save(path.join(OUT, folder, id + "_collar.png"), collar);
+    save(path.join(OUT, folder, id + "_drape.png"), drape);
+  }
 
   // The same item drawn from behind, when the artist has provided one.
   const backFile = file.replace(/\.png$/i, "_back.png");
@@ -329,7 +366,7 @@ function buildOverlay(
   if (exists(backFile)) {
     const rear = cutItem(backFile, kind, id, base);
     if (rear) {
-      save(path.join(OUT, kind === "hat" ? "hats" : "aprons", id + "_back.png"), rear.image);
+      save(path.join(OUT, folder, id + "_back.png"), rear.image);
       note("found", path.relative(ASSETS, backFile));
       back = true;
     }
@@ -338,9 +375,10 @@ function buildOverlay(
   const widthPct = cut.width / base.figureWidth;
   note(
     "made",
-    "generated/" + kind + "s/" + id + ".png " + cut.width + "x" + cut.height +
+    "generated/" + folder + "/" + id + ".png " + cut.width + "x" + cut.height +
       " at (" + cut.offset.x + "," + cut.offset.y + ") - " +
       Math.round(widthPct * 100) + "% of body width" +
+      (collarRows ? ", collar " + collarRows + " rows" : "") +
       (back ? ", with a back view" : "") +
       (cut.dropped > 0 ? ", " + cut.dropped + " speckle(s) dropped" : ""),
   );
@@ -351,6 +389,7 @@ function buildOverlay(
     height: cut.height,
     offset: cut.offset,
     widthPct,
+    ...(collarRows ? { collarRows } : {}),
     ...(back ? { back: true } : {}),
   };
 }
@@ -365,7 +404,7 @@ interface Cut {
 
 function cutItem(
   file: string,
-  kind: "hat" | "apron",
+  kind: "hat" | "cloak",
   id: string,
   base: OverlayBase,
 ): Cut | null {
@@ -394,17 +433,14 @@ function cutItem(
   const w = Math.max(1, fit.widthPx);
   const h = Math.max(1, Math.round((tight.height / tight.width) * w));
 
-  // Averaged down, not nearest: these are 2048px drawings going to 20px, and
+  // Averaged down, not nearest: these are 2048px drawings going to 24px, and
   // nearest at that ratio throws away nine pixels in ten and shimmers.
   const small = downscaleAveraged(tight, w, h);
   const palette = [...QUANTISE_RAMP, ...dominantColours(small, 10)];
   const image = quantise(small, palette);
 
   const offsetX = Math.round(base.centreX - w / 2);
-  const offsetY =
-    kind === "hat"
-      ? (fit.bottomRow ?? 9) - h
-      : Math.round((fit.centreRow ?? 31) - h / 2);
+  const offsetY = kind === "hat" ? (fit.bottomRow ?? 11) - h : (fit.topRow ?? 20);
 
   return { image, width: w, height: h, offset: { x: offsetX, y: offsetY }, dropped };
 }
@@ -413,13 +449,13 @@ function cutItem(
  * The audit the brief asks for: every finished cosmetic measured against the
  * body it will sit on, with anything outside the plausible range named.
  */
-function auditOverlays(overlays: { hats: OverlayResult[]; aprons: OverlayResult[] }): void {
-  const ranges = { hat: [0.6, 1.2], apron: [0.55, 1.1] } as const;
+function auditOverlays(overlays: { hats: OverlayResult[]; cloaks: OverlayResult[] }): void {
+  const ranges = { hat: [0.6, 1.2], cloak: [0.8, 1.3] } as const;
 
   console.log("\n  cosmetic width against the body figure:");
   for (const [kind, list] of [
     ["hat", overlays.hats],
-    ["apron", overlays.aprons],
+    ["cloak", overlays.cloaks],
   ] as const) {
     const [low, high] = ranges[kind];
     for (const item of list) {
@@ -428,7 +464,9 @@ function auditOverlays(overlays: { hats: OverlayResult[]; aprons: OverlayResult[
       console.log(
         "    " + (ok ? "ok  " : "FLAG") + " " + item.id.padEnd(20) +
           String(Math.round(pct * 100)).padStart(4) + "%  " + item.width + "x" + item.height +
-          " at y" + item.offset.y + (item.back ? "  +back" : ""),
+          " at y" + item.offset.y +
+          (item.collarRows ? "  collar " + item.collarRows : "") +
+          (item.back ? "  +back" : ""),
       );
       if (!ok) {
         suspect.push(
@@ -842,7 +880,7 @@ function main() {
     bodies[body] = { scale: built.scale, frames: built.frames.map((f) => f.name) };
 
     // The overlays are diffed against the male front pose, which is the figure
-    // every hat and apron drop was drawn from.
+    // every hat and cloak drop is fitted against.
     if (body === "male" && !baseForOverlays) {
       const grid = readGrid(path.join(SRC, "characters", "male_idle.png"));
       if (grid) {
@@ -868,7 +906,7 @@ function main() {
   }
 
   // --- overlays -----------------------------------------------------------
-  const overlays: { hats: OverlayResult[]; aprons: OverlayResult[] } = { hats: [], aprons: [] };
+  const overlays: { hats: OverlayResult[]; cloaks: OverlayResult[] } = { hats: [], cloaks: [] };
 
   if (baseForOverlays) {
     console.log(
@@ -877,7 +915,7 @@ function main() {
     );
     for (const [folder, kind] of [
       ["hats", "hat"],
-      ["aprons", "apron"],
+      ["cloaks", "cloak"],
     ] as const) {
       for (const file of listPngs(path.join(SRC, folder))) {
         // A back view belongs to the item in front of it, not to itself.
@@ -891,7 +929,7 @@ function main() {
     }
     auditOverlays(overlays);
   } else {
-    note("skipped", "hats and aprons - no base body to size against");
+    note("skipped", "hats and cloaks - no base body to size against");
   }
 
   if (only) return finishOne(overlays);
@@ -949,7 +987,7 @@ function main() {
     bodyFrame: { width: BODY_W, height: BODY_H },
     bodies,
     hats: overlays.hats,
-    aprons: overlays.aprons,
+    cloaks: overlays.cloaks,
     props,
     dishes,
     ingredients: ingredientIcons,
@@ -986,7 +1024,7 @@ function report() {
  * Rewriting the whole manifest from a partial run would drop every prop, dish
  * and terrain entry the last full run produced.
  */
-function finishOne(overlays: { hats: OverlayResult[]; aprons: OverlayResult[] }) {
+function finishOne(overlays: { hats: OverlayResult[]; cloaks: OverlayResult[] }) {
   const file = path.join(OUT, "manifest.json");
   if (!exists(file)) {
     console.log("  no manifest.json yet - run the whole pipeline once first");
@@ -996,11 +1034,11 @@ function finishOne(overlays: { hats: OverlayResult[]; aprons: OverlayResult[] })
 
   const manifest = JSON.parse(fs.readFileSync(file, "utf8")) as {
     hats: OverlayResult[];
-    aprons: OverlayResult[];
+    cloaks: OverlayResult[];
     generatedAt: string;
   };
 
-  for (const kind of ["hats", "aprons"] as const) {
+  for (const kind of ["hats", "cloaks"] as const) {
     for (const entry of overlays[kind]) {
       const at = manifest[kind].findIndex((e) => e.id === entry.id);
       if (at >= 0) manifest[kind][at] = entry;

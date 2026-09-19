@@ -62,7 +62,7 @@ import { Avatar } from "../world/avatar.js";
 import { Effects } from "../world/effects.js";
 import { Ambience } from "../world/ambience.js";
 import { sound } from "../world/sound.js";
-import { directionFor, loadArt, type Manifest, type OffsetsFile } from "../art/manifest.js";
+import { directionFor, directionForVector, loadArt, type Manifest, type OffsetsFile } from "../art/manifest.js";
 import { LABEL_SCREEN_PX, labelScale, planCamera } from "../map/camera.js";
 import { TEX_MARKER } from "../map/textures.js";
 import type { HubStateView, KickNotice, PlayerView, VillagerView } from "../net/state.js";
@@ -697,7 +697,7 @@ export class HubScene extends Phaser.Scene {
       {
         body: villager.body || "male",
         hatId: villager.hatId ?? "",
-        apronId: villager.apronId ?? "",
+        cloakId: villager.cloakId ?? "",
         displayName: villager.name,
         isSelf: false,
       },
@@ -718,21 +718,35 @@ export class HubScene extends Phaser.Scene {
     if (!entry) return;
 
     entry.avatar.container.setVisible(this.currentSection === HUB_MAP);
-    entry.avatar.setDirection(directionFor(villager.facing), villager.moving);
-
     const target = this.map.tileCentre(villager.tileX, villager.tileY);
-    if (entry.avatar.container.x === target.x && entry.avatar.container.y === target.y) return;
+    const moved =
+      entry.avatar.container.x !== target.x || entry.avatar.container.y !== target.y;
+
+    entry.avatar.setDirection(
+      moved
+        ? directionForVector(
+            target.x - entry.avatar.container.x,
+            target.y - entry.avatar.container.y,
+            directionFor(villager.facing),
+          )
+        : directionFor(villager.facing),
+      villager.moving,
+    );
+    if (!moved) return;
 
     entry.tween?.stop();
+    entry.avatar.setTweening(true);
     entry.tween = this.tweens.add({
       targets: entry.avatar.container,
       x: target.x,
       y: target.y,
       // Matched to the server's villager step, not the player's: a tween that
-      // finishes early leaves them standing still between tiles.
+      // finishes early leaves them standing still between cells.
       duration: VILLAGER_STEP_MS,
       ease: "Linear",
       onUpdate: () => entry.avatar.container.setDepth(this.map.depthForActor(villager.tileY)),
+      onComplete: () => entry.avatar.setTweening(false),
+      onStop: () => entry.avatar.setTweening(false),
     });
   }
 
@@ -775,7 +789,7 @@ export class HubScene extends Phaser.Scene {
       {
         body: player.body || "male",
         hatId: player.hatId ?? "",
-        apronId: player.apronId ?? "",
+        cloakId: player.cloakId ?? "",
         displayName: player.displayName,
         isSelf,
       },
@@ -818,16 +832,42 @@ export class HubScene extends Phaser.Scene {
     avatar.setLook({
       body: player.body || "male",
       hatId: player.hatId ?? "",
-      apronId: player.apronId ?? "",
+      cloakId: player.cloakId ?? "",
       displayName: player.displayName,
       isSelf,
     });
-    avatar.setDirection(directionFor(player.facing), player.moving);
     avatar.setActivity(player.activity ?? "");
 
+    /*
+     * The stride follows the vector the character is actually travelling,
+     * not the server's last facing.
+     *
+     * With eight-direction movement those two disagree often enough to see: a
+     * state patch can carry two steps at once, and the facing that arrives
+     * with it describes the second while the tween still has to cover both.
+     * Taking the direction from the tween's own delta gets it right by
+     * construction, and falls back to the facing when there is no delta - a
+     * player who turned on the spot.
+     */
     const target = this.map.tileCentre(player.tileX, player.tileY);
-    if (avatar.container.x !== target.x || avatar.container.y !== target.y) {
+    const moved = avatar.container.x !== target.x || avatar.container.y !== target.y;
+
+    avatar.setDirection(
+      moved
+        ? directionForVector(
+            target.x - avatar.container.x,
+            target.y - avatar.container.y,
+            directionFor(player.facing),
+          )
+        : directionFor(player.facing),
+      player.moving,
+    );
+
+    if (moved) {
       entry.tween?.stop();
+      // Walking until the tween says otherwise: the server clears its own
+      // moving flag on the last step, a whole step before the figure arrives.
+      avatar.setTweening(true);
       entry.tween = this.tweens.add({
         targets: avatar.container,
         x: target.x,
@@ -835,6 +875,8 @@ export class HubScene extends Phaser.Scene {
         duration: MOVE_STEP_MS,
         ease: "Linear",
         onUpdate: () => avatar.container.setDepth(this.map.depthForActor(player.tileY)),
+        onComplete: () => avatar.setTweening(false),
+        onStop: () => avatar.setTweening(false),
       });
     }
 

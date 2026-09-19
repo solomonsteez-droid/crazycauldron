@@ -1,26 +1,166 @@
 {
   "_comment": "Wardrobe items and how each is earned. Tier thresholds are $COOK balances, read from the same cached figure the hold check already uses.",
   "tiers": [
-    { "id": "bronze", "minHold": 5000 },
-    { "id": "silver", "minHold": 20000 },
-    { "id": "gold", "minHold": 100000 }
+    {
+      "id": "bronze",
+      "minHold": 5000
+    },
+    {
+      "id": "silver",
+      "minHold": 20000
+    },
+    {
+      "id": "gold",
+      "minHold": 100000
+    }
   ],
   "items": [
-    { "id": "apron_01_linen", "kind": "apron", "name": "Linen apron", "unlock": { "type": "start" } },
-    { "id": "hat_01_chef", "kind": "hat", "name": "Chef toque", "unlock": { "type": "cookQuality", "minQuality": "fine" } },
-    { "id": "apron_02_patched", "kind": "apron", "name": "Patched apron", "unlock": { "type": "chefLevel", "level": 5 } },
-    { "id": "hat_02_straw", "kind": "hat", "name": "Straw hat", "unlock": { "type": "skillLevel", "skill": "foraging", "level": 10 } },
-    { "id": "apron_03_berry", "kind": "apron", "name": "Berry apron", "unlock": { "type": "chefLevel", "level": 10 } },
-    { "id": "hat_03_mushroom", "kind": "hat", "name": "Mushroom cap", "unlock": { "type": "dishesCooked", "count": 50 } },
-    { "id": "apron_04_rugged", "kind": "apron", "name": "Rugged apron", "unlock": { "type": "skillLevel", "skill": "prospecting", "level": 10 } },
-    { "id": "hat_04_acorn", "kind": "hat", "name": "Acorn cap", "unlock": { "type": "sectionRecipes", "section": 2 } },
-    { "id": "apron_05_midnight", "kind": "apron", "name": "Midnight apron", "unlock": { "type": "chefLevel", "level": 20 } },
-    { "id": "hat_05_circlet", "kind": "hat", "name": "Circlet", "unlock": { "type": "anySkillLevel", "level": 20 } },
-    { "id": "hat_06_dragonscale", "kind": "hat", "name": "Dragonscale hat", "unlock": { "type": "recipeQuality", "recipeNumber": 20, "quality": "superb" } },
-    { "id": "hat_07_moonpetal", "kind": "hat", "name": "Moonpetal crown", "unlock": { "type": "recipeQuality", "recipeNumber": 19, "quality": "superb" } },
-    { "id": "hat_08_bronze", "kind": "hat", "name": "Bronze toque", "unlock": { "type": "tier", "tier": "bronze" } },
-    { "id": "apron_06_silver", "kind": "apron", "name": "Silver apron", "unlock": { "type": "tier", "tier": "silver" } },
-    { "id": "hat_09_gold", "kind": "hat", "name": "Gold toque", "unlock": { "type": "tier", "tier": "gold" } },
-    { "id": "apron_07_gold", "kind": "apron", "name": "Gold apron", "unlock": { "type": "tier", "tier": "gold" } }
+    {
+      "id": "cloak_01_wool",
+      "kind": "cloak",
+      "name": "Wool cloak",
+      "unlock": {
+        "type": "start"
+      }
+    },
+    {
+      "id": "hat_01_chef",
+      "kind": "hat",
+      "name": "Chef toque",
+      "unlock": {
+        "type": "cookQuality",
+        "minQuality": "fine"
+      }
+    },
+    {
+      "id": "cloak_02_patched",
+      "kind": "cloak",
+      "name": "Patched cloak",
+      "unlock": {
+        "type": "chefLevel",
+        "level": 5
+      }
+    },
+    {
+      "id": "hat_02_straw",
+      "kind": "hat",
+      "name": "Straw hat",
+      "unlock": {
+        "type": "skillLevel",
+        "skill": "foraging",
+        "level": 10
+      }
+    },
+    {
+      "id": "cloak_03_berry",
+      "kind": "cloak",
+      "name": "Berry cloak",
+      "unlock": {
+        "type": "chefLevel",
+        "level": 10
+      }
+    },
+    {
+      "id": "hat_03_mushroom",
+      "kind": "hat",
+      "name": "Mushroom cap",
+      "unlock": {
+        "type": "dishesCooked",
+        "count": 50
+      }
+    },
+    {
+      "id": "cloak_04_rugged",
+      "kind": "cloak",
+      "name": "Rugged cloak",
+      "unlock": {
+        "type": "skillLevel",
+        "skill": "prospecting",
+        "level": 10
+      }
+    },
+    {
+      "id": "hat_04_acorn",
+      "kind": "hat",
+      "name": "Acorn cap",
+      "unlock": {
+        "type": "sectionRecipes",
+        "section": 2
+      }
+    },
+    {
+      "id": "cloak_05_midnight",
+      "kind": "cloak",
+      "name": "Midnight cloak",
+      "unlock": {
+        "type": "chefLevel",
+        "level": 20
+      }
+    },
+    {
+      "id": "hat_05_circlet",
+      "kind": "hat",
+      "name": "Circlet",
+      "unlock": {
+        "type": "anySkillLevel",
+        "level": 20
+      }
+    },
+    {
+      "id": "hat_06_dragonscale",
+      "kind": "hat",
+      "name": "Dragonscale hat",
+      "unlock": {
+        "type": "recipeQuality",
+        "recipeNumber": 20,
+        "quality": "superb"
+      }
+    },
+    {
+      "id": "hat_07_moonpetal",
+      "kind": "hat",
+      "name": "Moonpetal crown",
+      "unlock": {
+        "type": "recipeQuality",
+        "recipeNumber": 19,
+        "quality": "superb"
+      }
+    },
+    {
+      "id": "hat_08_bronze",
+      "kind": "hat",
+      "name": "Bronze toque",
+      "unlock": {
+        "type": "tier",
+        "tier": "bronze"
+      }
+    },
+    {
+      "id": "cloak_06_silver",
+      "kind": "cloak",
+      "name": "Silver cloak",
+      "unlock": {
+        "type": "tier",
+        "tier": "silver"
+      }
+    },
+    {
+      "id": "hat_09_gold",
+      "kind": "hat",
+      "name": "Gold toque",
+      "unlock": {
+        "type": "tier",
+        "tier": "gold"
+      }
+    },
+    {
+      "id": "cloak_07_gold",
+      "kind": "cloak",
+      "name": "Gold cloak",
+      "unlock": {
+        "type": "tier",
+        "tier": "gold"
+      }
+    }
   ]
 }

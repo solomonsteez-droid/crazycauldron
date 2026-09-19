@@ -1,15 +1,22 @@
 /**
- * One player on screen: body, apron, hat and name, in that order.
+ * One player on screen: the drape of their cloak, the body, the collar of
+ * their cloak, a hat, and a name - in that order, which is the order they
+ * overlap in.
  *
- * The three sprites are separate so a wardrobe change is a texture swap rather
- * than a re-render, and so the garments can sit at hand-tuned offsets per
- * direction. The container's origin is the character's feet, which is the point
- * that must not wander between frames.
+ * A cloak is two sprites rather than one because it hangs. Everything below
+ * the collar line is behind the character and everything above it is in
+ * front, so the cape falls past the shoulders and the body stands inside it.
+ * Painted as a single sprite it would be a cape-shaped sticker on a chest.
+ *
+ * The sprites are separate so a wardrobe change is a texture swap rather than
+ * a re-render, and so the garments can sit at hand-tuned offsets per
+ * direction. The container's origin is the character's feet, which is the
+ * point that must not wander between frames.
  */
 
 import Phaser from "phaser";
 import { PALETTE, hex } from "@crazycauldron/shared";
-import { BODY_FRAME, apronKey, bodyKey, hatKey } from "../art/assets.js";
+import { BODY_FRAME, bodyKey, cloakKey, hatKey } from "../art/assets.js";
 import {
   defaultOffsets,
   offsetFor,
@@ -49,7 +56,7 @@ interface Pose {
 export interface AvatarLook {
   body: string;
   hatId: string;
-  apronId: string;
+  cloakId: string;
   displayName: string;
   isSelf: boolean;
 }
@@ -57,12 +64,15 @@ export interface AvatarLook {
 export class Avatar {
   readonly container: Phaser.GameObjects.Container;
   private readonly body: Phaser.GameObjects.Sprite;
-  private readonly apron: Phaser.GameObjects.Image;
+  private readonly drape: Phaser.GameObjects.Image;
+  private readonly collar: Phaser.GameObjects.Image;
   private readonly hat: Phaser.GameObjects.Image;
   private readonly label: Phaser.GameObjects.Text;
 
   private direction: Direction = "down";
   private moving = false;
+  /** True while a move tween is running, whatever the server last said. */
+  private tweening = false;
   private look: AvatarLook;
 
   /** Set while the server says this player is cooking, which drives the dance. */
@@ -93,7 +103,8 @@ export class Avatar {
       .sprite(0, 0, bodyKey(look.body), `${look.body}_idle_down`)
       .setOrigin(0.5, 1);
 
-    this.apron = scene.add.image(0, 0, "__MISSING").setOrigin(0, 0).setVisible(false);
+    this.drape = scene.add.image(0, 0, "__MISSING").setOrigin(0, 0).setVisible(false);
+    this.collar = scene.add.image(0, 0, "__MISSING").setOrigin(0, 0).setVisible(false);
     this.hat = scene.add.image(0, 0, "__MISSING").setOrigin(0, 0).setVisible(false);
 
     this.label = scene.add
@@ -104,8 +115,20 @@ export class Avatar {
       })
       .setOrigin(0.5, 1);
 
-    this.container = scene.add.container(x, y, [this.body, this.apron, this.hat, this.label]);
+    // Drape, body, collar, hat: the order they overlap in, back to front.
+    this.container = scene.add.container(x, y, [
+      this.drape,
+      this.body,
+      this.collar,
+      this.hat,
+      this.label,
+    ]);
     this.apply();
+  }
+
+  /** Walking if the server says so, or if a tween has not finished yet. */
+  private get walking(): boolean {
+    return this.moving || this.tweening;
   }
 
   /** Swaps garments without rebuilding the container. */
@@ -124,6 +147,21 @@ export class Avatar {
     // texture is re-picked rather than only re-placed.
     if (turned) this.apply();
     else this.placeOverlays();
+  }
+
+  /**
+   * Whether this character is physically between two cells right now.
+   *
+   * Separate from the server's "moving" flag, and the two are OR-ed together
+   * in playBody. The server clears moving on the final step of a route, but
+   * the client still has a whole MOVE_STEP_MS of tween left to cover - so
+   * every walk used to end with one step animated as a standing figure
+   * sliding along the ground.
+   */
+  setTweening(tweening: boolean) {
+    if (tweening === this.tweening) return;
+    this.tweening = tweening;
+    this.playBody();
   }
 
   /** Cooking replaces the idle motion with a little two-step. */
@@ -190,16 +228,30 @@ export class Avatar {
      */
     const facingAway = this.direction === "up";
     const hatEntry = this.manifest.hats.find((e) => e.id === this.look.hatId);
-    const apronEntry = this.manifest.aprons.find((e) => e.id === this.look.apronId);
 
     const hatTexture = hatKey(this.look.hatId, facingAway && hatEntry?.back === true);
-    const apronTexture = apronKey(this.look.apronId, facingAway && apronEntry?.back === true);
-
     this.hat.setVisible(Boolean(this.look.hatId) && this.scene.textures.exists(hatTexture));
     if (this.hat.visible) this.hat.setTexture(hatTexture);
 
-    this.apron.setVisible(Boolean(this.look.apronId) && this.scene.textures.exists(apronTexture));
-    if (this.apron.visible) this.apron.setTexture(apronTexture);
+    /*
+     * Facing away, the whole cloak is between the viewer and the character,
+     * so it is drawn once in the collar slot and the drape slot is empty.
+     * From every other angle it is split: drape behind, collar in front.
+     */
+    const cloak = this.look.cloakId;
+    const has = (part: "whole" | "collar" | "drape") =>
+      Boolean(cloak) && this.scene.textures.exists(cloakKey(cloak, part));
+
+    if (facingAway) {
+      this.drape.setVisible(false);
+      this.collar.setVisible(has("whole"));
+      if (this.collar.visible) this.collar.setTexture(cloakKey(cloak));
+    } else {
+      this.drape.setVisible(has("drape"));
+      if (this.drape.visible) this.drape.setTexture(cloakKey(cloak, "drape"));
+      this.collar.setVisible(has("collar"));
+      if (this.collar.visible) this.collar.setTexture(cloakKey(cloak, "collar"));
+    }
 
     this.label.setText(this.look.displayName);
     this.label.setColor(this.look.isSelf ? hex(PALETTE.accent) : hex(PALETTE.ink));
@@ -210,7 +262,7 @@ export class Avatar {
 
   private playBody() {
     const animation = `${this.look.body}_walk_${this.direction}`;
-    if (this.moving && this.scene.anims.exists(animation)) {
+    if (this.walking && this.scene.anims.exists(animation)) {
       if (this.body.anims.currentAnim?.key !== animation) this.body.play(animation);
       return;
     }
@@ -233,10 +285,11 @@ export class Avatar {
     const left = -BODY_FRAME.width / 2 + this.pose.dx;
     const top = -BODY_FRAME.height + this.pose.dy;
     const frameIndex = this.body.anims.currentFrame?.index ?? 0;
-    const bob = this.moving && BOB_FRAMES.has(frameIndex % 4) ? -1 : 0;
+    const bob = this.walking && BOB_FRAMES.has(frameIndex % 4) ? -1 : 0;
 
     for (const [kind, sprite, id] of [
-      ["aprons", this.apron, this.look.apronId],
+      ["cloaks", this.drape, this.look.cloakId],
+      ["cloaks", this.collar, this.look.cloakId],
       ["hats", this.hat, this.look.hatId],
     ] as const) {
       if (!sprite.visible || !id) continue;
@@ -283,7 +336,7 @@ export class Avatar {
    * so a hat never drifts off a head that has moved.
    */
   tick(now: number) {
-    this.pose = this.moving
+    this.pose = this.walking
       ? { dx: 0, dy: 0, squash: 1 }
       : this.dancing
         ? this.dancePose(now)

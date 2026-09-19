@@ -33,8 +33,10 @@ import {
   type WardrobeItem,
   type WardrobeItemView,
   type WardrobeSnapshot,
+  STARTER_CLOAK,
   WARDROBE_ITEMS,
   describeUnlockRule,
+  migrateGarment,
   isUnlocked,
   newlyEarned,
   requiredTier,
@@ -65,9 +67,9 @@ export class PlayerState {
   panTier: number;
   bagTier: number;
   buffExpiresAt: number;
-  /** Equipped wardrobe items. The linen apron is the starting garment. */
+  /** Equipped wardrobe items. The wool cloak is the starting garment. */
   hatId: string;
-  apronId: string;
+  cloakId: string;
   /** Permanently earned items. Tier items are never kept here. */
   readonly unlockedItems: Set<string>;
   /** Highest tier the last cached $COOK balance supports; refreshed on join. */
@@ -90,15 +92,28 @@ export class PlayerState {
     this.unlockedSections = new Set(record.unlockedSections);
     this.unlockedItems = new Set(record.unlockedItems);
     this.hatId = record.hatId;
-    this.apronId = record.apronId;
+    // A saved apron id becomes its cloak; anything unrecognised is nothing.
+    this.cloakId = migrateGarment(record.cloakId) ?? STARTER_CLOAK;
 
     for (const stack of record.stacks) this.stacks.set(stack.key, { ...stack });
     for (const entry of record.codex) this.codex.set(entry.recipeId, { ...entry });
 
     // Section 1 is open from Chef 1, so a brand new player already has it.
     this.unlockedSections.add(1);
-    // Everyone starts with the linen apron.
-    this.unlockedItems.add("apron_01_linen");
+    // Everyone starts with the wool cloak.
+    /*
+     * Rewrite anything earned under the old names. Aprons became cloaks one
+     * for one with the same conditions, so a wardrobe full of aprons is a
+     * wardrobe full of cloaks - and anything that maps to nothing is dropped
+     * rather than left as an id no panel can render.
+     */
+    for (const id of [...this.unlockedItems]) {
+      const now = migrateGarment(id);
+      if (now === id) continue;
+      this.unlockedItems.delete(id);
+      if (now) this.unlockedItems.add(now);
+    }
+    this.unlockedItems.add(STARTER_CLOAK);
   }
 
   // --- derived -------------------------------------------------------------
@@ -294,11 +309,11 @@ export class PlayerState {
    */
   enforceTier(): string[] {
     const removed: string[] = [];
-    for (const slot of ["hatId", "apronId"] as const) {
+    for (const slot of ["hatId", "cloakId"] as const) {
       const itemId = this[slot];
       if (itemId && requiredTier(itemId) && !this.canWear(itemId)) {
         removed.push(itemId);
-        this[slot] = slot === "apronId" ? "apron_01_linen" : "";
+        this[slot] = slot === "cloakId" ? STARTER_CLOAK : "";
       }
     }
     return removed;
@@ -311,7 +326,7 @@ export class PlayerState {
       const unlocked = tier
         ? isUnlocked(item.unlock, snapshot)
         : this.unlockedItems.has(item.id);
-      const equipped = item.id === this.hatId || item.id === this.apronId;
+      const equipped = item.id === this.hatId || item.id === this.cloakId;
       return {
         id: item.id,
         kind: item.kind,
@@ -340,7 +355,7 @@ export class PlayerState {
       nodeReadyAt: Object.fromEntries(this.nodeReadyAt),
       unlockedItems: [...this.unlockedItems],
       hatId: this.hatId,
-      apronId: this.apronId,
+      cloakId: this.cloakId,
     };
   }
 
@@ -414,7 +429,7 @@ export class PlayerState {
       titles: titlesEarned(levels),
       wardrobe: this.wardrobeViews(),
       hatId: this.hatId,
-      apronId: this.apronId,
+      cloakId: this.cloakId,
       tier: this.tier,
       nextGoal: goal ? describeUnlock(goal) : null,
       serverNow: Date.now(),

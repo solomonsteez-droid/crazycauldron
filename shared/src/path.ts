@@ -126,17 +126,25 @@ function reconstruct(cameFrom: Map<number, number>, start: number, goal: number)
 }
 
 /**
- * Facing implied by a single step.
+ * The facing a movement vector reads as.
  *
  * Four facings for eight directions: the body sheet has north, east, south and
  * west and nothing between, so a diagonal picks whichever axis it moved along
- * further, and a tie goes to the horizontal - a character walking north-east
- * reads better facing the camera's side than its back.
+ * further. A tie - which every diagonal is - goes to the horizontal, because a
+ * character walking north-east reads better facing the camera's side than its
+ * back, and because the side views are the two with the most legible stride.
+ *
+ * Takes a raw vector rather than two tiles so the client can ask the same
+ * question of a half-finished tween in world pixels, and get the same answer
+ * the server got from whole cells.
  */
-export function facingFor(from: TilePos, to: TilePos, fallback: Facing): Facing {
-  const dx = to.tileX - from.tileX;
-  const dy = to.tileY - from.tileY;
+export function facingForVector(dx: number, dy: number, fallback: Facing): Facing {
   if (dx === 0 && dy === 0) return fallback;
   if (Math.abs(dx) >= Math.abs(dy)) return dx > 0 ? "e" : "w";
   return dy > 0 ? "s" : "n";
+}
+
+/** Facing implied by a single step between two cells. */
+export function facingFor(from: TilePos, to: TilePos, fallback: Facing): Facing {
+  return facingForVector(to.tileX - from.tileX, to.tileY - from.tileY, fallback);
 }

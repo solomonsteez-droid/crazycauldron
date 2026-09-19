@@ -1,15 +1,15 @@
 {
-  "_comment": "How each cosmetic is fitted to the 32x48 body. The items are now drawn standalone on magenta, so there is nothing to cut them out of a character - the pipeline keys the magenta, trims to what is left, and scales to a stated width. These are the numbers that decide how big a hat looks and where it sits.",
-  "_measured": "The male idle front frame, row by row: the figure is 25px wide, centred on x=16. The skull crown is rows 2-10, the head widest at row 11, the neck pinches to 9px at row 23, the torso runs rows 24-38 at 21px wide, and the legs take rows 39-47. Every default below comes from those rows.",
+  "_comment": "How each cosmetic is fitted to the 32x48 body. The items are drawn standalone on magenta, so the pipeline keys the magenta, trims to what is left, and scales to a stated width. These are the numbers that decide how big a thing looks and where it sits.",
+  "_measured": "The male idle front frame, row by row: the figure is 25px wide, centred on x=16. The skull crown is rows 2-10, the head widest at row 11, the neck pinches to 9px at row 23, the shoulders are rows 24-27, the torso runs to row 38 at 21px wide, and the legs take rows 39-47. Every default below comes from those rows.",
   "_fields": {
     "widthPx": "finished width on the 32px body canvas; height follows the art",
-    "bottomRow": "hats: the row the brim lands on. The skull crown is rows 2-10 but the hair sits a little proud of it, so 11 is where a hat looks worn rather than hovering",
-    "centreRow": "aprons: the row the garment is centred on",
-    "flip": "false for anything asymmetric, which then needs its own _back.png"
+    "bottomRow": "hats: the row the brim lands on. The crown is rows 2-10, but the hair sits proud of it, so 11 is where a hat looks worn rather than hovering",
+    "topRow": "cloaks: the row the collar's top edge lands on. The neck pinches at row 23, so 22 puts the collar around the neck rather than over the jaw",
+    "collarSplit": "cloaks: where the collar ends as a fraction of the art's height. Above it draws in front of the body, below it behind"
   },
   "defaults": {
     "hat": { "widthPx": 20, "bottomRow": 11 },
-    "apron": { "widthPx": 16, "centreRow": 31 }
+    "cloak": { "widthPx": 24, "topRow": 22, "collarSplit": 0.26 }
   },
   "items": {
     "hat_02_straw": { "widthPx": 24, "bottomRow": 10 },
@@ -17,8 +17,8 @@
     "hat_06_dragonscale": { "widthPx": 18, "bottomRow": 12 },
     "hat_07_moonpetal": { "widthPx": 22, "bottomRow": 11 },
     "hat_09_gold": { "widthPx": 21, "bottomRow": 12 },
-    "apron_04_rugged": { "widthPx": 18 },
-    "apron_06_silver": { "widthPx": 17 },
-    "apron_07_gold": { "widthPx": 18 }
+    "cloak_04_rugged": { "collarSplit": 0.3 },
+    "cloak_06_silver": { "collarSplit": 0.34 },
+    "cloak_07_gold": { "collarSplit": 0.32 }
   }
 }

@@ -21,7 +21,7 @@ import {
   type Rect,
 } from "./camera.js";
 import { TEX_GLOW, TEX_NODE, TEX_NODE_SPENT } from "./textures.js";
-import { hasProcessedNode, mapKey, nodeArchetype, nodeKey } from "../art/assets.js";
+import { GATE_PROP, hasProcessedNode, mapKey, nodeArchetype, nodeKey, propKey } from "../art/assets.js";
 import { Effects } from "../world/effects.js";
 
 /**
@@ -110,27 +110,46 @@ export class GameMap {
       const at = cellToWorld(centre.tileX, centre.tileY);
       const marks: Phaser.GameObjects.GameObject[] = [];
 
-      if (zone.kind === "portal" && zone.glow) {
-        const tint = Phaser.Display.Color.HexStringToColor(zone.glow).color;
-        const halo = this.scene.add
-          .image(at.x, at.y, TEX_GLOW)
-          .setOrigin(0.5)
-          .setDepth(this.depthFor(zone.baseline) - 1)
-          .setTint(tint)
-          .setAlpha(0.3)
-          .setBlendMode(Phaser.BlendModes.ADD);
-        halo.setDisplaySize(zone.w * CELL, zone.h * CELL);
+      if (zone.kind === "portal") {
+        if (zone.glow) {
+          const tint = Phaser.Display.Color.HexStringToColor(zone.glow).color;
+          const halo = this.scene.add
+            .image(at.x, at.y, TEX_GLOW)
+            .setOrigin(0.5)
+            .setDepth(this.depthFor(zone.baseline) - 1)
+            .setTint(tint)
+            .setAlpha(0.3)
+            .setBlendMode(Phaser.BlendModes.ADD);
+          halo.setDisplaySize(zone.w * CELL, zone.h * CELL);
 
-        this.scene.tweens.add({
-          targets: halo,
-          alpha: 0.55,
-          duration: 1700,
-          yoyo: true,
-          repeat: -1,
-          ease: "Sine.easeInOut",
-        });
-        this.decorations.push(halo);
-        marks.push(halo);
+          this.scene.tweens.add({
+            targets: halo,
+            alpha: 0.55,
+            duration: 1700,
+            yoyo: true,
+            repeat: -1,
+            ease: "Sine.easeInOut",
+          });
+          halo.setData("glow", true);
+          this.decorations.push(halo);
+          marks.push(halo);
+        }
+
+        /*
+         * An arch over the path mouth.
+         *
+         * Stood on the zone's baseline like anything else on the map, so a
+         * player walking up to a gate passes in front of it and one standing
+         * beyond it is framed by it. Width is the zone's own, height follows
+         * the art; the arch is the only prop still drawn over a painting,
+         * because a path leaving the picture is the one thing the picture
+         * does not say is a door.
+         */
+        const arch = this.gateSprite(zone);
+        if (arch) {
+          this.decorations.push(arch);
+          marks.push(arch);
+        }
       }
 
       if (zone.name) {
@@ -165,6 +184,26 @@ export class GameMap {
   }
 
   // --- nodes ----------------------------------------------------------------
+
+  /** The processed archway for a gate, or null when its art is missing. */
+  private gateSprite(zone: AreaZone): Phaser.GameObjects.Image | null {
+    const id = zone.section !== undefined ? GATE_PROP[zone.section] : undefined;
+    // The way home out of a section reuses whichever arch that section has.
+    const key = propKey(id ?? GATE_PROP[this.mapId] ?? "portal_meadows");
+    if (!this.scene.textures.exists(key)) return null;
+
+    const centre = zoneCentre(zone);
+    const at = cellToWorld(centre.tileX, centre.tileY);
+    const sprite = this.scene.add
+      .image(at.x, (zone.baseline + 1) * CELL, key)
+      .setOrigin(0.5, 1)
+      .setDepth(this.depthFor(zone.baseline));
+
+    const width = zone.w * CELL;
+    sprite.setDisplaySize(width, (sprite.height / sprite.width) * width);
+    sprite.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    return sprite;
+  }
 
   private buildNodes() {
     for (const node of areaFor(this.mapId).nodes) {
@@ -374,7 +413,9 @@ export class GameMap {
     }
     for (const mark of this.zoneMarkers.get(feature.id) ?? []) {
       if (mark instanceof Phaser.GameObjects.Text) mark.setAlpha(1);
-      else if (mark instanceof Phaser.GameObjects.Image) mark.setAlpha(0.7);
+      else if (!(mark instanceof Phaser.GameObjects.Image)) continue;
+      else if (mark.getData("glow") === true) mark.setAlpha(0.7);
+      else mark.setTint(HIGHLIGHT_TINT);
     }
   }
 
@@ -389,8 +430,12 @@ export class GameMap {
     for (const mark of this.zoneMarkers.get(feature.id) ?? []) {
       if (mark instanceof Phaser.GameObjects.Text) {
         mark.setAlpha(zone?.kind === "portal" ? 0.9 : 0);
-      } else if (mark instanceof Phaser.GameObjects.Image) {
+      } else if (!(mark instanceof Phaser.GameObjects.Image)) {
+        continue;
+      } else if (mark.getData("glow") === true) {
         mark.setAlpha(0.3);
+      } else {
+        mark.clearTint();
       }
     }
   }

@@ -35,7 +35,7 @@ export interface PlayerView extends Watchable {
   activity: string;
   body: string;
   hatId: string;
-  apronId: string;
+  cloakId: string;
 }
 
 /** A hub resident. No wallet and no progress - they are scenery that walks. */
@@ -48,7 +48,7 @@ export interface VillagerView extends Watchable {
   moving: boolean;
   body: string;
   hatId: string;
-  apronId: string;
+  cloakId: string;
 }
 
 export interface HubStateView {

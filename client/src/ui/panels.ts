@@ -17,7 +17,7 @@ import {
   type ProfilePayload,
   type Quality,
 } from "@crazycauldron/shared";
-import { apronKey, bodyKey, dishKey, hatKey, ingredientKey } from "../art/assets.js";
+import { bodyKey, cloakKey, dishKey, hatKey, ingredientKey } from "../art/assets.js";
 import { defaultOffsets, loadArt, type Manifest, type OffsetsFile } from "../art/manifest.js";
 import { fetchLeaderboard } from "../net/api.js";
 import { gameStore } from "../net/game.js";
@@ -93,7 +93,7 @@ export function icon(key: string, size = 28): HTMLCanvasElement {
  */
 const PREVIEW_HEADROOM = 18;
 
-function wardrobePreview(kind: "hat" | "apron", id: string, size = 48): HTMLCanvasElement {
+function wardrobePreview(kind: "hat" | "cloak", id: string, size = 48): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
   const scale = Math.max(1, Math.floor(size / 48));
   canvas.width = 32 * scale;
@@ -113,6 +113,19 @@ function wardrobePreview(kind: "hat" | "apron", id: string, size = 48): HTMLCanv
     const h = texture.source[0]?.height ?? 0;
     context.drawImage(source, dx * scale, (dy + PREVIEW_HEADROOM) * scale, w * scale, h * scale);
   };
+
+  /*
+   * Where the garment sits, resolved before anything is drawn: a cloak's
+   * drape goes down before the body and its collar after, so the preview
+   * layers the same way the character on screen does.
+   */
+  const art = wardrobeArt;
+  const list = kind === "hat" ? art?.manifest.hats : art?.manifest.cloaks;
+  const entry = id ? list?.find((e) => e.id === id) : undefined;
+  const saved = (kind === "hat" ? art?.offsets.hats : art?.offsets.cloaks)?.[id] ??
+    defaultOffsets(entry);
+
+  if (id && kind === "cloak") draw(cloakKey(id, "drape"), saved.down.x, saved.down.y);
 
   // The body frame is a cell inside the atlas, so it is drawn by hand.
   const bodyTexture = game.textures.get(bodyKey("male"));
@@ -137,10 +150,8 @@ function wardrobePreview(kind: "hat" | "apron", id: string, size = 48): HTMLCanv
   }
 
   if (id) {
-    const art = wardrobeArt;
-    const entry = art?.manifest[kind === "hat" ? "hats" : "aprons"].find((e) => e.id === id);
-    const saved = art?.offsets[kind === "hat" ? "hats" : "aprons"]?.[id] ?? defaultOffsets(entry);
-    draw(kind === "hat" ? hatKey(id) : apronKey(id), saved.down.x, saved.down.y);
+    const front = kind === "hat" ? hatKey(id) : cloakKey(id, "collar");
+    draw(front, saved.down.x, saved.down.y);
   }
   return canvas;
 }
@@ -592,14 +603,14 @@ const TIER_LABEL: Record<string, string> = {
 };
 
 /**
- * The Outfitter's wardrobe: two rows, hats and aprons.
+ * The Outfitter's wardrobe: two rows, hats and cloaks.
  *
  * Unlocked items are in colour and clickable; locked ones are greyed with the
  * condition that earns them, taken from the content rather than written here.
  * Tier items carry a badge and stop being wearable the moment the balance stops
  * backing them - the server enforces that, this only shows it.
  */
-export function openWardrobe(onEquip: (kind: "hat" | "apron", itemId: string) => void): ModalHandle {
+export function openWardrobe(onEquip: (kind: "hat" | "cloak", itemId: string) => void): ModalHandle {
   const modal = openModal("Wardrobe");
   const summary = document.createElement("p");
   const rows = document.createElement("div");
@@ -612,15 +623,15 @@ export function openWardrobe(onEquip: (kind: "hat" | "apron", itemId: string) =>
 
     rows.replaceChildren();
 
-    for (const kind of ["hat", "apron"] as const) {
+    for (const kind of ["hat", "cloak"] as const) {
       const heading = document.createElement("h3");
-      heading.textContent = kind === "hat" ? "Hats" : "Aprons";
+      heading.textContent = kind === "hat" ? "Hats" : "Cloaks";
       heading.className = "cc-subhead";
 
       const grid = document.createElement("div");
       grid.className = "cc-grid";
 
-      const equippedId = kind === "hat" ? profile.hatId : profile.apronId;
+      const equippedId = kind === "hat" ? profile.hatId : profile.cloakId;
 
       // An explicit "none" so a hat can be taken off again.
       grid.append(
@@ -644,7 +655,7 @@ export function openWardrobe(onEquip: (kind: "hat" | "apron", itemId: string) =>
 function wardrobeSlot(
   item: {
     id: string;
-    kind: "hat" | "apron";
+    kind: "hat" | "cloak";
     name: string;
     unlocked: boolean;
     equipped: boolean;

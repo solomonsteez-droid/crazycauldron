@@ -74,7 +74,7 @@ export interface DevIntent {
 
 /** Equip a wardrobe item, or clear the slot with an empty id. */
 export interface EquipIntent {
-  kind: "hat" | "apron";
+  kind: "hat" | "cloak";
   itemId: string;
 }
 
@@ -121,7 +121,7 @@ export interface RecipeAvailabilityView {
 
 export interface WardrobeItemView {
   id: string;
-  kind: "hat" | "apron";
+  kind: "hat" | "cloak";
   name: string;
   unlocked: boolean;
   equipped: boolean;
@@ -158,7 +158,7 @@ export interface ProfilePayload {
   /** Every wardrobe item with its state, for the Outfitter panel. */
   wardrobe: WardrobeItemView[];
   hatId: string;
-  apronId: string;
+  cloakId: string;
   /** Highest tier the cached balance currently supports. */
   tier: "bronze" | "silver" | "gold" | null;
   nextGoal: string | null;
@@ -269,7 +269,7 @@ export interface BoughtPayload {
 
 /** Sent when an item is granted, so the client can celebrate it. */
 export interface UnlockedPayload {
-  items: { id: string; kind: "hat" | "apron"; name: string }[];
+  items: { id: string; kind: "hat" | "cloak"; name: string }[];
 }
 
 /** Every refusal the server sends back, with a reason the UI can show. */

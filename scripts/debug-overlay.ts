@@ -46,7 +46,7 @@ function shoulderRow(body: Img, bounds: Rect): number {
 }
 
 const target = process.argv[2] ?? "hat_01_chef";
-const kind = target.startsWith("hat") ? "hats" : "aprons";
+const kind = target.startsWith("hat") ? "hats" : "cloaks";
 
 const idle = denoise(removeChroma(load(path.join(SRC, "characters", "male_idle.png"))));
 const cells = readingOrder(findBlobs(idle, 2000).slice(0, 4));

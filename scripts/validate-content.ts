@@ -232,7 +232,7 @@ for (const skill of ["firecraft", "knifework", "spicecraft"] as const) {
  */
 const villagerIds = new Set<string>();
 const hatIds = new Set(WARDROBE_ITEMS.filter((i) => i.kind === "hat").map((i) => i.id));
-const apronIds = new Set(WARDROBE_ITEMS.filter((i) => i.kind === "apron").map((i) => i.id));
+const cloakIds = new Set(WARDROBE_ITEMS.filter((i) => i.kind === "cloak").map((i) => i.id));
 
 for (const villager of AMBIENCE.villagers.roster) {
   if (!SNAKE.test(villager.id)) note(`villager id is not snake_case: ${villager.id}`);
@@ -245,8 +245,8 @@ for (const villager of AMBIENCE.villagers.roster) {
   if (villager.hat && !hatIds.has(villager.hat)) {
     note(`villager ${villager.id} wears unknown hat ${villager.hat}`);
   }
-  if (villager.apron && !apronIds.has(villager.apron)) {
-    note(`villager ${villager.id} wears unknown apron ${villager.apron}`);
+  if (villager.cloak && !cloakIds.has(villager.cloak)) {
+    note(`villager ${villager.id} wears unknown cloak ${villager.cloak}`);
   }
   if (villager.lines.length === 0) note(`villager ${villager.id} has nothing to say`);
 }

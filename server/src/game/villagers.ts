@@ -88,7 +88,7 @@ export class VillagerCrowd {
       villager.tileY = at.tileY;
       villager.body = def.body;
       villager.hatId = def.hat;
-      villager.apronId = def.apron;
+      villager.cloakId = def.cloak;
 
       this.villagers.set(def.id, villager);
       this.walks.set(def.id, { route: [], restUntil: now + this.restMs() });

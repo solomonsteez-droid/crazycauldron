@@ -21,6 +21,8 @@ export interface OverlayEntry {
   offset: Vec2;
   /** True when an <id>_back.png was processed for the up direction. */
   back?: boolean;
+  /** Cloaks only: how many rows of the art are collar rather than drape. */
+  collarRows?: number;
 }
 
 /** Scenery the pipeline cut for one map, with the size each piece came out. */
@@ -42,7 +44,7 @@ export interface Manifest {
   bodyFrame: { width: number; height: number };
   bodies: Record<string, { scale: number; frames: string[] }>;
   hats: OverlayEntry[];
-  aprons: OverlayEntry[];
+  cloaks: OverlayEntry[];
   props: string[];
   /** Recipe ids that have a processed dish icon. */
   dishes: string[];
@@ -76,6 +78,21 @@ export function directionFor(facing: string): Direction {
   return FACING_TO_DIRECTION[facing] ?? "down";
 }
 
+/**
+ * The walk animation a movement vector should play.
+ *
+ * Asked of the vector the character is actually travelling along, in world
+ * pixels, rather than of the server's last facing. With eight-direction
+ * movement the two can disagree: a patch that carries two steps at once leaves
+ * a facing from the second while the tween is still covering both, and the
+ * stride ends up pointing the wrong way for a frame.
+ */
+export function directionForVector(dx: number, dy: number, fallback: Direction): Direction {
+  if (dx === 0 && dy === 0) return fallback;
+  if (Math.abs(dx) >= Math.abs(dy)) return dx > 0 ? "right" : "left";
+  return dy > 0 ? "down" : "up";
+}
+
 export interface ItemOffsets {
   down: Vec2;
   up: Vec2;
@@ -91,14 +108,14 @@ export interface ItemOffsets {
   flip: boolean;
 }
 
-export type OffsetsFile = Record<"hats" | "aprons", Record<string, ItemOffsets>>;
+export type OffsetsFile = Record<"hats" | "cloaks", Record<string, ItemOffsets>>;
 
 const EMPTY_MANIFEST: Manifest = {
   generatedAt: "",
   bodyFrame: { width: 32, height: 48 },
   bodies: {},
   hats: [],
-  aprons: [],
+  cloaks: [],
   props: [],
   dishes: [],
   ingredients: [],
@@ -128,7 +145,7 @@ export async function loadArt(): Promise<{ manifest: Manifest; offsets: OffsetsF
   if (cached) return cached;
   const [manifest, offsets] = await Promise.all([
     fetchJson<Manifest>(`${GENERATED}/manifest.json`, EMPTY_MANIFEST),
-    fetchJson<OffsetsFile>(`${GENERATED}/offsets.json`, { hats: {}, aprons: {} }),
+    fetchJson<OffsetsFile>(`${GENERATED}/offsets.json`, { hats: {}, cloaks: {} }),
   ]);
   cached = { manifest, offsets };
   return cached;
@@ -158,7 +175,7 @@ export function defaultOffsets(entry: OverlayEntry | undefined): ItemOffsets {
  */
 export function offsetFor(
   offsets: OffsetsFile,
-  kind: "hats" | "aprons",
+  kind: "hats" | "cloaks",
   id: string,
   direction: Direction,
   fallback: ItemOffsets,

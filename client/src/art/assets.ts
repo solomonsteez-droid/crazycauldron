@@ -31,7 +31,18 @@ export const bodyKey = (body: string) => `body:${body}`;
  * the artist supplies an <id>_back.png; the manifest says which have one.
  */
 export const hatKey = (id: string, back = false) => `hat:${id}${back ? ":back" : ""}`;
-export const apronKey = (id: string, back = false) => `apron:${id}${back ? ":back" : ""}`;
+
+/**
+ * A cloak, in one of its three pieces.
+ *
+ * "collar" is the collar and shoulders, drawn in front of the body; "drape"
+ * is everything below that, drawn behind it. The whole garment is the third,
+ * used for the view from behind where the cloak is entirely between you and
+ * the character.
+ */
+export type CloakPart = "whole" | "collar" | "drape";
+export const cloakKey = (id: string, part: CloakPart = "whole") =>
+  part === "whole" ? `cloak:${id}` : `cloak:${id}:${part}`;
 export const ingredientKey = (id: string) => `ingredient:${id}`;
 export const dishKey = (recipeId: string) => `dish:${recipeId}`;
 /**
@@ -58,6 +69,22 @@ export const hasProcessedNode = (archetype: string) => PROCESSED_NODES.has(arche
 export const nodeArchetype = (ingredientId: string): string =>
   INGREDIENTS.find((i) => i.id === ingredientId)?.node ?? "herb";
 export const uiKey = (name: string) => `ui:${name}`;
+export const propKey = (id: string) => `prop:${id}`;
+
+/**
+ * The archway drawn on each hub gate.
+ *
+ * The paintings show three dirt paths leaving the plaza and nothing to say
+ * they are doors. A pulsing glow said "something is here" but not "you may go
+ * through it", so the processed arch goes back on top - the one prop that
+ * survived the move to painted maps, because it marks a thing the painting
+ * does not depict.
+ */
+export const GATE_PROP: Record<number, string> = {
+  1: "portal_meadows",
+  2: "portal_forest",
+  3: "portal_caves",
+};
 /** One painting per area, loaded straight from client/public/assets/maps. */
 export const mapKey = (areaId: string) => `map:${areaId}`;
 export const effectKey = (name: string) => `fx:${name}`;
@@ -108,18 +135,20 @@ export function queueArt(scene: Phaser.Scene, manifest: Manifest): void {
     scene.load.image(hatKey(hat.id), `${GENERATED}/hats/${hat.id}.png`);
     if (hat.back) scene.load.image(hatKey(hat.id, true), `${GENERATED}/hats/${hat.id}_back.png`);
   }
-  for (const apron of manifest.aprons) {
-    scene.load.image(apronKey(apron.id), `${GENERATED}/aprons/${apron.id}.png`);
-    if (apron.back) {
-      scene.load.image(apronKey(apron.id, true), `${GENERATED}/aprons/${apron.id}_back.png`);
-    }
+  for (const cloak of manifest.cloaks) {
+    scene.load.image(cloakKey(cloak.id), `${GENERATED}/cloaks/${cloak.id}.png`);
+    scene.load.image(cloakKey(cloak.id, "collar"), `${GENERATED}/cloaks/${cloak.id}_collar.png`);
+    scene.load.image(cloakKey(cloak.id, "drape"), `${GENERATED}/cloaks/${cloak.id}_drape.png`);
   }
   /*
-   * The generated props, terrain strips and decor are not loaded any more:
-   * the buildings, the ground and the shrubs are painted into the maps. The
-   * pipeline still produces them and they still sit in generated/, so nothing
-   * has to be re-cut if they are ever wanted again.
+   * Of the generated props only the three gate arches are loaded. The
+   * buildings, the ground and the shrubs are painted into the maps; an arch
+   * over a path mouth is not, and without one a gate is a patch of dirt.
    */
+  for (const id of Object.values(GATE_PROP)) {
+    scene.load.image(propKey(id), `${GENERATED}/props/${id}.png`);
+  }
+
   for (const recipeId of manifest.dishes ?? []) {
     scene.load.image(dishKey(recipeId), `${GENERATED}/dishes/${recipeId}.png`);
   }

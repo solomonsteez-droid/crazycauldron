@@ -16,96 +16,96 @@
         "name": "Old Marta",
         "body": "female",
         "hat": "hat_02_straw",
-        "apron": "apron_01_linen",
         "lines": [
           "Mind the cauldron, it bites.",
           "Sunwheat's thick in the Meadows this week.",
           "I cooked here before you were a thought."
-        ]
+        ],
+        "cloak": "cloak_01_wool"
       },
       {
         "id": "pip",
         "name": "Pip",
         "body": "male",
         "hat": "hat_03_mushroom",
-        "apron": "",
         "lines": [
           "Did you see the glowcaps? Did you?",
           "I'm not lost. I'm scouting.",
           "Tavern pays better for the fancy ones."
-        ]
+        ],
+        "cloak": ""
       },
       {
         "id": "brannoc",
         "name": "Brannoc",
         "body": "male",
         "hat": "",
-        "apron": "apron_04_rugged",
         "lines": [
           "Caves are cold. Bring something hot.",
           "Rock salt keeps. Berries don't.",
           "Good day for a walk, bad day for a climb."
-        ]
+        ],
+        "cloak": "cloak_04_rugged"
       },
       {
         "id": "sefa",
         "name": "Sefa the Grocer",
         "body": "female",
         "hat": "hat_04_acorn",
-        "apron": "apron_02_patched",
         "lines": [
           "Fresh today, cheap tomorrow.",
           "Outfitter's got a bigger bag if you've the coin.",
           "You look like you're carrying too much."
-        ]
+        ],
+        "cloak": "cloak_02_patched"
       },
       {
         "id": "dorn",
         "name": "Dorn",
         "body": "male",
         "hat": "hat_01_chef",
-        "apron": "apron_03_berry",
         "lines": [
           "Heat's everything. Timing's the rest.",
           "Burnt three of those this morning.",
           "Watch the bar, not the pan."
-        ]
+        ],
+        "cloak": "cloak_03_berry"
       },
       {
         "id": "nell",
         "name": "Nell",
         "body": "female",
         "hat": "",
-        "apron": "apron_01_linen",
         "lines": [
           "Somebody left a pot boiling. Again.",
           "Mind how you go.",
           "The well's sweeter than the stream."
-        ]
+        ],
+        "cloak": "cloak_01_wool"
       },
       {
         "id": "hobb",
         "name": "Hobb",
         "body": "male",
         "hat": "hat_02_straw",
-        "apron": "apron_02_patched",
         "lines": [
           "Cart's fixed. Mostly.",
           "Long road from the Deep Forest.",
           "Seen stranger things than you."
-        ]
+        ],
+        "cloak": "cloak_02_patched"
       },
       {
         "id": "wren",
         "name": "Wren",
         "body": "female",
         "hat": "hat_05_circlet",
-        "apron": "",
         "lines": [
           "The crystals sing, if you're quiet.",
           "I only cook by moonlight.",
           "Chef thirty, one day. You watch."
-        ]
+        ],
+        "cloak": ""
       }
     ]
   },

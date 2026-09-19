@@ -417,7 +417,7 @@ async function main() {
   check("starts with no coins", profile.coins === 0);
   check("starts with 16 carry slots", profile.carrySlots === 16, `${profile.carrySlots}`);
   check("Meadows is unlocked", profile.unlockedSections.includes(1));
-  check("starts wearing the linen apron", profile.apronId === "apron_01_linen", profile.apronId);
+  check("starts wearing the wool cloak", profile.cloakId === "cloak_01_wool", profile.cloakId);
   check("starts bare-headed", profile.hatId === "");
   check("wardrobe lists every item", profile.wardrobe.length === 16, `${profile.wardrobe.length}`);
   check(

@@ -11,7 +11,35 @@ import { RECIPES, type Quality, type SkillId } from "./content/index.js";
 import type { SkillLevels } from "./progression.js";
 
 export type TierId = "bronze" | "silver" | "gold";
-export type WardrobeKind = "hat" | "apron";
+export type WardrobeKind = "hat" | "cloak";
+
+/**
+ * What a saved apron id becomes.
+ *
+ * Aprons were replaced by cloaks one for one, each keeping the condition that
+ * earned it, so a player who had earned the Berry apron has earned the Berry
+ * cloak. Anything not in this table is a garment that no longer exists and is
+ * simply not worn.
+ */
+const APRON_TO_CLOAK: Record<string, string> = {
+  apron_01_linen: "cloak_01_wool",
+  apron_02_patched: "cloak_02_patched",
+  apron_03_berry: "cloak_03_berry",
+  apron_04_rugged: "cloak_04_rugged",
+  apron_05_midnight: "cloak_05_midnight",
+  apron_06_silver: "cloak_06_silver",
+  apron_07_gold: "cloak_07_gold",
+};
+
+/** The cloak a stored wardrobe id means now, or null if it means nothing. */
+export function migrateGarment(id: string): string | null {
+  if (!id) return null;
+  if (WARDROBE_ITEMS.some((item) => item.id === id)) return id;
+  return APRON_TO_CLOAK[id] ?? null;
+}
+
+/** The cloak every player starts in. */
+export const STARTER_CLOAK = "cloak_01_wool";
 
 export type UnlockRule =
   | { type: "start" }

@@ -215,7 +215,7 @@ export class HubRoom extends Room<HubState> {
      */
     player.body = claims.wallet.charCodeAt(1) % 2 === 0 ? "male" : "female";
     player.hatId = session.state.hatId;
-    player.apronId = session.state.apronId;
+    player.cloakId = session.state.cloakId;
 
     this.state.players.set(client.sessionId, player);
     this.expiries.set(client.sessionId, claims.exp);
@@ -798,7 +798,7 @@ export class HubRoom extends Room<HubState> {
     const player = this.state.players.get(client.sessionId);
     if (!session || !player) return;
 
-    const kind = message?.kind === "hat" ? "hat" : "apron";
+    const kind = message?.kind === "hat" ? "hat" : "cloak";
     const itemId = String(message?.itemId ?? "");
 
     if (itemId !== "") {
@@ -818,10 +818,10 @@ export class HubRoom extends Room<HubState> {
     }
 
     if (kind === "hat") session.state.hatId = itemId;
-    else session.state.apronId = itemId;
+    else session.state.cloakId = itemId;
 
     player.hatId = session.state.hatId;
-    player.apronId = session.state.apronId;
+    player.cloakId = session.state.cloakId;
     session.save();
     this.sendProfile(session);
   }

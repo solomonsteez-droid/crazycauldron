@@ -296,7 +296,7 @@ export interface VillagerDef {
   name: string;
   body: string;
   hat: string;
-  apron: string;
+  cloak: string;
   lines: string[];
 }
 

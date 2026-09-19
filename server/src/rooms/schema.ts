@@ -31,7 +31,7 @@ export class Player extends Schema {
   @type("string") body = "male";
   /** Equipped wardrobe items; empty means nothing worn. */
   @type("string") hatId = "";
-  @type("string") apronId = "";
+  @type("string") cloakId = "";
 }
 
 /**
@@ -52,7 +52,7 @@ export class Villager extends Schema {
   @type("boolean") moving = false;
   @type("string") body = "male";
   @type("string") hatId = "";
-  @type("string") apronId = "";
+  @type("string") cloakId = "";
 }
 
 export class HubState extends Schema {

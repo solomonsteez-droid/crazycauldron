@@ -1,7 +1,7 @@
 /**
  * The overlay alignment tool, served at /dev/align in development only.
  *
- * The pipeline guesses where each hat and apron sits on the body. That guess is
+ * The pipeline guesses where each hat and cloak sits on the body. That guess is
  * close but never right to the pixel, and a hat one pixel low reads as wrong
  * immediately. This shows the composite at 4x, lets the arrow keys nudge the
  * selected garment, and writes the result to
@@ -63,8 +63,8 @@ class AlignTool {
   private body: string = "male";
   private direction: Direction = "down";
   private hatId = "";
-  private apronId = "";
-  private selected: "hats" | "aprons" = "hats";
+  private cloakId = "";
+  private selected: "hats" | "cloaks" = "hats";
   private walkFrame = 0;
 
   private readonly canvas = document.createElement("canvas");
@@ -90,7 +90,7 @@ class AlignTool {
       const atlas = await loadAtlas(body);
       if (atlas) this.atlases.set(body, atlas);
     }
-    for (const kind of ["hats", "aprons"] as const) {
+    for (const kind of ["hats", "cloaks"] as const) {
       for (const entry of this.manifest[kind]) {
         try {
           this.overlayImages.set(
@@ -104,7 +104,7 @@ class AlignTool {
     }
 
     this.hatId = this.manifest.hats[0]?.id ?? "";
-    this.apronId = this.manifest.aprons[0]?.id ?? "";
+    this.cloakId = this.manifest.cloaks[0]?.id ?? "";
 
     this.build(root);
     this.bindKeys();
@@ -113,11 +113,11 @@ class AlignTool {
 
   // --- offsets ------------------------------------------------------------
 
-  private entry(kind: "hats" | "aprons", id: string): OverlayEntry | undefined {
+  private entry(kind: "hats" | "cloaks", id: string): OverlayEntry | undefined {
     return this.manifest[kind].find((e) => e.id === id);
   }
 
-  private current(kind: "hats" | "aprons", id: string): ItemOffsets {
+  private current(kind: "hats" | "cloaks", id: string): ItemOffsets {
     const existing = this.offsets[kind][id];
     if (existing) return existing;
     const fresh = defaultOffsets(this.entry(kind, id));
@@ -126,7 +126,7 @@ class AlignTool {
   }
 
   private nudge(dx: number, dy: number) {
-    const id = this.selected === "hats" ? this.hatId : this.apronId;
+    const id = this.selected === "hats" ? this.hatId : this.cloakId;
     if (!id) return;
     const offsets = this.current(this.selected, id);
     const point = offsets[this.direction];
@@ -138,7 +138,7 @@ class AlignTool {
   // --- erasing ------------------------------------------------------------
 
   /** The editable copy of an overlay, created from the pristine image once. */
-  private surface(kind: "hats" | "aprons", id: string): HTMLCanvasElement | null {
+  private surface(kind: "hats" | "cloaks", id: string): HTMLCanvasElement | null {
     const key = `${kind}/${id}`;
     const existing = this.edits.get(key);
     if (existing) return existing;
@@ -157,7 +157,7 @@ class AlignTool {
   /** Erases or restores a square of pixels around one overlay pixel. */
   private paintAt(clientX: number, clientY: number) {
     if (!this.painting) return;
-    const id = this.selected === "hats" ? this.hatId : this.apronId;
+    const id = this.selected === "hats" ? this.hatId : this.cloakId;
     if (!id) return;
 
     const surface = this.surface(this.selected, id);
@@ -281,11 +281,16 @@ class AlignTool {
       );
     }
 
-    // Apron first, then hat: the order the game composites them in.
-    this.drawOverlay(context, "aprons", this.apronId, originX, originY);
+    /*
+     * The whole cloak over the body, then the hat. The game splits the
+     * cloak in two and hangs half of it behind the character; here the
+     * point is to see where the garment lands, so it is drawn in one
+     * piece and nothing is hidden behind a torso.
+     */
+    this.drawOverlay(context, "cloaks", this.cloakId, originX, originY);
     this.drawOverlay(context, "hats", this.hatId, originX, originY);
 
-    const id = this.selected === "hats" ? this.hatId : this.apronId;
+    const id = this.selected === "hats" ? this.hatId : this.cloakId;
     const point = id ? this.current(this.selected, id)[this.direction] : { x: 0, y: 0 };
     this.status.textContent =
       `${this.selected.slice(0, -1)} "${id}" ${this.direction}: x ${point.x}, y ${point.y}` +
@@ -296,7 +301,7 @@ class AlignTool {
 
   private drawOverlay(
     context: CanvasRenderingContext2D,
-    kind: "hats" | "aprons",
+    kind: "hats" | "cloaks",
     id: string,
     originX: number,
     originY: number,
@@ -349,7 +354,7 @@ class AlignTool {
     const help = document.createElement("p");
     help.textContent =
       "Arrow keys nudge the selected overlay by 1px. 1-4 pick the direction. " +
-      "Tab switches between hat and apron. F toggles the flip flag. " +
+      "Tab switches between hat and cloak. F toggles the flip flag. " +
       "E toggles the eraser: left-drag rubs pixels out, right-drag paints them " +
       "back from the source. [ and ] change the brush size. Save writes both " +
       "offsets.json and any overlay you have cleaned; Reset re-cuts the " +
@@ -373,16 +378,16 @@ class AlignTool {
         },
       ),
       this.select(
-        "Apron",
-        ["", ...this.manifest.aprons.map((a) => a.id)],
-        this.apronId,
+        "Cloak",
+        ["", ...this.manifest.cloaks.map((a) => a.id)],
+        this.cloakId,
         (v) => {
-          this.apronId = v;
+          this.cloakId = v;
           this.draw();
         },
       ),
-      this.select("Editing", ["hats", "aprons"], this.selected, (v) => {
-        this.selected = v as "hats" | "aprons";
+      this.select("Editing", ["hats", "cloaks"], this.selected, (v) => {
+        this.selected = v as "hats" | "cloaks";
         this.draw();
       }),
       this.select("Frame", ["0", "1", "2", "3"], "0", (v) => {
@@ -453,7 +458,7 @@ class AlignTool {
           break;
         }
         case "Tab":
-          this.selected = this.selected === "hats" ? "aprons" : "hats";
+          this.selected = this.selected === "hats" ? "cloaks" : "hats";
           this.draw();
           break;
         case "KeyE":
@@ -470,7 +475,7 @@ class AlignTool {
           this.draw();
           break;
         case "KeyF": {
-          const id = this.selected === "hats" ? this.hatId : this.apronId;
+          const id = this.selected === "hats" ? this.hatId : this.cloakId;
           if (id) {
             const offsets = this.current(this.selected, id);
             offsets.flip = !offsets.flip;
@@ -499,7 +504,7 @@ class AlignTool {
       // Any overlay the eraser touched goes back to generated/ as a PNG, so
       // the game and the next pipeline run both see the cleaned art.
       for (const key of [...this.dirty]) {
-        const [kind, id] = key.split("/") as ["hats" | "aprons", string];
+        const [kind, id] = key.split("/") as ["hats" | "cloaks", string];
         const surface = this.edits.get(key);
         if (!surface) continue;
         const written = await fetch("/dev/overlay", {
@@ -529,7 +534,7 @@ class AlignTool {
    * fifteen overlays somebody may have already cleaned.
    */
   private async reset(button: HTMLButtonElement) {
-    const id = this.selected === "hats" ? this.hatId : this.apronId;
+    const id = this.selected === "hats" ? this.hatId : this.cloakId;
     if (!id) return;
 
     button.disabled = true;

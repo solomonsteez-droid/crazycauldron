@@ -38,7 +38,7 @@ export interface GameStateRecord {
   /** Wardrobe items permanently earned. Tier items are never stored here. */
   unlockedItems: string[];
   hatId: string;
-  apronId: string;
+  cloakId: string;
 }
 
 export interface LeaderboardEntry {

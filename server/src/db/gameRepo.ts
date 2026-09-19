@@ -26,7 +26,7 @@ export function migrateGameTables(db: Database.Database) {
       bag_tier        INTEGER NOT NULL DEFAULT 0,
       buff_expires_at INTEGER NOT NULL DEFAULT 0,
       hat_id          TEXT NOT NULL DEFAULT '',
-      apron_id        TEXT NOT NULL DEFAULT 'apron_01_linen',
+      apron_id        TEXT NOT NULL DEFAULT 'cloak_01_wool',
       updated_at      TEXT NOT NULL
     );
 
@@ -230,7 +230,7 @@ export class SqliteGameRepository implements GameRepository {
         bagTier: state.bagTier,
         buffExpiresAt: state.buffExpiresAt,
         hatId: state.hatId,
-        apronId: state.apronId,
+        apronId: state.cloakId,
         now,
       });
 
@@ -316,7 +316,13 @@ export class SqliteGameRepository implements GameRepository {
       nodeReadyAt,
       unlockedItems: this.selectWardrobe.all(wallet).map((r) => r.item_id),
       hatId: row?.hat_id ?? "",
-      apronId: row?.apron_id ?? "apron_01_linen",
+      /*
+       * The column is still called apron_id. Renaming it would mean a table
+       * rewrite on every existing deployment to change a string that only
+       * this line reads, so the name stays and the meaning moved: what it
+       * holds is a cloak, and PlayerState migrates anything older.
+       */
+      cloakId: row?.apron_id ?? "cloak_01_wool",
     };
   }
 
