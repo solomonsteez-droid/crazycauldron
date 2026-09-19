@@ -1,0 +1,21 @@
+{
+  "name": "crazycauldron",
+  "private": true,
+  "version": "0.1.0",
+  "description": "CrazyCauldron - isometric pixel-art browser game on Solana (skeleton)",
+  "engines": { "node": ">=20" },
+  "workspaces": ["shared", "server", "client"],
+  "scripts": {
+    "dev": "concurrently -n server,client -c magenta,cyan \"npm run dev -w server\" \"npm run dev -w client\"",
+    "build": "npm run build -w shared && npm run build -w server && npm run build -w client",
+    "typecheck": "npm run typecheck -w shared && npm run typecheck -w server && npm run typecheck -w client",
+    "start": "npm run start -w server",
+    "loadtest": "tsx scripts/loadtest.ts"
+  },
+  "devDependencies": {
+    "@colyseus/loadtest": "^0.15.0",
+    "concurrently": "^8.2.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}
