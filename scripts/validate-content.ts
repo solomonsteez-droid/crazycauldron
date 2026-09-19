@@ -16,7 +16,9 @@ import {
   SECTIONS,
   SKILL_IDS,
   HUB_PORTALS,
+  HUB_SPAWN,
   HUB_STATIONS,
+  MAP_SIZE,
   findIngredient,
   findPath,
   isWalkable,
@@ -140,6 +142,56 @@ for (const station of HUB_STATIONS) {
 for (const portal of HUB_PORTALS) {
   if (!isWalkable(portal.tileX, portal.tileY)) {
     note(`hub portal to section ${portal.section} sits on an unwalkable tile`);
+  }
+}
+
+/*
+ * The hub should not feel like three doors in a cupboard: stations must be at
+ * least 4 tiles from each other and from the cauldron, and portals belong on
+ * the outer edge rather than beside the plaza.
+ */
+const SPACING = 4;
+const chebyshev = (a: { tileX: number; tileY: number }, b: { tileX: number; tileY: number }) =>
+  Math.max(Math.abs(a.tileX - b.tileX), Math.abs(a.tileY - b.tileY));
+
+for (let i = 0; i < HUB_STATIONS.length; i += 1) {
+  const station = HUB_STATIONS[i]!;
+
+  for (let j = i + 1; j < HUB_STATIONS.length; j += 1) {
+    const other = HUB_STATIONS[j]!;
+    const gap = chebyshev(station, other);
+    if (gap < SPACING) note(`${station.id} and ${other.id} are only ${gap} tiles apart`);
+  }
+
+  // Distance to the cauldron block, which spans the middle 4x4 of the grid.
+  const lo = MAP_SIZE / 2 - 2;
+  const hi = MAP_SIZE / 2 + 1;
+  const dx = Math.max(lo - station.tileX, 0, station.tileX - hi);
+  const dy = Math.max(lo - station.tileY, 0, station.tileY - hi);
+  const fromCauldron = Math.max(dx, dy);
+  if (fromCauldron < SPACING) {
+    note(`${station.id} is only ${fromCauldron} tiles from the cauldron`);
+  }
+}
+
+/*
+ * Nor should a station sit on the doorstep of the spawn: arriving in the hub
+ * should mean walking somewhere, not already being there.
+ */
+for (const station of HUB_STATIONS) {
+  const gap = chebyshev(station, HUB_SPAWN);
+  if (gap < 3) note(`${station.id} is only ${gap} tiles from the hub spawn`);
+}
+
+for (const portal of HUB_PORTALS) {
+  const edge = Math.min(
+    portal.tileX,
+    portal.tileY,
+    MAP_SIZE - 1 - portal.tileX,
+    MAP_SIZE - 1 - portal.tileY,
+  );
+  if (edge > 5) {
+    note(`the portal to section ${portal.section} is ${edge} tiles in, not on the outer edge`);
   }
 }
 

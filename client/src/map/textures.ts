@@ -20,6 +20,7 @@ export const TEX_NODE = "gather-node";
 export const TEX_NODE_SPENT = "gather-node-spent";
 export const TEX_PORTAL = "portal";
 export const TEX_STATION = "station";
+export const TEX_GLOW = "soft-glow";
 
 const HALF_W = TILE_WIDTH / 2;
 const HALF_H = TILE_HEIGHT / 2;
@@ -100,7 +101,26 @@ export function createPlaceholderArt(scene: Phaser.Scene) {
 
   drawStation(g);
   g.generateTexture(TEX_STATION, 20, 22);
+  g.clear();
+
+  drawGlow(g);
+  g.generateTexture(TEX_GLOW, 64, 64);
   g.destroy();
+}
+
+/**
+ * A soft pool of light, built from concentric circles.
+ *
+ * Phaser has no radial gradient on Graphics, and a handful of stacked circles
+ * at low alpha is indistinguishable from one at this size - and costs a single
+ * texture rather than a shader.
+ */
+function drawGlow(g: Phaser.GameObjects.Graphics) {
+  const steps = 10;
+  for (let i = steps; i > 0; i -= 1) {
+    g.fillStyle(0xffffff, 0.05);
+    g.fillCircle(32, 32, (32 * i) / steps);
+  }
 }
 
 /** A tuft when full, a bare stem when spent. */

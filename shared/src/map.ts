@@ -5,6 +5,7 @@
  */
 
 import { MAP_SIZE } from "./constants.js";
+import { HUB_PORTALS, HUB_STATIONS } from "./content/index.js";
 import { TileId, type TilePos } from "./types.js";
 
 /** Where a freshly admitted player appears. Must be walkable. */
@@ -39,9 +40,43 @@ export function isWalkable(tileX: number, tileY: number): boolean {
   return !inCauldron(tileX, tileY);
 }
 
+const MID = MAP_SIZE / 2;
+
 /**
- * Visual layer only. A path ring circles the cauldron and two avenues run out
- * to the map edges, so the placeholder art reads as a plaza rather than a field.
+ * Path tiles that run from the central avenues out to each station and portal.
+ *
+ * Every building and gate sits at the end of its own short spur rather than
+ * floating in the grass, which is what makes the plaza read as a place people
+ * walk through. Built once from the same content the server and client use to
+ * position those features, so moving one in sections.json moves its path too.
+ */
+function buildSpurs(): Set<number> {
+  const tiles = new Set<number>();
+  const add = (x: number, y: number) => tiles.add(y * MAP_SIZE + x);
+
+  const features: TilePos[] = [
+    ...HUB_STATIONS.map((s) => ({ tileX: s.tileX, tileY: s.tileY })),
+    ...HUB_PORTALS.map((p) => ({ tileX: p.tileX, tileY: p.tileY })),
+  ];
+
+  for (const feature of features) {
+    // An L from the feature to the nearest avenue: along y first, then x.
+    const stepY = feature.tileY < MID ? 1 : -1;
+    for (let y = feature.tileY; y !== MID; y += stepY) add(feature.tileX, y);
+
+    const stepX = feature.tileX < MID ? 1 : -1;
+    for (let x = feature.tileX; x !== MID; x += stepX) add(x, MID);
+
+    add(feature.tileX, feature.tileY);
+  }
+  return tiles;
+}
+
+const SPURS = buildSpurs();
+
+/**
+ * Visual layer only. A path ring circles the cauldron, two avenues cross the
+ * plaza, and a spur reaches each station and gate.
  */
 export function hubTileId(tileX: number, tileY: number): TileId {
   const ringMin = CAULDRON_MIN - 2;
@@ -50,10 +85,10 @@ export function hubTileId(tileX: number, tileY: number): TileId {
     tileX >= ringMin && tileX <= ringMax && tileY >= ringMin && tileY <= ringMax &&
     (tileX === ringMin || tileX === ringMax || tileY === ringMin || tileY === ringMax);
 
-  const mid = MAP_SIZE / 2;
-  const onAvenue = tileX === mid || tileX === mid - 1 || tileY === mid || tileY === mid - 1;
+  const onAvenue = tileX === MID || tileX === MID - 1 || tileY === MID || tileY === MID - 1;
+  const onSpur = SPURS.has(tileY * MAP_SIZE + tileX);
 
-  return onRing || onAvenue ? TileId.Path : TileId.Grass;
+  return onRing || onAvenue || onSpur ? TileId.Path : TileId.Grass;
 }
 
 /** Row-major [y][x] tile ids, built once at module load for the tilemap. */

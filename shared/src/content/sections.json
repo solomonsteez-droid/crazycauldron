@@ -1,14 +1,15 @@
 {
   "hub": {
+    "_layout": "Portals sit on the outer edge, one per side; stations are spread so no two are within 4 tiles of each other or of the cauldron. Isometrically +x reads south-east and +y south-west, so high x with mid y is the south-east edge.",
     "stations": [
-      { "id": "kitchen",  "name": "Kitchen",   "tileX": 10, "tileY": 16 },
-      { "id": "tavern",   "name": "Tavern",    "tileX": 14, "tileY": 16 },
-      { "id": "outfitter","name": "Outfitter", "tileX": 12, "tileY": 19 }
+      { "id": "kitchen",  "name": "Kitchen",   "tileX": 17, "tileY": 17 },
+      { "id": "tavern",   "name": "Tavern",    "tileX": 18, "tileY": 7 },
+      { "id": "outfitter","name": "Outfitter", "tileX": 6,  "tileY": 6 }
     ],
     "portals": [
-      { "section": 1, "tileX": 5,  "tileY": 12 },
-      { "section": 2, "tileX": 12, "tileY": 5 },
-      { "section": 3, "tileX": 19, "tileY": 12 }
+      { "section": 1, "tileX": 20, "tileY": 12 },
+      { "section": 2, "tileX": 12, "tileY": 3 },
+      { "section": 3, "tileX": 3,  "tileY": 12 }
     ]
   },
   "sections": [

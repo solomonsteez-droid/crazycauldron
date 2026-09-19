@@ -16,14 +16,25 @@ import {
   type TilePos,
 } from "@crazycauldron/shared";
 import { LABEL_SCREEN_PX, MAP_WORLD_BOUNDS, SMALL_LABEL_SCREEN_PX, labelScale, type Rect } from "./camera.js";
-import {
-  TEX_CAULDRON,
-  TEX_NODE,
-  TEX_NODE_SPENT,
-  TEX_PORTAL,
-  TEX_STATION,
-  TEX_TILE,
-} from "./textures.js";
+import { TEX_CAULDRON, TEX_GLOW, TEX_NODE, TEX_NODE_SPENT, TEX_TILE } from "./textures.js";
+import { propKey } from "../art/assets.js";
+
+/**
+ * Station ids are gameplay names; the art is named after the building. The
+ * outfitter trades out of the shop, which is why the two differ.
+ */
+const STATION_PROP: Record<string, string> = {
+  kitchen: "kitchen",
+  tavern: "tavern",
+  outfitter: "shop",
+};
+
+/** Section index to the portal art drawn at its gate. */
+const PORTAL_PROP: Record<number, string> = {
+  1: "portal_meadows",
+  2: "portal_forest",
+  3: "portal_caves",
+};
 
 /**
  * Renders whichever map the player is standing on.
@@ -100,7 +111,13 @@ export class GameMap {
     );
 
     for (const station of HUB_STATIONS) {
-      this.addMarker(TEX_STATION, station.tileX, station.tileY, station.name, "#f3e9d2");
+      this.addProp(
+        propKey(STATION_PROP[station.id] ?? "kitchen"),
+        station.tileX,
+        station.tileY,
+        station.name,
+        "#f3e9d2",
+      );
       this.features.push({
         kind: "station",
         id: station.id,
@@ -112,7 +129,14 @@ export class GameMap {
     for (const portal of HUB_PORTALS) {
       const section = findSection(portal.section);
       if (!section) continue;
-      this.addMarker(TEX_PORTAL, portal.tileX, portal.tileY, section.name, section.accentColor);
+      this.addProp(
+        propKey(PORTAL_PROP[portal.section] ?? "portal_meadows"),
+        portal.tileX,
+        portal.tileY,
+        section.name,
+        section.accentColor,
+        section.accentColor,
+      );
       this.features.push({
         kind: "portal",
         id: `portal_${portal.section}`,
@@ -127,11 +151,12 @@ export class GameMap {
     const section = findSection(mapId);
     if (!section) return;
 
-    this.addMarker(
-      TEX_PORTAL,
+    this.addProp(
+      propKey(PORTAL_PROP[mapId] ?? "portal_meadows"),
       section.returnPortal.tileX,
       section.returnPortal.tileY,
       "Back to the hub",
+      "#7ce08a",
       "#7ce08a",
     );
     this.features.push({
@@ -182,13 +207,52 @@ export class GameMap {
     return text;
   }
 
-  private addMarker(texture: string, tileX: number, tileY: number, label: string, colour: string) {
+  /**
+   * A building or gate on its tile, with a name above it.
+   *
+   * `glow` turns it into a portal: a soft additive pool tinted by the section
+   * accent, pulsing slowly. Drawn beneath the sprite so the arch reads as lit
+   * rather than washed out, and it is the one thing on the map that moves when
+   * nothing else is happening.
+   */
+  private addProp(
+    texture: string,
+    tileX: number,
+    tileY: number,
+    label: string,
+    colour: string,
+    glow?: string,
+  ) {
     const at = this.tileCentre(tileX, tileY);
+
+    if (glow) {
+      const tint = Phaser.Display.Color.HexStringToColor(glow).color;
+      const halo = this.scene.add
+        .image(at.x, at.y - 6, TEX_GLOW)
+        .setOrigin(0.5)
+        .setDepth(tileX + tileY - 1)
+        .setTint(tint)
+        .setAlpha(0.35)
+        .setBlendMode(Phaser.BlendModes.ADD);
+
+      this.scene.tweens.add({
+        targets: halo,
+        alpha: 0.6,
+        scale: 1.12,
+        duration: 1600,
+        yoyo: true,
+        repeat: -1,
+        ease: "Sine.easeInOut",
+      });
+      this.decorations.push(halo);
+    }
+
+    // No tint: processed art carries its own colour, and the fallback chips
+    // are already drawn in the right one.
     const image = this.scene.add
       .image(at.x, at.y, texture)
       .setOrigin(0.5, 1)
-      .setDepth(tileX + tileY)
-      .setTint(Phaser.Display.Color.HexStringToColor(colour).color);
+      .setDepth(tileX + tileY);
 
     const text = this.scene.add
       .text(at.x, at.y - 22, label, {
