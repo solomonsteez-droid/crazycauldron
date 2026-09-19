@@ -6,3 +6,7 @@ dist/
 .DS_Store
 *.db-shm
 *.db-wal
+data/
+backups/
+logs/
+*.replaced-*
