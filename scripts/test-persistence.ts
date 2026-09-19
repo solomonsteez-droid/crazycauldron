@@ -298,7 +298,7 @@ async function main() {
     const gate = HUB_PORTALS.find((p) => p.section === meadows.index)!;
     await walkTo(player, beside(HUB_MAP, { tileX: gate.tileX, tileY: gate.tileY }));
     player.room.send(MSG_TRAVEL, { section: meadows.index });
-    await sleep(1200);
+    await waitFor(() => player.self()?.section === meadows.index, 10000);
     check("it reaches the Meadows", player.self()?.section === meadows.index);
 
     /*
@@ -306,28 +306,46 @@ async function main() {
      * each time. A node goes on cooldown the moment it is stripped, so
      * returning to the same one would mean waiting a minute per unit for
      * nothing - the point of the exercise is what is on disk, not the timers.
+     *
+     * Every step waits for the server to say it happened rather than for a
+     * number of milliseconds. A fixed sleep passes on an idle machine and
+     * fails on a busy one, which is the worst kind of test: it does not report
+     * a bug, it reports the load average.
      */
+    const carrying = (id: string) =>
+      player.profile()?.inventory.find((i) => i.kind === "ingredient" && i.id === id)?.qty ?? 0;
+
     for (const need of starter.ingredients) {
       const nodes = meadows.nodes.filter((n) => n.ingredient === need.id);
       if (nodes.length === 0) continue;
 
-      for (let i = 0; i < need.qty; i += 1) {
-        const node = nodes[i % nodes.length]!;
-        await walkTo(player, beside(meadows.index, { tileX: node.tileX, tileY: node.tileY }));
-        player.room.send(MSG_GATHER, { nodeId: node.id });
-        await sleep(4500);
-        // Only wait out a cooldown if there was no other node to go to.
-        if (i + 1 < need.qty && nodes.length === 1) await sleep(61000);
-      }
-    }
+      for (let attempt = 0; attempt < need.qty * 3 && carrying(need.id) < need.qty; attempt += 1) {
+        const node = nodes[attempt % nodes.length]!;
+        const arrived = await walkTo(
+          player,
+          beside(meadows.index, { tileX: node.tileX, tileY: node.tileY }),
+        );
+        if (!arrived) continue;
 
-    const gathered = player.profile()?.inventory.filter((s) => s.kind === "ingredient") ?? [];
-    check("it gathered something", gathered.length > 0, gathered.map((s) => `${s.id} x${s.qty}`).join(", "));
+        const before = carrying(need.id);
+        player.room.send(MSG_GATHER, { nodeId: node.id });
+        // The gather animation is three seconds at level 1; the payout and the
+        // profile that carries it follow.
+        await waitFor(() => carrying(need.id) > before, 12000);
+      }
+
+      check(
+        `it gathered ${need.qty} ${need.id}`,
+        carrying(need.id) >= need.qty,
+        `${carrying(need.id)} of ${need.qty}`,
+      );
+    }
 
     // Home, and cook.
     await walkTo(player, beside(meadows.index, meadows.returnPortal));
     player.room.send(MSG_TRAVEL, { section: HUB_MAP });
-    await sleep(1200);
+    await waitFor(() => player.self()?.section === HUB_MAP, 10000);
+    check("it comes home", player.self()?.section === HUB_MAP);
 
     const kitchen = HUB_STATIONS.find((s) => s.id === "kitchen")!;
     await walkTo(player, beside(HUB_MAP, { tileX: kitchen.tileX, tileY: kitchen.tileY }));
@@ -367,15 +385,16 @@ async function main() {
     await walkTo(player, beside(HUB_MAP, { tileX: tavern.tileX, tileY: tavern.tileY }));
     const dish = player.profile()?.inventory.find((s) => s.kind === "dish");
     if (dish) {
+      const before = player.profile()?.coins ?? 0;
       player.room.send(MSG_SELL, { stackKey: dish.key, qty: 1 });
-      await sleep(900);
+      await waitFor(() => (player.profile()?.coins ?? 0) > before, 8000);
     }
 
     // And wear whatever cooking earned.
     const earned = player.profile()?.wardrobe.find((w) => w.unlocked && w.kind === "hat");
     if (earned) {
       player.room.send(MSG_EQUIP, { kind: "hat", itemId: earned.id });
-      await sleep(900);
+      await waitFor(() => player.profile()?.hatId === earned.id, 8000);
     }
 
     const snapshot = player.profile();

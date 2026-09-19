@@ -38,17 +38,28 @@ log.info("layout.ok", { maps: 4 });
 
 const app = express();
 
-app.use(
-  cors({
-    // Explicit allowlist. Requests with no Origin (curl, health checks) pass;
-    // a browser on an unlisted origin does not.
-    origin: (origin, callback) =>
-      !origin || config.corsOrigins.includes(origin)
-        ? callback(null, true)
-        : callback(new Error(`Origin ${origin} is not allowed.`)),
-    credentials: false,
-  }),
-);
+/*
+ * Explicit allowlist. Requests with no Origin (curl, health checks, the load
+ * test) pass; a browser on an unlisted origin does not.
+ *
+ * The refusal is a plain 403 rather than a thrown error. Throwing worked -
+ * the request was refused - but it travelled to the last-resort handler,
+ * which answered 500 and raised an unhandled-error alert. A browser on the
+ * wrong origin is a configuration mistake, not an incident.
+ */
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && !config.corsOrigins.includes(origin)) {
+    log.warn("cors.refused", { origin, path: req.path });
+    return res.status(403).json({
+      error: "origin_not_allowed",
+      message: "This server does not serve that origin.",
+    });
+  }
+  return next();
+});
+
+app.use(cors({ origin: config.corsOrigins, credentials: false }));
 app.use(express.json({ limit: "8kb" }));
 
 /**

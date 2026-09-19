@@ -135,11 +135,28 @@ function devAlign(): Plugin {
   };
 }
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   // One .env at the repo root feeds both workspaces. Only VITE_-prefixed vars
   // reach the bundle, which is why every secret in .env.example lacks that
   // prefix - RPC_URL and JWT_SECRET must never ship to a browser.
   envDir: repoRoot,
+
+  /*
+   * The build command decides what a production build is, not a file.
+   *
+   * That same shared .env carries NODE_ENV for the server, and Vite reads a
+   * NODE_ENV found in an env file as the user's chosen mode. With
+   * NODE_ENV=development in it - which is correct, for the server, on a
+   * developer's machine - "npm run build" produced a bundle where
+   * import.meta.env.DEV was true, so the dev console and the cheat helper
+   * shipped. Pinning both flags to the command removes the coupling: serve is
+   * development, build is production, whatever any .env says.
+   */
+  define: {
+    "import.meta.env.DEV": JSON.stringify(command === "serve"),
+    "import.meta.env.PROD": JSON.stringify(command === "build"),
+  },
+
   plugins: [devAlign()],
   server: {
     port: 5173,
@@ -155,4 +172,4 @@ export default defineConfig({
       input: path.join(here, "index.html"),
     },
   },
-});
+}));

@@ -65,14 +65,33 @@ Other useful scripts:
 ```bash
 npm run typecheck
 npm run sprites                            # art drops -> game-ready sprites
-npx tsx scripts/validate-content.ts        # content sanity
-npx tsx scripts/smoke-game.ts              # end-to-end, needs a running server
+
+# No server needed
+npx tsx scripts/validate-content.ts        # content, and every map's layout
 npx tsx scripts/simulate-progression.ts    # hours-to-level report
 npx tsx scripts/simulate-progression.ts --tune
 npx tsx scripts/test-cooking.ts            # heat bar outcome rates
 npx tsx scripts/test-camera.ts             # zoom and clamping maths
 npx tsx scripts/test-ambience.ts           # scenery, day-night and villagers
+npx tsx scripts/test-mobile.ts             # the 390px audit, as rules
+
+# Against a running server
+npx tsx scripts/smoke-game.ts              # the whole loop, end to end
+npx tsx scripts/test-auth-abuse.ts         # replay, forgery, expiry
+npx tsx scripts/test-action-abuse.ts       # a client that cheats
+AUTH_RATE_LIMIT=20 npx tsx scripts/test-rate-limits.ts
+
+# These start and stop their own server
+npx tsx scripts/test-persistence.ts        # SIGKILL mid-session, then restart
+npx tsx scripts/test-production.ts         # what NODE_ENV=production changes
+
+# Operations
+npx tsx scripts/backup.ts                  # take one now; --list shows the rest
+npx tsx scripts/restore.ts --latest        # stop the server first
+npm run loadtest -- --clients 600 --duration 600
 ```
+
+Deployment, configuration and the capacity numbers are in [DEPLOY.md](DEPLOY.md).
 
 ## How a player gets in
 
@@ -172,6 +191,20 @@ Balances are gate input, not game state, and are never replicated.
 server reaches the database; swapping SQLite for Postgres means adding one
 implementation and changing `db/index.ts`.
 
+**The world is checked before it is served.** Every building, gate, prop and
+gather node is authored by hand in JSON, and the ways that goes wrong are
+quiet: a shrub on a doorstep, two nodes on one tile, a well in a path. None of
+them throw. `shared/src/layout.ts` states the rules once - no overlaps, nothing
+on a path, nothing crowding a doorway, a clear ring around each building - and
+the server refuses to start if any map breaks them, naming every offender.
+
+**Production refuses to start rather than starting badly.** Seven settings that
+are right on a laptop and wrong on the internet - the token gate bypass, a
+short or example signing key, missing or localhost or wildcard CORS origins, a
+localhost signing domain, a devnet RPC, an unset mint - each stop the boot with
+the reason. `scripts/test-production.ts` proves every one of them by starting a
+real server and watching it refuse.
+
 ## Load testing
 
 ```bash
@@ -199,7 +232,10 @@ AUTH_RATE_LIMIT=1000 npm run dev
   (`@colyseus/redis-driver` plus shared stores for those three).
 - **Reconnection.** A dropped socket returns to sign-in; there is no
   `allowReconnection` grace window.
-- **Tests.** No unit-test runner. What exists are the scripts above: a headless
-  end-to-end pass, a content validator, and three that assert pure maths
-  (progression, the heat bar, the camera and the ambience). `siwsVerify.ts` is
-  the one place a real unit test would pay for itself immediately.
+- **Tests.** No unit-test runner, and no assertion library. What exists are the
+  scripts above - about 180 checks across content, maths, layout, the mobile
+  rules, the whole game loop end to end, two suites that attack the server, and
+  two that start and kill their own. They are integration tests by preference:
+  the interesting failures in this codebase have all been between parts, not
+  inside them. `siwsVerify.ts` is still the one place a unit test would pay for
+  itself immediately.
