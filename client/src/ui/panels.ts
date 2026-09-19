@@ -483,9 +483,16 @@ export class Dock {
       ["Settings", "KeyO", actions.settings],
     ];
 
+    /*
+     * The keyboard hint is dropped on a device that has no keyboard. "Bag (B)"
+     * is help on a desktop and a lie on a phone, and it is also what pushes
+     * five buttons past the width of the screen.
+     */
+    const coarse = window.matchMedia?.("(pointer: coarse)").matches ?? false;
+
     for (const [label, code, handler] of entries) {
       const element = document.createElement("button");
-      element.textContent = `${label} (${code.replace("Key", "")})`;
+      element.textContent = coarse ? label : `${label} (${code.replace("Key", "")})`;
       element.addEventListener("click", handler);
       this.element.append(element);
     }

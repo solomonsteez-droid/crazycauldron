@@ -2,7 +2,13 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- viewport-fit=cover so the notch does not letterbox the map; the UI
+         keeps clear of it with env(safe-area-inset-*) instead. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
+    />
+    <meta name="mobile-web-app-capable" content="yes" />
     <title>CrazyCauldron</title>
     <style>
       :root {
@@ -16,13 +22,26 @@
       html, body {
         margin: 0;
         height: 100%;
+        /* A phone keyboard or URL bar must not be able to scroll the world
+           out from under the canvas. */
+        overscroll-behavior: none;
+        touch-action: manipulation;
         background: var(--bg);
         color: var(--ink);
         font: 14px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
         overflow: hidden;
       }
       #game { position: fixed; inset: 0; }
-      #game canvas { display: block; image-rendering: pixelated; }
+      #game canvas {
+        display: block;
+        image-rendering: pixelated;
+        /* Without this a drag across the map scrolls the page and a
+           double-tap zooms it, and neither gesture reaches the game. */
+        touch-action: none;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-tap-highlight-color: transparent;
+      }
       /* The UI layer floats over the canvas; scenes toggle its children. */
       #ui {
         position: fixed;

@@ -8,8 +8,9 @@ const STYLE_ID = "cc-ui-style";
 
 const CSS = `
 .cc-panel {
-  min-width: 320px;
-  max-width: min(440px, calc(100vw - 32px));
+  /* No min-width: at 320px the old 320 plus 44px of padding overflowed the
+     screen, and an overflowing modal on a phone cannot be scrolled back. */
+  width: min(440px, calc(100vw - 24px));
   padding: 20px 22px;
   background: rgba(20, 16, 26, 0.92);
   border: 1px solid #3a3050;
@@ -43,12 +44,13 @@ const CSS = `
 /* In-hub HUD, pinned rather than centred like the panels. */
 .cc-hud {
   position: fixed;
-  top: 12px;
+  top: calc(12px + env(safe-area-inset-top, 0px));
   left: 12px;
   right: 12px;
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 12px;
+  gap: 6px 12px;
   font-size: 12px;
   color: #cbbfa6;
   pointer-events: none;
@@ -246,7 +248,8 @@ const CSS = `
 .cc-dock {
   position: fixed;
   left: 12px;
-  bottom: 12px;
+  right: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -383,7 +386,7 @@ const CSS = `
 .cc-toast {
   position: fixed;
   left: 50%;
-  bottom: 24px;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
   transform: translateX(-50%);
   padding: 10px 16px;
   background: rgba(20, 16, 26, 0.95);
@@ -393,6 +396,82 @@ const CSS = `
   max-width: calc(100vw - 32px);
 }
 .cc-toast.cc-bad { border-left-color: #ff7a5c; }
+
+/* ------------------------------------------------------------------------
+   Phones.
+
+   Audited at 390x844. Three things break at that width and none of them are
+   visible on a desktop: the dock wraps into three rows and covers the toast,
+   every tap target is around 28px against a 44px guideline, and the status
+   strip runs into itself. Driven by pointer:coarse rather than by width, so a
+   small desktop window keeps the dense layout and a large tablet gets the
+   finger-sized one.
+   ------------------------------------------------------------------------ */
+@media (pointer: coarse) {
+  .cc-btn,
+  .cc-dock button,
+  .cc-tab,
+  .cc-row .cc-btn {
+    min-height: 44px;
+    padding: 11px 14px;
+  }
+  .cc-close {
+    min-width: 44px;
+    min-height: 44px;
+    font-size: 22px;
+  }
+  .cc-slot { min-height: 76px; }
+  .cc-heat { height: 44px; }
+  .cc-slider > input { height: 44px; }
+  /* The toast sits above the dock rather than under it. */
+  .cc-toast { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+  .cc-progress { bottom: calc(128px + env(safe-area-inset-bottom, 0px)); }
+}
+
+@media (max-width: 480px) {
+  .cc-modal {
+    width: calc(100vw - 16px);
+    max-height: min(82vh, 720px);
+  }
+  .cc-modal-body { padding: 12px 12px 14px; }
+  .cc-panel { width: calc(100vw - 16px); padding: 16px; }
+
+  /*
+   * One row, not three.
+   *
+   * Five buttons wrapped at 50% each is three rows and 148px of screen, and
+   * everything pinned to the bottom - the toast, the progress bar - then has
+   * to clear it. Sharing one row gives 66px a button, which fits "Top chefs"
+   * at 11px once the keyboard hints are dropped, and keeps the dock 44px tall.
+   */
+  .cc-dock {
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+  .cc-dock button {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 11px 4px;
+    font-size: 11px;
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* The wallet, the room count and the place stack instead of colliding. */
+  .cc-hud { font-size: 11px; }
+  .cc-hud span { flex: 1 1 auto; text-align: center; }
+
+  /* A row's button drops under its label rather than squeezing it to nothing. */
+  .cc-row { flex-wrap: wrap; }
+  .cc-row > div { flex: 1 1 100%; }
+  .cc-row .cc-btn { flex: 1 1 auto; }
+
+  .cc-grid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
+  .cc-card { min-width: 0; width: 100%; }
+  .cc-slider > span { flex: 0 0 60px; }
+}
 `;
 
 function ensureStyles() {

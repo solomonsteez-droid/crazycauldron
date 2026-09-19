@@ -223,7 +223,18 @@ export function runHeatBar(payload: HeatBarPayload, callbacks: KitchenCallbacks)
   };
 
   stopButton.addEventListener("click", stop);
-  track.addEventListener("click", stop);
+  /*
+   * pointerdown, not click.
+   *
+   * This is a timing game: a click fires on release, so on a phone the stop
+   * lands however long the finger stayed down after the press - which is the
+   * difference between Superb and Common, decided by something the player
+   * cannot see. pointerdown fires on contact for mouse, pen and touch alike.
+   */
+  track.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    stop();
+  });
   // Space bar works too; the mini-game is a timing test, not a mousing test.
   const onKey = (event: KeyboardEvent) => {
     if (event.code === "Space" || event.code === "Enter") {
