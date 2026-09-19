@@ -46,9 +46,14 @@ const PLAYER = {
   /**
    * How accurately a normal player stops the marker, as a standard deviation
    * in milliseconds. The marker speed turns that into a distance along the
-   * bar, which is why the +15% speed retune makes the same reaction worth less.
+   * bar, which is why a speed change makes the same reaction worth less.
+   *
+   * 75ms sigma is a 60ms average absolute error, which is the player
+   * scripts/test-cooking.ts tunes the heat bar windows against. The two must
+   * agree or the XP rate here describes a different player than the one the
+   * mini-game was balanced for.
    */
-  timingSigmaMs: 70,
+  timingSigmaMs: 75,
 
   /** Tiles walked between two nodes in a section, on average. */
   tilesBetweenNodes: 8,

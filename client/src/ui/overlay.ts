@@ -348,6 +348,27 @@ const CSS = `
 /* An undiscovered recipe shows its outline, not its contents. */
 .cc-silhouette { filter: brightness(0) opacity(0.55); }
 
+/* Buff countdown, pinned under the next-goal line. */
+.cc-buff {
+  position: fixed;
+  top: 66px;
+  left: 12px;
+  padding: 4px 10px;
+  font-size: 11px;
+  color: #14101a;
+  background: #7ce08a;
+  border-radius: 999px;
+  pointer-events: none;
+}
+.cc-buff.cc-expiring { background: #f2b53b; }
+
+/* Wardrobe preview: a body with the garment on it. */
+.cc-slot canvas {
+  align-self: center;
+  margin-bottom: 2px;
+  image-rendering: pixelated;
+}
+
 .cc-toast {
   position: fixed;
   left: 50%;

@@ -52,6 +52,15 @@ export interface BuyIntent {
   tier: number;
 }
 
+/**
+ * A development-only cheat. The server refuses to register the handler at all
+ * when NODE_ENV=production, so this cannot be sent to a live room.
+ */
+export interface DevIntent {
+  command: "level";
+  value: number;
+}
+
 /** Equip a wardrobe item, or clear the slot with an empty id. */
 export interface EquipIntent {
   kind: "hat" | "apron";

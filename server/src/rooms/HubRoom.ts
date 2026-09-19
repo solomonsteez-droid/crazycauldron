@@ -20,6 +20,7 @@ import {
   MSG_BOUGHT,
   MSG_BUY,
   MSG_EAT,
+  MSG_DEV,
   MSG_EQUIP,
   MSG_GATHER,
   MSG_GATHER_RESULT,
@@ -37,7 +38,13 @@ import {
   PATCH_RATE_MS,
   facingFor,
   findPath,
+  CHEF_MAX_LEVEL,
+  SECTIONS,
+  SKILL_IDS,
+  SKILL_MAX_LEVEL,
+  chefXpToReach,
   findSection,
+  skillXpToReach,
   tierForBalance,
   wardrobeItem,
   isAdjacentOrOn,
@@ -52,6 +59,7 @@ import {
   type BoughtPayload,
   type BuyIntent,
   type EatIntent,
+  type DevIntent,
   type EquipIntent,
   type GatherIntent,
   type GatherResultPayload,
@@ -116,6 +124,17 @@ export class HubRoom extends Room<HubState> {
     this.onMessage(MSG_EAT, (client, message: EatIntent) => this.onEat(client, message));
     this.onMessage(MSG_BUY, (client, message: BuyIntent) => this.onBuy(client, message));
     this.onMessage(MSG_EQUIP, (client, message: EquipIntent) => this.onEquip(client, message));
+
+    /*
+     * The cheat handler is not registered in production at all, rather than
+     * registered and then refusing. An unregistered message type is rejected by
+     * Colyseus before any of this code runs, so there is no path to it on a
+     * live server even if a client sends one.
+     */
+    if (!config.isProduction) {
+      this.onMessage(MSG_DEV, (client, message: DevIntent) => this.onDev(client, message));
+      log.warn("dev.commands_enabled", { roomId: this.roomId, env: config.nodeEnv });
+    }
 
     // One tick = one tile of progress for everyone currently walking.
     this.setSimulationInterval(() => this.stepMovement(), MOVE_STEP_MS);
@@ -774,6 +793,54 @@ export class HubRoom extends Room<HubState> {
     log.info("wardrobe.unlocked", {
       wallet: session.state.wallet,
       items: earned.map((i) => i.id),
+    });
+  }
+
+  // --- development ---------------------------------------------------------
+
+  /**
+   * /dev level <n> - sets the Chef track and every skill to n.
+   *
+   * For reaching the Deep Forest and the Caves without playing to Chef 20
+   * first. Only ever reachable when NODE_ENV is not production; see onCreate.
+   */
+  private onDev(client: Client, message: DevIntent) {
+    const session = this.sessions.get(client.sessionId);
+    const player = this.state.players.get(client.sessionId);
+    if (!session || !player) return;
+
+    if (message?.command !== "level") {
+      return this.reject(client, MSG_DEV, "unknown_command", "Try: /dev level <n>");
+    }
+
+    const level = Math.floor(Number(message.value));
+    if (!Number.isFinite(level) || level < 1) {
+      return this.reject(client, MSG_DEV, "bad_level", "Level must be 1 or more.");
+    }
+
+    const chefLevel = Math.min(level, CHEF_MAX_LEVEL);
+    const skillLevel = Math.min(level, SKILL_MAX_LEVEL);
+
+    session.state.chefXp = chefXpToReach(chefLevel);
+    for (const skill of SKILL_IDS) {
+      session.state.skillXp[skill] = skillXpToReach(skillLevel);
+    }
+
+    // Sections are gated on Chef Level, so unlock whatever that now covers.
+    for (const section of SECTIONS) {
+      if (chefLevel >= section.unlockChefLevel) session.state.markSectionEntered(section.index);
+    }
+
+    player.chefLevel = session.state.chefLevel;
+    this.grantAndNotify(session);
+    session.save();
+    this.sendProfile(session);
+
+    log.warn("dev.level", { wallet: session.state.wallet, chefLevel, skillLevel });
+    client.send(MSG_REJECTED, {
+      action: MSG_DEV,
+      reason: "ok",
+      message: `Chef ${chefLevel}, all skills ${skillLevel}.`,
     });
   }
 

@@ -17,7 +17,8 @@ import {
   type ProfilePayload,
   type Quality,
 } from "@crazycauldron/shared";
-import { dishKey, ingredientKey } from "../art/assets.js";
+import { apronKey, bodyKey, dishKey, hatKey, ingredientKey } from "../art/assets.js";
+import { defaultOffsets, loadArt, type Manifest, type OffsetsFile } from "../art/manifest.js";
 import { fetchLeaderboard } from "../net/api.js";
 import { gameStore } from "../net/game.js";
 import { openModal, toast, type ModalHandle } from "./overlay.js";
@@ -74,6 +75,71 @@ export function icon(key: string, size = 28): HTMLCanvasElement {
   );
   return canvas;
 }
+
+/**
+ * A garment shown on a body, for the wardrobe grid.
+ *
+ * A hat on its own is an unrecognisable smear of 18 pixels; on a head it is a
+ * hat. The body is the idle front pose and the garment sits at its saved
+ * offset, so the preview is exactly what the player will be wearing.
+ */
+function wardrobePreview(kind: "hat" | "apron", id: string, size = 48): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  const scale = Math.max(1, Math.floor(size / 48));
+  canvas.width = 32 * scale;
+  canvas.height = 48 * scale;
+
+  const context = canvas.getContext("2d");
+  const game = (window as unknown as { __ccGame?: Phaser.Game }).__ccGame;
+  if (!context || !game) return canvas;
+  context.imageSmoothingEnabled = false;
+
+  const draw = (key: string, dx: number, dy: number) => {
+    if (!game.textures.exists(key)) return;
+    const texture = game.textures.get(key);
+    const source = texture.getSourceImage() as CanvasImageSource | undefined;
+    if (!source) return;
+    const w = texture.source[0]?.width ?? 0;
+    const h = texture.source[0]?.height ?? 0;
+    context.drawImage(source, dx * scale, dy * scale, w * scale, h * scale);
+  };
+
+  // The body frame is a cell inside the atlas, so it is drawn by hand.
+  const bodyTexture = game.textures.get(bodyKey("male"));
+  // Phaser types the frame map loosely; the atlas is ours and the name is known.
+  const frames = bodyTexture?.frames as
+    | Record<string, { cutX: number; cutY: number; width: number; height: number }>
+    | undefined;
+  const frame = frames?.["male_idle_down"];
+  const source = bodyTexture?.getSourceImage() as CanvasImageSource | undefined;
+  if (frame && source) {
+    context.drawImage(
+      source,
+      frame.cutX,
+      frame.cutY,
+      frame.width,
+      frame.height,
+      0,
+      0,
+      frame.width * scale,
+      frame.height * scale,
+    );
+  }
+
+  if (id) {
+    const art = wardrobeArt;
+    const entry = art?.manifest[kind === "hat" ? "hats" : "aprons"].find((e) => e.id === id);
+    const saved = art?.offsets[kind === "hat" ? "hats" : "aprons"]?.[id] ?? defaultOffsets(entry);
+    draw(kind === "hat" ? hatKey(id) : apronKey(id), saved.down.x, saved.down.y);
+  }
+  return canvas;
+}
+
+/** Filled once so the preview can read offsets without awaiting per item. */
+let wardrobeArt: { manifest: Manifest; offsets: OffsetsFile } | null = null;
+void loadArt().then((art) => {
+  wardrobeArt = art;
+});
 
 function row(): HTMLElement {
   const element = document.createElement("div");
@@ -520,6 +586,8 @@ function wardrobeSlot(
   if (!item.unlocked) cell.classList.add("cc-locked");
   if (item.equipped) cell.classList.add("cc-equipped");
   cell.disabled = !item.unlocked;
+
+  if (item.id) cell.append(wardrobePreview(item.kind, item.id));
 
   const name = document.createElement("strong");
   name.textContent = item.name;

@@ -25,6 +25,7 @@ import {
   MSG_COOK_START,
   MSG_COOK_STOP,
   MSG_EAT,
+  MSG_DEV,
   MSG_EQUIP,
   MSG_GATHER,
   MSG_GATHER_RESULT,
@@ -478,10 +479,17 @@ async function main() {
 
   const fakeBar = await mail.next<HeatBarPayload>(MSG_HEAT_BAR);
   check("heat bar runs for 3s", fakeBar.durationMs === 3000, `${fakeBar.durationMs}ms`);
+  // Retuned in Block 3.5: a 3.3% Superb window at Firecraft 1 gives about 15%
+  // Superbs for a 60ms player, instead of the 54% the old 12% window gave.
   check(
-    "window is 12% at firecraft 1",
-    Math.round(fakeBar.windowPct) === 12,
-    `${fakeBar.windowPct.toFixed(1)}%`,
+    "window is 3.3% at firecraft 1",
+    Math.abs(fakeBar.windowPct - 3.3) < 0.05,
+    `${fakeBar.windowPct.toFixed(2)}%`,
+  );
+  check(
+    "the Fine band is 3.95x the Superb one",
+    Math.abs(fakeBar.fineWindowPct / fakeBar.windowPct - 3.95) < 0.01,
+    `${(fakeBar.fineWindowPct / fakeBar.windowPct).toFixed(2)}x`,
   );
 
   room.send(MSG_COOK_STOP, { cookId: fakeBar.cookId, elapsedMs: fakeBar.durationMs });
@@ -582,9 +590,9 @@ async function main() {
   await walkTo(room, station("tavern"));
   room.send(MSG_SELL, { stackKey: dish.key, qty: 1 });
   const sold = await mail.next<SoldPayload>(MSG_SOLD);
-  // 5 base x 1.6 for Superb.
-  check("a Superb flatbread sells for 8", sold.coins === 8, `${sold.coins} coins`);
-  check("coins went up", sold.totalCoins === 8, `${sold.totalCoins}`);
+  // 5 base x 2.4 for Superb, retuned in Block 3.5 from 1.6.
+  check("a Superb flatbread sells for 12", sold.coins === 12, `${sold.coins} coins`);
+  check("coins went up", sold.totalCoins === 12, `${sold.totalCoins}`);
   await takeProfile();
 
   mail.drain(MSG_REJECTED);
@@ -616,6 +624,31 @@ async function main() {
   check("the buff runs for 5 minutes", buffSeconds >= 295 && buffSeconds <= 300, `${buffSeconds}s`);
   await takeProfile();
   check("the buff is on the profile", profile.buffExpiresAt > Date.now());
+
+  // --- dev command ---------------------------------------------------------
+  console.log("\n-- dev command --");
+  mail.drain(MSG_REJECTED);
+  room.send(MSG_DEV, { command: "level", value: 20 });
+  await takeProfile();
+  check("dev level sets the Chef track", profile.chefLevel === 20, `chef ${profile.chefLevel}`);
+  check(
+    "and every skill",
+    profile.skills.every((s) => s.level === 20),
+    profile.skills.map((s) => `${s.id} ${s.level}`).join(", "),
+  );
+  check(
+    "which unlocks the later sections",
+    profile.unlockedSections.includes(2) && profile.unlockedSections.includes(3),
+    profile.unlockedSections.join(","),
+  );
+  check(
+    "and grants the level-gated wardrobe items",
+    profile.wardrobe.find((w) => w.id === "hat_05_circlet")?.unlocked === true,
+  );
+
+  room.send(MSG_DEV, { command: "nonsense" });
+  await sleep(300);
+  check("an unknown dev command is refused", rejected("unknown_command"));
 
   // --- leaderboard ---------------------------------------------------------
   console.log("\n-- leaderboard --");

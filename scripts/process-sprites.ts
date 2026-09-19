@@ -113,12 +113,15 @@ function readGrid(file: string): { clean: Img; cells: Rect[] } | null {
 }
 
 /**
- * Every frame of one body, at a single scale.
+ * Every frame of one body, each scaled to the same height.
  *
- * The scale comes from the tallest drawing across all of that body's files, so
- * a walk cycle keeps its bob instead of every frame being stretched to the same
- * height. Frames are anchored bottom-centre, which is where a character's feet
- * are and therefore what must not wander between frames.
+ * Per frame rather than per body. A single shared scale preserves the bob the
+ * artist drew, but it also preserves any difference in how large the figure was
+ * drawn between one drop and another - and the female idle came in visibly
+ * shorter than her walk, which pushed hat and apron offsets out of line the
+ * moment she started moving. Normalising each frame to exactly 48px and
+ * anchoring at the feet means a garment offset is true in every frame; the bob
+ * is supplied procedurally instead.
  */
 function buildBody(body: "male" | "female"): { frames: Frame[]; scale: number } | null {
   const idleFile = path.join(SRC, "characters", `${body}_idle.png`);
@@ -135,27 +138,35 @@ function buildBody(body: "male" | "female"): { frames: Frame[]; scale: number } 
   }
 
   const grids = new Map<string, { clean: Img; cells: Rect[] }>();
-  let tallest = 0;
   for (const source of sources) {
     const grid = readGrid(source.file);
     if (!grid) continue;
     note("found", path.relative(ASSETS, source.file));
     grids.set(source.key, grid);
-    for (const cell of grid.cells) tallest = Math.max(tallest, cell.height);
   }
   if (!grids.has("idle")) return null;
 
-  const scale = BODY_H / tallest;
   const frames: Frame[] = [];
+  /** Where the head starts in each finished frame, for the spread check. */
+  const headTops: { name: string; y: number }[] = [];
+  let scale = 0;
 
   const place = (clean: Img, cell: Rect, name: string) => {
+    // The cell is the blob's bounding box: head top to foot bottom, already
+    // tight because the chroma key removed everything else.
     const cut = crop(clean, cell);
-    const w = Math.max(1, Math.round(cut.width * scale));
-    const h = Math.max(1, Math.round(cut.height * scale));
-    const small = scaleNearest(cut, w, h);
+    const frameScale = BODY_H / cut.height;
+    scale = frameScale; // Reported for reference; each frame has its own.
+
+    const w = Math.max(1, Math.round(cut.width * frameScale));
+    const small = scaleNearest(cut, w, BODY_H);
 
     const canvas = blank(BODY_W, BODY_H);
-    blit(canvas, small, Math.round((BODY_W - w) / 2), BODY_H - h);
+    // Feet on the baseline, centred horizontally.
+    blit(canvas, small, Math.round((BODY_W - w) / 2), 0);
+
+    const bounds = alphaBounds(canvas);
+    headTops.push({ name, y: bounds ? bounds.y : 0 });
     frames.push({ name, img: canvas });
   };
 
@@ -171,6 +182,23 @@ function buildBody(body: "male" | "female"): { frames: Frame[]; scale: number } 
     const grid = grids.get(`walk_${direction}`);
     if (!grid) continue;
     grid.cells.forEach((cell, i) => place(grid.clean, cell, `${body}_walk_${direction}_${i}`));
+  }
+
+  /*
+   * Every frame is scaled to the same height, so the head should start on the
+   * same row in all of them. A frame that does not is a drawing whose figure
+   * is cropped differently from its siblings, and it will make a hat jump.
+   */
+  const sorted = [...headTops].map((h) => h.y).sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)] ?? 0;
+  const outliers = headTops.filter((h) => Math.abs(h.y - median) > 2);
+  const spread = (sorted[sorted.length - 1] ?? 0) - (sorted[0] ?? 0);
+
+  note("made", `${body}: head-top spread ${spread}px across ${frames.length} frames (median row ${median})`);
+  for (const outlier of outliers) {
+    suspect.push(
+      `${outlier.name} has its head at row ${outlier.y}, ${Math.abs(outlier.y - median)}px off the median ${median}`,
+    );
   }
 
   return { frames, scale };

@@ -24,6 +24,7 @@ export class Hud {
   private readonly middle = document.createElement("span");
   private readonly right = document.createElement("span");
   private readonly goal = document.createElement("div");
+  private readonly buff = document.createElement("div");
   private readonly bar = document.createElement("div");
   private readonly unsubscribe: () => void;
 
@@ -33,7 +34,9 @@ export class Hud {
     this.bar.append(this.left, this.middle, this.right);
 
     this.goal.className = "cc-goal";
-    uiRoot().append(this.bar, this.goal);
+    this.buff.className = "cc-buff";
+    this.buff.hidden = true;
+    uiRoot().append(this.bar, this.goal, this.buff);
 
     this.unsubscribe = gameStore.onChange(() => this.render());
     this.render();
@@ -71,11 +74,25 @@ export class Hud {
     }
     this.middle.hidden = this.middle.textContent === "";
 
-    const buff = gameStore.buffSeconds();
     const crowd = this.data.roomReady
       ? `${this.data.players}/${this.data.hubMax} in ${place}`
       : "connecting…";
-    this.right.textContent = buff > 0 ? `${crowd} · well fed ${buff}s` : crowd;
+    this.right.textContent = crowd;
+
+    /*
+     * The buff gets its own pill rather than a suffix on the crowd count. It is
+     * a countdown the player acts on - eat again before it lapses - and mm:ss
+     * in a fixed place is readable at a glance in a way a growing sentence is
+     * not.
+     */
+    const seconds = gameStore.buffSeconds();
+    this.buff.hidden = seconds <= 0;
+    if (seconds > 0) {
+      const minutes = Math.floor(seconds / 60);
+      this.buff.textContent = `Well fed ${minutes}:${String(seconds % 60).padStart(2, "0")}`;
+      // Warn in the last thirty seconds.
+      this.buff.classList.toggle("cc-expiring", seconds <= 30);
+    }
 
     const goal = profile?.nextGoal ?? null;
     this.goal.textContent = goal ? `Next goal: ${goal}` : "";

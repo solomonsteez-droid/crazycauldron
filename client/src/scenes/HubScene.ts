@@ -11,6 +11,7 @@ import {
   MSG_COOK_RESULT,
   MSG_COOK_START,
   MSG_COOK_STOP,
+  MSG_DEV,
   MSG_GATHER,
   MSG_GATHER_RESULT,
   MSG_GATHER_STARTED,
@@ -52,7 +53,7 @@ import { gameStore } from "../net/game.js";
 import { GameMap, type MapFeature } from "../map/gameMap.js";
 import { Avatar } from "../world/avatar.js";
 import { Effects } from "../world/effects.js";
-import { loadArt, type Direction, type Manifest, type OffsetsFile } from "../art/manifest.js";
+import { directionFor, loadArt, type Manifest, type OffsetsFile } from "../art/manifest.js";
 import { LABEL_SCREEN_PX, labelScale, planCamera } from "../map/camera.js";
 import { TEX_MARKER } from "../map/textures.js";
 import type { HubStateView, KickNotice, PlayerView } from "../net/state.js";
@@ -197,13 +198,44 @@ export class HubScene extends Phaser.Scene {
 
     // A pot is always on at the kitchen. Slow enough to read as steam rather
     // than smoke, and cheap enough to leave running.
+    // The buff pill counts down between server messages, so it needs its own
+    // tick; the value itself still comes from the server's expiry timestamp.
+    this.time.addEvent({
+      delay: 1000,
+      loop: true,
+      callback: () => this.hud.update({}),
+    });
+
     this.steamTimer = this.time.addEvent({
       delay: 420,
       loop: true,
       callback: () => this.steamOverKitchen(),
     });
 
+    this.installDevConsole();
+
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.teardown());
+  }
+
+  /**
+   * Console helpers, stripped from production bundles.
+   *
+   * import.meta.env.DEV is a compile-time constant, so this whole block is
+   * removed by the bundler rather than merely skipped - and the server refuses
+   * to register the matching handler outside development anyway.
+   */
+  private installDevConsole() {
+    if (!import.meta.env.DEV) return;
+
+    const dev = {
+      level: (n: number) => {
+        this.room.send(MSG_DEV, { command: "level", value: n });
+        return `asked the server for level ${n}`;
+      },
+      help: () => "cc.level(n) - set Chef and every skill to n",
+    };
+    (window as unknown as { cc?: typeof dev }).cc = dev;
+    console.info("dev: cc.level(n) sets Chef Level and all skills. Development only.");
   }
 
   override update(now: number) {
@@ -248,14 +280,21 @@ export class HubScene extends Phaser.Scene {
 
   private bindInput() {
     this.input.on(Phaser.Input.Events.POINTER_DOWN, (pointer: Phaser.Input.Pointer) => {
-      const tile = this.map.tileAt(pointer.worldX, pointer.worldY);
-      if (!tile) return;
-
-      const feature = this.map.featureAt(tile);
+      // Features win over bare ground within the pick radius, so a slightly
+      // missed click on a node still gathers rather than walking past it.
+      const feature = this.map.pickFeature(pointer.worldX, pointer.worldY);
       if (feature) return this.onFeatureClicked(feature);
 
+      const tile = this.map.tileAt(pointer.worldX, pointer.worldY);
+      if (!tile) return;
       this.pending = null;
       this.sendMove(tile);
+    });
+
+    this.input.on(Phaser.Input.Events.POINTER_MOVE, (pointer: Phaser.Input.Pointer) => {
+      const feature = this.map.pickFeature(pointer.worldX, pointer.worldY);
+      this.map.setHighlight(feature);
+      this.input.setDefaultCursor(feature ? "pointer" : "default");
     });
   }
 
@@ -588,7 +627,8 @@ export class HubScene extends Phaser.Scene {
     if (this.currentSection === HUB_MAP) return;
     for (const node of gameStore.nodes(this.currentSection)) {
       const seconds = gameStore.cooldownSeconds(this.currentSection, node.id);
-      this.map.setNodeReady(node.id, seconds === 0, node.available, seconds);
+      const total = gameStore.cooldownTotalSeconds(this.currentSection, node.id);
+      this.map.setNodeReady(node.id, seconds === 0, node.available, seconds, total);
     }
   }
 
@@ -612,7 +652,7 @@ export class HubScene extends Phaser.Scene {
     );
     avatar.container.setDepth(player.tileX + player.tileY);
     avatar.container.setVisible(player.section === this.currentSection);
-    avatar.setDirection((player.facing as Direction) ?? "down", player.moving);
+    avatar.setDirection(directionFor(player.facing), player.moving);
     avatar.setActivity(player.activity ?? "");
 
     const entry: AvatarEntry = { avatar };
@@ -650,7 +690,7 @@ export class HubScene extends Phaser.Scene {
       displayName: player.displayName,
       isSelf,
     });
-    avatar.setDirection((player.facing as Direction) ?? "down", player.moving);
+    avatar.setDirection(directionFor(player.facing), player.moving);
     avatar.setActivity(player.activity ?? "");
 
     const target = this.map.tileCentre(player.tileX, player.tileY);

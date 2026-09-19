@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-19T08:37:13.730Z",
+  "generatedAt": "2026-09-19T09:23:00.914Z",
   "bodyFrame": {
     "width": 32,
     "height": 48
@@ -31,7 +31,7 @@
       ]
     },
     "female": {
-      "scale": 0.05417607223476298,
+      "scale": 0.05693950177935943,
       "frames": [
         "female_idle_down",
         "female_idle_up",

@@ -12,6 +12,7 @@ import {
   sectionTiles,
   tileToWorld,
   worldToTile,
+  PALETTE,
   type GatherNodeDef,
   type TilePos,
 } from "@crazycauldron/shared";
@@ -37,6 +38,10 @@ import { Effects } from "../world/effects.js";
  * on both sides that the grid itself does not use.
  */
 const TERRAIN_PAD = 24;
+
+/** Pick radius in tiles: a feature is about 1.5 tiles wide to the pointer. */
+const PICK_TILES = 0.75;
+const HIGHLIGHT_TINT = 0xfff3c4;
 
 
 /**
@@ -65,6 +70,12 @@ export class GameMap {
   private readonly decorations: Phaser.GameObjects.GameObject[] = [];
   /** Every world-space label, so all of them can cancel the camera zoom. */
   private readonly labels: Phaser.GameObjects.Text[] = [];
+  /** Buildings and gates, so the hover highlight can reach them. */
+  private readonly featureSprites = new Map<string, Phaser.GameObjects.Image>();
+  private highlighted: MapFeature | null = null;
+  private accentColour = 0xffffff;
+  /** Cooldown rings, one per node. */
+  private readonly nodeRings = new Map<string, Phaser.GameObjects.Graphics>();
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -136,13 +147,14 @@ export class GameMap {
     );
 
     for (const station of HUB_STATIONS) {
-      this.addProp(
+      const sprite = this.addProp(
         propKey(STATION_PROP[station.id] ?? "kitchen"),
         station.tileX,
         station.tileY,
         station.name,
         "#f3e9d2",
       );
+      this.featureSprites.set(station.id, sprite);
       this.features.push({
         kind: "station",
         id: station.id,
@@ -154,7 +166,7 @@ export class GameMap {
     for (const portal of HUB_PORTALS) {
       const section = findSection(portal.section);
       if (!section) continue;
-      this.addProp(
+      const sprite = this.addProp(
         propKey(PORTAL_PROP[portal.section] ?? "portal_meadows"),
         portal.tileX,
         portal.tileY,
@@ -162,6 +174,7 @@ export class GameMap {
         section.accentColor,
         section.accentColor,
       );
+      this.featureSprites.set(`portal_${portal.section}`, sprite);
       this.features.push({
         kind: "portal",
         id: `portal_${portal.section}`,
@@ -176,7 +189,7 @@ export class GameMap {
     const section = findSection(mapId);
     if (!section) return;
 
-    this.addProp(
+    const back = this.addProp(
       propKey(PORTAL_PROP[mapId] ?? "portal_meadows"),
       section.returnPortal.tileX,
       section.returnPortal.tileY,
@@ -184,6 +197,7 @@ export class GameMap {
       "#7ce08a",
       "#7ce08a",
     );
+    this.featureSprites.set("portal_hub", back);
     this.features.push({
       kind: "portal",
       id: "portal_hub",
@@ -196,6 +210,7 @@ export class GameMap {
       const sprite = this.addNode(node, section.accentColor);
       this.nodeSprites.set(node.id, sprite);
       this.nodeLabels.set(node.id, this.addNodeLabel(node));
+      this.nodeRings.set(node.id, this.addNodeRing(node));
       this.features.push({
         kind: "node",
         id: node.id,
@@ -230,6 +245,21 @@ export class GameMap {
     return sprite;
   }
 
+  /**
+   * An arc above a node that empties as it regrows.
+   *
+   * A ring rather than a bar: it sits in the node's own footprint without
+   * widening it, which matters when twelve of them share one screen.
+   */
+  private addNodeRing(node: GatherNodeDef): Phaser.GameObjects.Graphics {
+    const at = this.tileCentre(node.tileX, node.tileY);
+    const ring = this.scene.add
+      .graphics({ x: at.x, y: at.y - 30 })
+      .setDepth(node.tileX + node.tileY + 2);
+    this.decorations.push(ring);
+    return ring;
+  }
+
   /** Regrowth countdown, drawn above a spent node. */
   private addNodeLabel(node: GatherNodeDef): Phaser.GameObjects.Text {
     const at = this.tileCentre(node.tileX, node.tileY);
@@ -261,7 +291,7 @@ export class GameMap {
     label: string,
     colour: string,
     glow?: string,
-  ) {
+  ): Phaser.GameObjects.Image {
     const at = this.tileCentre(tileX, tileY);
 
     if (glow) {
@@ -304,13 +334,20 @@ export class GameMap {
 
     this.labels.push(text);
     this.decorations.push(image, text);
+    return image;
   }
 
   /**
    * Nodes on cooldown are drawn spent and dimmed. The timers themselves live on
    * the server; this only reflects what it last said.
    */
-  setNodeReady(nodeId: string, ready: boolean, available: boolean, cooldownSeconds = 0) {
+  setNodeReady(
+    nodeId: string,
+    ready: boolean,
+    available: boolean,
+    cooldownSeconds = 0,
+    totalSeconds = 0,
+  ) {
     const sprite = this.nodeSprites.get(nodeId);
     if (!sprite) return;
 
@@ -327,9 +364,32 @@ export class GameMap {
     sprite.setAlpha(available ? (processed ? 1 : ready ? 1 : 0.65) : 0.2);
 
     const label = this.nodeLabels.get(nodeId);
-    if (!label) return;
-    if (!available) label.setText("locked");
-    else label.setText(cooldownSeconds > 0 ? `${cooldownSeconds}s` : "");
+    const ring = this.nodeRings.get(nodeId);
+
+    if (label) {
+      if (!available) label.setText("locked");
+      else if (cooldownSeconds > 0) {
+        // mm:ss, because a rare node is a 15 minute wait and "900s" is not a
+        // number anyone reads as a quarter of an hour.
+        const minutes = Math.floor(cooldownSeconds / 60);
+        const seconds = cooldownSeconds % 60;
+        label.setText(`${minutes}:${String(seconds).padStart(2, "0")}`);
+      } else label.setText("");
+    }
+
+    if (ring) {
+      ring.clear();
+      if (available && cooldownSeconds > 0 && totalSeconds > 0) {
+        const remaining = Math.min(1, cooldownSeconds / totalSeconds);
+        ring.lineStyle(2, PALETTE.night, 0.55);
+        ring.strokeCircle(0, 0, 7);
+        ring.lineStyle(2, PALETTE.saffron, 0.95);
+        ring.beginPath();
+        // Starts at the top and unwinds clockwise as the node regrows.
+        ring.arc(0, 0, 7, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * remaining, false);
+        ring.strokePath();
+      }
+    }
   }
 
   /** A quick squash on a node that was just clicked, so the click lands. */
@@ -343,6 +403,60 @@ export class GameMap {
     return (
       this.features.find((f) => f.tile.tileX === tile.tileX && f.tile.tileY === tile.tileY) ?? null
     );
+  }
+
+  /**
+   * The feature nearest a pointer, within a generous radius.
+   *
+   * A single 32x16 tile is a small target on a phone, and an isometric diamond
+   * is an awkward shape to aim at - so picking works in tile space with a
+   * radius of PICK_TILES, which makes every node, door and gate about one and a
+   * half tiles wide to the pointer regardless of how its art is drawn.
+   */
+  pickFeature(worldX: number, worldY: number): MapFeature | null {
+    const { tileX, tileY } = worldToTile(worldX, worldY);
+
+    let best: MapFeature | null = null;
+    let bestDistance = PICK_TILES;
+    for (const feature of this.features) {
+      const dx = feature.tile.tileX - tileX;
+      const dy = feature.tile.tileY - tileY;
+      const distance = Math.hypot(dx, dy);
+      if (distance <= bestDistance) {
+        bestDistance = distance;
+        best = feature;
+      }
+    }
+    return best;
+  }
+
+  /** Lifts and brightens whatever the pointer is over. */
+  setHighlight(feature: MapFeature | null) {
+    if (feature?.id === this.highlighted?.id) return;
+
+    if (this.highlighted) {
+      const previous = this.spriteFor(this.highlighted);
+      previous?.clearTint();
+      previous?.setScale(1);
+      if (this.highlighted.kind === "node") {
+        // Nodes keep their availability tint, so re-apply what it should be.
+        const sprite = this.nodeSprites.get(this.highlighted.id);
+        const processed = sprite?.getData("processed") === true;
+        if (sprite && !processed) sprite.setTint(this.accentColour);
+      }
+    }
+
+    this.highlighted = feature;
+    const sprite = feature ? this.spriteFor(feature) : null;
+    if (sprite) {
+      sprite.setTint(HIGHLIGHT_TINT);
+      sprite.setScale(1.08);
+    }
+  }
+
+  private spriteFor(feature: MapFeature): Phaser.GameObjects.Image | null {
+    if (feature.kind === "node") return this.nodeSprites.get(feature.id) ?? null;
+    return this.featureSprites.get(feature.id) ?? null;
   }
 
   tileCentre(tileX: number, tileY: number): { x: number; y: number } {
@@ -390,6 +504,9 @@ export class GameMap {
     this.labels.length = 0;
     this.nodeSprites.clear();
     this.nodeLabels.clear();
+    this.nodeRings.clear();
+    this.featureSprites.clear();
+    this.highlighted = null;
     this.features.length = 0;
     this.floor.destroy();
   }

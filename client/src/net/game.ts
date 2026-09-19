@@ -16,6 +16,8 @@ export class GameStore {
   private readonly listeners = new Set<Listener>();
   /** serverNow minus Date.now() at the last message, to age timers honestly. */
   private clockSkewMs = 0;
+  /** Longest remaining cooldown seen per node, which is its full duration. */
+  private readonly cooldownTotals = new Map<string, number>();
 
   get profile(): ProfilePayload | null {
     return this.profileData;
@@ -30,12 +32,25 @@ export class GameStore {
   setNodes(section: number, nodes: NodeStateView[], serverNow: number) {
     this.clockSkewMs = serverNow - Date.now();
     this.nodesBySection.set(section, new Map(nodes.map((n) => [n.id, n])));
+    for (const node of nodes) this.rememberCooldown(section, node);
     this.emit();
+  }
+
+  private rememberCooldown(section: number, node: NodeStateView) {
+    const key = `${section}:${node.id}`;
+    if (node.readyAt === 0) {
+      this.cooldownTotals.delete(key);
+      return;
+    }
+    const remaining = Math.ceil((node.readyAt - this.serverNow()) / 1000);
+    const known = this.cooldownTotals.get(key) ?? 0;
+    if (remaining > known) this.cooldownTotals.set(key, remaining);
   }
 
   updateNode(section: number, node: NodeStateView) {
     const map = this.nodesBySection.get(section) ?? new Map<string, NodeStateView>();
     map.set(node.id, node);
+    this.rememberCooldown(section, node);
     this.nodesBySection.set(section, map);
     this.emit();
   }
@@ -58,6 +73,17 @@ export class GameStore {
     const node = this.node(section, id);
     if (!node || node.readyAt === 0) return 0;
     return Math.max(0, Math.ceil((node.readyAt - this.serverNow()) / 1000));
+  }
+
+  /**
+   * The full length of a node's current cooldown, for drawing a ring.
+   *
+   * Recorded when the cooldown is first seen rather than derived from the
+   * ingredient's rarity, so the ring stays honest if a respawn time is retuned
+   * or a buff ever shortens one.
+   */
+  cooldownTotalSeconds(section: number, id: string): number {
+    return this.cooldownTotals.get(`${section}:${id}`) ?? 0;
   }
 
   buffSeconds(): number {

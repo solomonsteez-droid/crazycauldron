@@ -49,6 +49,24 @@ export interface Manifest {
 export type Direction = "down" | "up" | "left" | "right";
 export const DIRECTIONS: Direction[] = ["down", "up", "left", "right"];
 
+/**
+ * The room replicates a compass facing; the sprite sheet is named by screen
+ * direction. They are not the same vocabulary, and casting one to the other -
+ * which is what this code used to do - silently asks for frames like
+ * "male_walk_s" that do not exist, leaving every character frozen on whatever
+ * frame it happened to be showing.
+ */
+const FACING_TO_DIRECTION: Record<string, Direction> = {
+  n: "up",
+  e: "right",
+  s: "down",
+  w: "left",
+};
+
+export function directionFor(facing: string): Direction {
+  return FACING_TO_DIRECTION[facing] ?? "down";
+}
+
 export interface ItemOffsets {
   down: Vec2;
   up: Vec2;

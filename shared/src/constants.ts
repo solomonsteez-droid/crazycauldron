@@ -44,6 +44,7 @@ export const MSG_SELL = "sell";
 export const MSG_EAT = "eat";
 export const MSG_BUY = "buy";
 export const MSG_EQUIP = "equip";
+export const MSG_DEV = "dev";
 
 /** Server -> client message names. */
 export const MSG_ADMIT = "admit";
