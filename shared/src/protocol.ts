@@ -52,6 +52,12 @@ export interface BuyIntent {
   tier: number;
 }
 
+/** Equip a wardrobe item, or clear the slot with an empty id. */
+export interface EquipIntent {
+  kind: "hat" | "apron";
+  itemId: string;
+}
+
 // --- server -> client ------------------------------------------------------
 
 export interface InventoryStackView {
@@ -93,6 +99,20 @@ export interface RecipeAvailabilityView {
   reasons: string[];
 }
 
+export interface WardrobeItemView {
+  id: string;
+  kind: "hat" | "apron";
+  name: string;
+  unlocked: boolean;
+  equipped: boolean;
+  /** Why it is still locked, or how it was earned. */
+  requirement: string;
+  /** Set on holder-tier items, for the badge. */
+  tier?: "bronze" | "silver" | "gold";
+  /** True when the tier is owned but the balance no longer backs it. */
+  tierLapsed?: boolean;
+}
+
 export interface ProfilePayload {
   wallet: string;
   displayName: string;
@@ -115,6 +135,12 @@ export interface ProfilePayload {
   recipes: RecipeAvailabilityView[];
   unlockedSections: number[];
   titles: string[];
+  /** Every wardrobe item with its state, for the Outfitter panel. */
+  wardrobe: WardrobeItemView[];
+  hatId: string;
+  apronId: string;
+  /** Highest tier the cached balance currently supports. */
+  tier: "bronze" | "silver" | "gold" | null;
   nextGoal: string | null;
   /** Server clock at send time, so the client can age timers without drifting. */
   serverNow: number;
@@ -219,6 +245,11 @@ export interface BoughtPayload {
   name: string;
   coins: number;
   totalCoins: number;
+}
+
+/** Sent when an item is granted, so the client can celebrate it. */
+export interface UnlockedPayload {
+  items: { id: string; kind: "hat" | "apron"; name: string }[];
 }
 
 /** Every refusal the server sends back, with a reason the UI can show. */

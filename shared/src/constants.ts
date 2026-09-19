@@ -43,6 +43,7 @@ export const MSG_COOK_CANCEL = "cook_cancel";
 export const MSG_SELL = "sell";
 export const MSG_EAT = "eat";
 export const MSG_BUY = "buy";
+export const MSG_EQUIP = "equip";
 
 /** Server -> client message names. */
 export const MSG_ADMIT = "admit";
@@ -58,6 +59,7 @@ export const MSG_COOK_RESULT = "cook_result";
 export const MSG_SOLD = "sold";
 export const MSG_ATE = "ate";
 export const MSG_BOUGHT = "bought";
+export const MSG_UNLOCKED = "unlocked";
 export const MSG_REJECTED = "rejected";
 
 /**

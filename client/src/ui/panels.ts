@@ -397,3 +397,105 @@ export class Dock {
 export function tooFar(name: string) {
   toast(`Walk over to the ${name} first.`, "bad");
 }
+
+// --- wardrobe --------------------------------------------------------------
+
+const TIER_LABEL: Record<string, string> = {
+  bronze: "Bronze",
+  silver: "Silver",
+  gold: "Gold",
+};
+
+/**
+ * The Outfitter's wardrobe: two rows, hats and aprons.
+ *
+ * Unlocked items are in colour and clickable; locked ones are greyed with the
+ * condition that earns them, taken from the content rather than written here.
+ * Tier items carry a badge and stop being wearable the moment the balance stops
+ * backing them - the server enforces that, this only shows it.
+ */
+export function openWardrobe(onEquip: (kind: "hat" | "apron", itemId: string) => void): ModalHandle {
+  const modal = openModal("Wardrobe");
+  const summary = document.createElement("p");
+  const rows = document.createElement("div");
+  modal.body.append(summary, rows);
+
+  live(modal, (profile) => {
+    summary.textContent = profile.tier
+      ? `Holder tier: ${TIER_LABEL[profile.tier] ?? profile.tier}`
+      : "No holder tier. Tier garments need a $COOK balance.";
+
+    rows.replaceChildren();
+
+    for (const kind of ["hat", "apron"] as const) {
+      const heading = document.createElement("h3");
+      heading.textContent = kind === "hat" ? "Hats" : "Aprons";
+      heading.className = "cc-subhead";
+
+      const grid = document.createElement("div");
+      grid.className = "cc-grid";
+
+      const equippedId = kind === "hat" ? profile.hatId : profile.apronId;
+
+      // An explicit "none" so a hat can be taken off again.
+      grid.append(
+        wardrobeSlot(
+          { id: "", kind, name: "None", unlocked: true, equipped: equippedId === "", requirement: "" },
+          () => onEquip(kind, ""),
+        ),
+      );
+
+      for (const item of profile.wardrobe.filter((i) => i.kind === kind)) {
+        grid.append(wardrobeSlot(item, () => onEquip(kind, item.id)));
+      }
+
+      rows.append(heading, grid);
+    }
+  });
+
+  return modal;
+}
+
+function wardrobeSlot(
+  item: {
+    id: string;
+    kind: "hat" | "apron";
+    name: string;
+    unlocked: boolean;
+    equipped: boolean;
+    requirement: string;
+    tier?: string;
+    tierLapsed?: boolean;
+  },
+  onClick: () => void,
+): HTMLElement {
+  const cell = document.createElement("button");
+  cell.className = "cc-slot";
+  if (!item.unlocked) cell.classList.add("cc-locked");
+  if (item.equipped) cell.classList.add("cc-equipped");
+  cell.disabled = !item.unlocked;
+
+  const name = document.createElement("strong");
+  name.textContent = item.name;
+
+  const note = document.createElement("small");
+  note.textContent = item.tierLapsed
+    ? "Balance lapsed"
+    : item.unlocked
+      ? item.equipped
+        ? "Worn"
+        : "Ready"
+      : item.requirement;
+
+  cell.append(name, note);
+
+  if (item.tier) {
+    const badge = document.createElement("i");
+    badge.className = `cc-badge cc-${item.tier}`;
+    badge.textContent = TIER_LABEL[item.tier] ?? item.tier;
+    cell.append(badge);
+  }
+
+  cell.addEventListener("click", onClick);
+  return cell;
+}

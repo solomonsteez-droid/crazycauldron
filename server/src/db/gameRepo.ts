@@ -25,6 +25,8 @@ export function migrateGameTables(db: Database.Database) {
       pan_tier        INTEGER NOT NULL DEFAULT 0,
       bag_tier        INTEGER NOT NULL DEFAULT 0,
       buff_expires_at INTEGER NOT NULL DEFAULT 0,
+      hat_id          TEXT NOT NULL DEFAULT '',
+      apron_id        TEXT NOT NULL DEFAULT 'apron_01_linen',
       updated_at      TEXT NOT NULL
     );
 
@@ -68,6 +70,13 @@ export function migrateGameTables(db: Database.Database) {
       PRIMARY KEY (wallet, node_id)
     );
 
+    CREATE TABLE IF NOT EXISTS player_wardrobe (
+      wallet      TEXT NOT NULL REFERENCES players(wallet) ON DELETE CASCADE,
+      item_id     TEXT NOT NULL,
+      unlocked_at TEXT NOT NULL,
+      PRIMARY KEY (wallet, item_id)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_player_game_chef ON player_game (chef_xp DESC);
   `);
 }
@@ -78,6 +87,11 @@ interface GameRow {
   pan_tier: number;
   bag_tier: number;
   buff_expires_at: number;
+  hat_id: string;
+  apron_id: string;
+}
+interface WardrobeRow {
+  item_id: string;
 }
 interface SkillRow {
   skill: string;
@@ -129,18 +143,21 @@ export class SqliteGameRepository implements GameRepository {
   private readonly deleteNodes;
   private readonly insertNode;
   private readonly selectTop;
+  private readonly selectWardrobe;
+  private readonly insertWardrobe;
   private readonly saveTx: (state: GameStateRecord) => void;
 
   constructor(private readonly db: Database.Database) {
     this.selectGame = db.prepare<[string], GameRow>(
-      "SELECT coins, chef_xp, pan_tier, bag_tier, buff_expires_at FROM player_game WHERE wallet = ?",
+      "SELECT coins, chef_xp, pan_tier, bag_tier, buff_expires_at, hat_id, apron_id FROM player_game WHERE wallet = ?",
     );
     this.upsertGame = db.prepare(
-      `INSERT INTO player_game (wallet, coins, chef_xp, pan_tier, bag_tier, buff_expires_at, updated_at)
-       VALUES (@wallet, @coins, @chefXp, @panTier, @bagTier, @buffExpiresAt, @now)
+      `INSERT INTO player_game (wallet, coins, chef_xp, pan_tier, bag_tier, buff_expires_at, hat_id, apron_id, updated_at)
+       VALUES (@wallet, @coins, @chefXp, @panTier, @bagTier, @buffExpiresAt, @hatId, @apronId, @now)
        ON CONFLICT(wallet) DO UPDATE SET
          coins = @coins, chef_xp = @chefXp, pan_tier = @panTier,
-         bag_tier = @bagTier, buff_expires_at = @buffExpiresAt, updated_at = @now`,
+         bag_tier = @bagTier, buff_expires_at = @buffExpiresAt,
+         hat_id = @hatId, apron_id = @apronId, updated_at = @now`,
     );
 
     this.selectSkills = db.prepare<[string], SkillRow>(
@@ -185,6 +202,14 @@ export class SqliteGameRepository implements GameRepository {
       "INSERT INTO player_nodes (wallet, node_id, ready_at) VALUES (?, ?, ?)",
     );
 
+    this.selectWardrobe = db.prepare<[string], WardrobeRow>(
+      "SELECT item_id FROM player_wardrobe WHERE wallet = ?",
+    );
+    this.insertWardrobe = db.prepare(
+      `INSERT INTO player_wardrobe (wallet, item_id, unlocked_at) VALUES (?, ?, ?)
+       ON CONFLICT(wallet, item_id) DO NOTHING`,
+    );
+
     this.selectTop = db.prepare<[number], LeaderRow>(
       `SELECT g.wallet, p.display_name, g.chef_xp
        FROM player_game g JOIN players p ON p.wallet = g.wallet
@@ -204,8 +229,14 @@ export class SqliteGameRepository implements GameRepository {
         panTier: state.panTier,
         bagTier: state.bagTier,
         buffExpiresAt: state.buffExpiresAt,
+        hatId: state.hatId,
+        apronId: state.apronId,
         now,
       });
+
+      for (const item of state.unlockedItems) {
+        this.insertWardrobe.run(state.wallet, item, now);
+      }
 
       for (const skill of SKILL_IDS) {
         this.upsertSkill.run(state.wallet, skill, state.skillXp[skill] ?? 0);
@@ -283,6 +314,9 @@ export class SqliteGameRepository implements GameRepository {
       codex,
       unlockedSections: this.selectSections.all(wallet).map((s) => s.section),
       nodeReadyAt,
+      unlockedItems: this.selectWardrobe.all(wallet).map((r) => r.item_id),
+      hatId: row?.hat_id ?? "",
+      apronId: row?.apron_id ?? "apron_01_linen",
     };
   }
 

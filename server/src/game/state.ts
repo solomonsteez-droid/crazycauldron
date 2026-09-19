@@ -29,6 +29,15 @@ import {
   type SkillId,
   type SkillLevels,
   type SkillView,
+  type TierId,
+  type WardrobeItem,
+  type WardrobeItemView,
+  type WardrobeSnapshot,
+  WARDROBE_ITEMS,
+  describeUnlockRule,
+  isUnlocked,
+  newlyEarned,
+  requiredTier,
 } from "@crazycauldron/shared";
 import { recipeAvailability } from "./cooking.js";
 import type { CodexRecord, GameStateRecord, StackRecord } from "../db/gameTypes.js";
@@ -57,8 +66,12 @@ export class PlayerState {
   bagTier: number;
   buffExpiresAt: number;
   /** Equipped wardrobe items. The linen apron is the starting garment. */
-  hatId = "";
-  apronId = "apron_01_linen";
+  hatId: string;
+  apronId: string;
+  /** Permanently earned items. Tier items are never kept here. */
+  readonly unlockedItems: Set<string>;
+  /** Highest tier the last cached $COOK balance supports; refreshed on join. */
+  tier: TierId | null = null;
   /** Keyed by stackKey so lookups and merges are both O(1). */
   private readonly stacks = new Map<string, StackRecord>();
   private readonly codex = new Map<string, CodexRecord>();
@@ -75,12 +88,17 @@ export class PlayerState {
     this.bagTier = record.bagTier;
     this.buffExpiresAt = record.buffExpiresAt;
     this.unlockedSections = new Set(record.unlockedSections);
+    this.unlockedItems = new Set(record.unlockedItems);
+    this.hatId = record.hatId;
+    this.apronId = record.apronId;
 
     for (const stack of record.stacks) this.stacks.set(stack.key, { ...stack });
     for (const entry of record.codex) this.codex.set(entry.recipeId, { ...entry });
 
     // Section 1 is open from Chef 1, so a brand new player already has it.
     this.unlockedSections.add(1);
+    // Everyone starts with the linen apron.
+    this.unlockedItems.add("apron_01_linen");
   }
 
   // --- derived -------------------------------------------------------------
@@ -232,6 +250,81 @@ export class PlayerState {
 
   // --- serialisation -------------------------------------------------------
 
+  // --- wardrobe ------------------------------------------------------------
+
+  /** The snapshot every unlock rule is judged against. */
+  wardrobeSnapshot(): WardrobeSnapshot {
+    const bestQuality: Record<string, Quality> = {};
+    let dishesCooked = 0;
+    for (const entry of this.codex.values()) {
+      bestQuality[entry.recipeId] = entry.bestQuality;
+      dishesCooked += entry.cookedCount;
+    }
+    return {
+      chefLevel: this.chefLevel,
+      levels: this.levels,
+      bestQuality,
+      dishesCooked,
+      tier: this.tier,
+    };
+  }
+
+  /**
+   * Grants anything newly earned and returns it, so the caller can say so.
+   * Tier items are deliberately not granted: they are worn on the strength of
+   * a live balance, not earned once.
+   */
+  grantEarnedItems(): WardrobeItem[] {
+    const earned = newlyEarned(this.wardrobeSnapshot(), this.unlockedItems);
+    for (const item of earned) this.unlockedItems.add(item.id);
+    return earned;
+  }
+
+  /** True when the player may wear this right now. */
+  canWear(itemId: string): boolean {
+    if (itemId === "") return true;
+    const tier = requiredTier(itemId);
+    if (tier) return this.tier !== null && isUnlocked({ type: "tier", tier }, this.wardrobeSnapshot());
+    return this.unlockedItems.has(itemId);
+  }
+
+  /**
+   * Takes off any tier item the balance no longer backs.
+   * Returns what was removed, so the player is told rather than just changed.
+   */
+  enforceTier(): string[] {
+    const removed: string[] = [];
+    for (const slot of ["hatId", "apronId"] as const) {
+      const itemId = this[slot];
+      if (itemId && requiredTier(itemId) && !this.canWear(itemId)) {
+        removed.push(itemId);
+        this[slot] = slot === "apronId" ? "apron_01_linen" : "";
+      }
+    }
+    return removed;
+  }
+
+  wardrobeViews(): WardrobeItemView[] {
+    const snapshot = this.wardrobeSnapshot();
+    return WARDROBE_ITEMS.map((item) => {
+      const tier = item.unlock.type === "tier" ? item.unlock.tier : undefined;
+      const unlocked = tier
+        ? isUnlocked(item.unlock, snapshot)
+        : this.unlockedItems.has(item.id);
+      const equipped = item.id === this.hatId || item.id === this.apronId;
+      return {
+        id: item.id,
+        kind: item.kind,
+        name: item.name,
+        unlocked,
+        equipped,
+        requirement: describeUnlockRule(item.unlock),
+        ...(tier ? { tier } : {}),
+        ...(tier && equipped && !unlocked ? { tierLapsed: true } : {}),
+      };
+    });
+  }
+
   toRecord(): GameStateRecord {
     return {
       wallet: this.wallet,
@@ -245,6 +338,9 @@ export class PlayerState {
       codex: [...this.codex.values()],
       unlockedSections: [...this.unlockedSections],
       nodeReadyAt: Object.fromEntries(this.nodeReadyAt),
+      unlockedItems: [...this.unlockedItems],
+      hatId: this.hatId,
+      apronId: this.apronId,
     };
   }
 
@@ -316,6 +412,10 @@ export class PlayerState {
       recipes: recipeAvailability(this),
       unlockedSections: [...this.unlockedSections].sort((a, b) => a - b),
       titles: titlesEarned(levels),
+      wardrobe: this.wardrobeViews(),
+      hatId: this.hatId,
+      apronId: this.apronId,
+      tier: this.tier,
       nextGoal: goal ? describeUnlock(goal) : null,
       serverNow: Date.now(),
     };

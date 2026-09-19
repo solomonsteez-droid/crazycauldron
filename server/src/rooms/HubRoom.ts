@@ -20,6 +20,7 @@ import {
   MSG_BOUGHT,
   MSG_BUY,
   MSG_EAT,
+  MSG_EQUIP,
   MSG_GATHER,
   MSG_GATHER_RESULT,
   MSG_GATHER_STARTED,
@@ -29,6 +30,7 @@ import {
   MSG_NODES,
   MSG_PROFILE,
   MSG_REJECTED,
+  MSG_UNLOCKED,
   MSG_SELL,
   MSG_SOLD,
   MSG_TRAVEL,
@@ -36,6 +38,8 @@ import {
   facingFor,
   findPath,
   findSection,
+  tierForBalance,
+  wardrobeItem,
   isAdjacentOrOn,
   isWalkableOn,
   spawnFor,
@@ -48,6 +52,7 @@ import {
   type BoughtPayload,
   type BuyIntent,
   type EatIntent,
+  type EquipIntent,
   type GatherIntent,
   type GatherResultPayload,
   type HeatBarPayload,
@@ -56,6 +61,7 @@ import {
   type RejectedPayload,
   type SellIntent,
   type SoldPayload,
+  type UnlockedPayload,
   type TilePos,
   type TravelIntent,
 } from "@crazycauldron/shared";
@@ -109,6 +115,7 @@ export class HubRoom extends Room<HubState> {
     this.onMessage(MSG_SELL, (client, message: SellIntent) => this.onSell(client, message));
     this.onMessage(MSG_EAT, (client, message: EatIntent) => this.onEat(client, message));
     this.onMessage(MSG_BUY, (client, message: BuyIntent) => this.onBuy(client, message));
+    this.onMessage(MSG_EQUIP, (client, message: EquipIntent) => this.onEquip(client, message));
 
     // One tick = one tile of progress for everyone currently walking.
     this.setSimulationInterval(() => this.stepMovement(), MOVE_STEP_MS);
@@ -425,6 +432,7 @@ export class HubRoom extends Room<HubState> {
         doubled: reward.doubled,
       };
       client.send(MSG_GATHER_RESULT, payload);
+      this.grantAndNotify(session);
       this.sendProfile(session);
     }, plan.durationMs);
   }
@@ -604,6 +612,7 @@ export class HubRoom extends Room<HubState> {
         cookMs: outcome.cookMs,
       };
       client.send(MSG_COOK_RESULT, payload);
+      this.grantAndNotify(session);
       this.sendProfile(session);
     }, outcome.cookMs);
   }
@@ -710,6 +719,62 @@ export class HubRoom extends Room<HubState> {
     };
     client.send(MSG_BOUGHT, payload);
     this.sendProfile(session);
+  }
+
+  // --- wardrobe ------------------------------------------------------------
+
+  private onEquip(client: Client, message: EquipIntent) {
+    const session = this.sessions.get(client.sessionId);
+    const player = this.state.players.get(client.sessionId);
+    if (!session || !player) return;
+
+    const kind = message?.kind === "hat" ? "hat" : "apron";
+    const itemId = String(message?.itemId ?? "");
+
+    if (itemId !== "") {
+      const item = wardrobeItem(itemId);
+      if (!item || item.kind !== kind) {
+        return this.reject(client, MSG_EQUIP, "unknown_item", "No such garment.");
+      }
+      if (!session.state.canWear(itemId)) {
+        const tier = item.unlock.type === "tier";
+        return this.reject(
+          client,
+          MSG_EQUIP,
+          tier ? "tier_required" : "locked",
+          tier ? "Your $COOK balance does not cover that." : "You have not earned that yet.",
+        );
+      }
+    }
+
+    if (kind === "hat") session.state.hatId = itemId;
+    else session.state.apronId = itemId;
+
+    player.hatId = session.state.hatId;
+    player.apronId = session.state.apronId;
+    session.save();
+    this.sendProfile(session);
+  }
+
+  /**
+   * Grants anything the player has just earned and tells them.
+   *
+   * Called after every action that can move a skill, a level or the codex -
+   * which is every action that pays out at all.
+   */
+  private grantAndNotify(session: Session) {
+    const earned = session.state.grantEarnedItems();
+    if (earned.length === 0) return;
+
+    session.save();
+    const payload: UnlockedPayload = {
+      items: earned.map((item) => ({ id: item.id, kind: item.kind, name: item.name })),
+    };
+    session.client.send(MSG_UNLOCKED, payload);
+    log.info("wardrobe.unlocked", {
+      wallet: session.state.wallet,
+      items: earned.map((i) => i.id),
+    });
   }
 
   // --- outbound ------------------------------------------------------------

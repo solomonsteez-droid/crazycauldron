@@ -25,8 +25,10 @@ import {
   MSG_EAT,
   MSG_REJECTED,
   MSG_SELL,
+  MSG_EQUIP,
   MSG_SOLD,
   MSG_TRAVEL,
+  MSG_UNLOCKED,
   findSection,
   isAdjacentOrOn,
   isWalkableOn,
@@ -43,6 +45,7 @@ import {
   type RejectedPayload,
   type SoldPayload,
   type TilePos,
+  type UnlockedPayload,
 } from "@crazycauldron/shared";
 import { fetchCapacity } from "../net/api.js";
 import { gameStore } from "../net/game.js";
@@ -63,6 +66,7 @@ import {
   openShop,
   openSkills,
   openTavern,
+  openWardrobe,
   type PanelCallbacks,
 } from "../ui/panels.js";
 import {
@@ -397,7 +401,11 @@ export class HubScene extends Phaser.Scene {
   private openStation(id: string) {
     if (id === "kitchen") this.cookModal = openKitchen(this.kitchenCallbacks());
     else if (id === "tavern") openTavern(this.panelCallbacks());
-    else if (id === "outfitter") openShop(this.panelCallbacks());
+    else if (id === "outfitter") {
+      // The outfitter sells upgrades and keeps the wardrobe; both open here.
+      openShop(this.panelCallbacks());
+      openWardrobe((kind, itemId) => this.room.send(MSG_EQUIP, { kind, itemId }));
+    }
   }
 
   private bindCooking() {
@@ -424,6 +432,11 @@ export class HubScene extends Phaser.Scene {
     this.room.onMessage(MSG_ATE, (ate: AtePayload) => {
       const minutes = Math.round((ate.buffExpiresAt - gameStore.serverNow()) / 60000);
       toast(`Ate ${ate.name}. +${ate.gatherSpeedPct}% gathering for ${minutes} minutes.`);
+    });
+
+    this.room.onMessage(MSG_UNLOCKED, (payload: UnlockedPayload) => {
+      const names = payload.items.map((i) => i.name).join(", ");
+      toast(`Unlocked: ${names}. Try it on at the Outfitter.`);
     });
 
     this.room.onMessage(MSG_BOUGHT, (bought: BoughtPayload) => {

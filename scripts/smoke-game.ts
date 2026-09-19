@@ -25,6 +25,7 @@ import {
   MSG_COOK_START,
   MSG_COOK_STOP,
   MSG_EAT,
+  MSG_EQUIP,
   MSG_GATHER,
   MSG_GATHER_RESULT,
   MSG_GATHER_STARTED,
@@ -35,6 +36,7 @@ import {
   MSG_REJECTED,
   MSG_SELL,
   MSG_SOLD,
+  MSG_UNLOCKED,
   MSG_TRAVEL,
   findSection,
   type AtePayload,
@@ -47,6 +49,7 @@ import {
   type ProfilePayload,
   type RejectedPayload,
   type SoldPayload,
+  type UnlockedPayload,
   type TilePos,
 } from "@crazycauldron/shared";
 
@@ -335,6 +338,7 @@ async function main() {
     MSG_HEAT_BAR,
     MSG_COOK_RESULT,
     MSG_SOLD,
+  MSG_UNLOCKED,
     MSG_ATE,
   ]) {
     mail.listen(room, type);
@@ -348,6 +352,14 @@ async function main() {
   check("starts with no coins", profile.coins === 0);
   check("starts with 16 carry slots", profile.carrySlots === 16, `${profile.carrySlots}`);
   check("Meadows is unlocked", profile.unlockedSections.includes(1));
+  check("starts wearing the linen apron", profile.apronId === "apron_01_linen", profile.apronId);
+  check("starts bare-headed", profile.hatId === "");
+  check("wardrobe lists every item", profile.wardrobe.length === 16, `${profile.wardrobe.length}`);
+  check(
+    "locked items explain themselves",
+    profile.wardrobe.find((w) => w.id === "hat_02_straw")?.requirement.includes("foraging") ?? false,
+    profile.wardrobe.find((w) => w.id === "hat_02_straw")?.requirement ?? "",
+  );
   check("next goal is set", profile.nextGoal !== null, profile.nextGoal ?? "");
   check(
     "meadow flatbread is cookable from level 1",
@@ -506,6 +518,56 @@ async function main() {
     "codex recorded the recipe",
     profile.codex.some((c) => c.recipeId === "meadow_flatbread" && c.cooked),
   );
+
+  // --- wardrobe ------------------------------------------------------------
+  console.log("\n-- wardrobe --");
+
+  // Cooking that Superb flatbread satisfies "cook any dish at Fine or better".
+  const unlocked = await mail.next<UnlockedPayload>(MSG_UNLOCKED, 5000).catch(() => null);
+  check(
+    "a Fine-or-better cook grants the chef toque",
+    unlocked?.items.some((i) => i.id === "hat_01_chef") ?? false,
+    unlocked ? unlocked.items.map((i) => i.id).join(", ") : "no unlock message",
+  );
+
+  // cookOnce already consumed the profile that followed the unlock, so the
+  // current one is up to date - asking for another would just block.
+  check(
+    "the toque shows as unlocked but not worn",
+    profile.wardrobe.find((w) => w.id === "hat_01_chef")?.unlocked === true &&
+      profile.hatId === "",
+  );
+
+  mail.drain(MSG_REJECTED);
+  room.send(MSG_EQUIP, { kind: "hat", itemId: "hat_01_chef" });
+  await takeProfile();
+  check("equipping it sticks", profile.hatId === "hat_01_chef", profile.hatId);
+  check(
+    "and it reads as worn",
+    profile.wardrobe.find((w) => w.id === "hat_01_chef")?.equipped === true,
+  );
+
+  room.send(MSG_EQUIP, { kind: "hat", itemId: "hat_05_circlet" });
+  await sleep(300);
+  check("an unearned item is refused", rejected("locked"));
+
+  // TEST_BYPASS_HOLD leaves the balance at 0, so no tier is backed.
+  room.send(MSG_EQUIP, { kind: "hat", itemId: "hat_08_bronze" });
+  await sleep(300);
+  check("a tier item is refused without the balance", rejected("tier_required"));
+  check("no tier with a zero balance", profile.tier === null, String(profile.tier));
+
+  const bronze = profile.wardrobe.find((w) => w.id === "hat_08_bronze");
+  check("tier items carry their badge", bronze?.tier === "bronze", bronze?.tier ?? "none");
+  check(
+    "and say what the balance must be",
+    bronze?.requirement.includes("5,000") ?? false,
+    bronze?.requirement ?? "",
+  );
+
+  room.send(MSG_EQUIP, { kind: "hat", itemId: "" });
+  await takeProfile();
+  check("a hat can be taken off again", profile.hatId === "");
 
   // --- economy -------------------------------------------------------------
   console.log("\n-- economy --");

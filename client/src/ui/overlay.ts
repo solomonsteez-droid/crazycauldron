@@ -252,6 +252,49 @@ const CSS = `
 }
 .cc-dock button:hover { color: #f3e9d2; border-color: #7ce08a; }
 
+/* Wardrobe grid. */
+.cc-subhead {
+  margin: 12px 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #9a8f7a;
+}
+.cc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 6px; }
+.cc-slot {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 9px;
+  min-height: 52px;
+  font: inherit;
+  text-align: left;
+  color: #f3e9d2;
+  background: rgba(44, 36, 64, 0.35);
+  border: 1px solid #2c2440;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.cc-slot:hover:not(:disabled) { border-color: #7ce08a; }
+.cc-slot strong { font-size: 12px; }
+.cc-slot small { font-size: 10px; color: #6f6656; line-height: 1.3; }
+.cc-slot.cc-locked { opacity: 0.45; cursor: not-allowed; filter: grayscale(1); }
+.cc-slot.cc-equipped { border-color: #7ce08a; background: rgba(124, 224, 138, 0.12); }
+.cc-badge {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  padding: 1px 5px;
+  font-size: 9px;
+  font-style: normal;
+  border-radius: 3px;
+  color: #14101a;
+}
+.cc-bronze { background: #c98a4b; }
+.cc-silver { background: #c9d2dd; }
+.cc-gold { background: #f7d372; }
+
 .cc-toast {
   position: fixed;
   left: 50%;

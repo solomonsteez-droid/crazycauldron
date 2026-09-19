@@ -35,6 +35,10 @@ export interface GameStateRecord {
   unlockedSections: number[];
   /** Per-player node cooldowns, epoch ms. Persisted so relogging cannot reset them. */
   nodeReadyAt: Record<string, number>;
+  /** Wardrobe items permanently earned. Tier items are never stored here. */
+  unlockedItems: string[];
+  hatId: string;
+  apronId: string;
 }
 
 export interface LeaderboardEntry {
