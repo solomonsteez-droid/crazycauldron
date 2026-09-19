@@ -68,13 +68,18 @@ export interface GreetedPayload {
  * when NODE_ENV=production, so this cannot be sent to a live room.
  */
 export interface DevIntent {
-  command: "level";
-  value: number;
+  command: "level" | "companion";
+  /** A number for "level"; the companion's id for "companion". */
+  value: number | string;
 }
 
 /** Equip a wardrobe item, or clear the slot with an empty id. */
 export interface EquipIntent {
-  kind: "hat" | "cloak";
+  /**
+   * Carried for shape rather than choice: a hat is the only thing worn, and
+   * the server checks the item is one regardless of what this says.
+   */
+  kind: "hat";
   itemId: string;
 }
 
@@ -158,7 +163,6 @@ export interface ProfilePayload {
   /** Every wardrobe item with its state, for the Outfitter panel. */
   wardrobe: WardrobeItemView[];
   hatId: string;
-  cloakId: string;
   /** Highest tier the cached balance currently supports. */
   tier: "bronze" | "silver" | "gold" | null;
   nextGoal: string | null;

@@ -11,15 +11,25 @@ import { RECIPES, type Quality, type SkillId } from "./content/index.js";
 import type { SkillLevels } from "./progression.js";
 
 export type TierId = "bronze" | "silver" | "gold";
+
+/**
+ * Kinds a wardrobe item can be.
+ *
+ * "cloak" is dormant: the items, the art and the conditions that earn them all
+ * still exist, but none of it is active, so a hat is the only thing a player
+ * wears. The kind stays in the type because the dormant entries still declare
+ * it, and because leaving it out would make turning the slot back on a
+ * type-level change rather than a data one.
+ */
 export type WardrobeKind = "hat" | "cloak";
 
 /**
  * What a saved apron id becomes.
  *
  * Aprons were replaced by cloaks one for one, each keeping the condition that
- * earned it, so a player who had earned the Berry apron has earned the Berry
- * cloak. Anything not in this table is a garment that no longer exists and is
- * simply not worn.
+ * earned it. Cloaks are themselves dormant now, but the mapping stays: an
+ * apron id in an old save still resolves to something real, which is what
+ * keeps it in the player's earned set instead of being quietly dropped.
  */
 const APRON_TO_CLOAK: Record<string, string> = {
   apron_01_linen: "cloak_01_wool",
@@ -31,14 +41,27 @@ const APRON_TO_CLOAK: Record<string, string> = {
   apron_07_gold: "cloak_07_gold",
 };
 
-/** The cloak a stored wardrobe id means now, or null if it means nothing. */
+/**
+ * What a stored wardrobe id means now, or null if it means nothing.
+ *
+ * Dormant items count as real. A player who earned the Midnight cloak keeps
+ * it in their unlocked set while the slot is switched off - the alternative is
+ * deleting it from every save on the next login, which is not something a
+ * dormant feature should be allowed to do.
+ */
 export function migrateGarment(id: string): string | null {
   if (!id) return null;
-  if (WARDROBE_ITEMS.some((item) => item.id === id)) return id;
+  if (ALL_WARDROBE_ITEMS.some((item) => item.id === id)) return id;
   return APRON_TO_CLOAK[id] ?? null;
 }
 
-/** The cloak every player starts in. */
+/**
+ * The cloak a player's record carries by default.
+ *
+ * Nothing wears it: the slot is dormant and no room state, profile or sprite
+ * mentions a cloak. It is still written so that a record saved today is a
+ * record the slot can be switched back on over.
+ */
 export const STARTER_CLOAK = "cloak_01_wool";
 
 export type UnlockRule =
@@ -62,10 +85,27 @@ export interface WardrobeItem {
 interface WardrobeFile {
   tiers: { id: TierId; minHold: number }[];
   items: WardrobeItem[];
+  /** Items kept whole but switched off; see the note at the top of the file. */
+  dormant?: WardrobeItem[];
 }
 
 const file = wardrobeJson as unknown as WardrobeFile;
+
+/**
+ * What a player can earn and wear. Hats, at launch.
+ *
+ * Everything that decides - what is granted, what a panel lists, what the shop
+ * may sell - reads this. Nothing reads the dormant list except the two places
+ * that must not forget an id exists: migration, and looking up a name.
+ */
 export const WARDROBE_ITEMS = file.items;
+
+/** Preserved, not active. Conditions and names intact, nothing evaluating them. */
+export const DORMANT_WARDROBE_ITEMS = file.dormant ?? [];
+
+/** Both lists, for the cases where an id has to resolve whether or not it is live. */
+export const ALL_WARDROBE_ITEMS = [...WARDROBE_ITEMS, ...DORMANT_WARDROBE_ITEMS];
+
 export const WARDROBE_TIERS = file.tiers;
 
 const QUALITY_ORDER: Quality[] = ["common", "fine", "superb"];
@@ -171,8 +211,15 @@ export function requiredTier(itemId: string): TierId | null {
   return item && item.unlock.type === "tier" ? item.unlock.tier : null;
 }
 
+/**
+ * An item by id, dormant ones included.
+ *
+ * A name is wanted for anything a player might still have in their record, and
+ * a dormant garment is exactly that - so this searches both lists while
+ * everything that grants or equips searches only the live one.
+ */
 export function wardrobeItem(itemId: string): WardrobeItem | undefined {
-  return WARDROBE_ITEMS.find((i) => i.id === itemId);
+  return ALL_WARDROBE_ITEMS.find((i) => i.id === itemId);
 }
 
 /** Every item whose rule is satisfied but which the player has not been granted. */

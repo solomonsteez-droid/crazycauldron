@@ -29,9 +29,17 @@ export class Player extends Schema {
   @type("string") activity = "";
   /** Which body sheet to draw. */
   @type("string") body = "male";
-  /** Equipped wardrobe items; empty means nothing worn. */
+  /** The equipped hat; empty means bare-headed. Hats are the only worn item. */
   @type("string") hatId = "";
-  @type("string") cloakId = "";
+  /**
+   * The companion walking with this player, or empty for none.
+   *
+   * Scaffolding: the slot is replicated and drawn, and nothing yet sets it
+   * outside development. It is here rather than waiting for unlocks because
+   * the hard part of a follower is the following, and that is worth having
+   * working and watchable before anything grants one.
+   */
+  @type("string") companionId = "";
 }
 
 /**
@@ -52,7 +60,6 @@ export class Villager extends Schema {
   @type("boolean") moving = false;
   @type("string") body = "male";
   @type("string") hatId = "";
-  @type("string") cloakId = "";
 }
 
 export class HubState extends Schema {

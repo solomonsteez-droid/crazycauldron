@@ -349,7 +349,9 @@ class AlignTool {
     const help = document.createElement("p");
     help.textContent =
       "Arrow keys nudge the selected overlay by 1px. 1-4 pick the direction. " +
-      "Tab switches between hat and cloak. F toggles the flip flag. " +
+      "Tab switches between hat and cloak - cloaks are dormant in the game " +
+      "but still cut and still worth aligning for when they come back. " +
+      "F toggles the flip flag. " +
       "E toggles the eraser: left-drag rubs pixels out, right-drag paints them " +
       "back from the source. [ and ] change the brush size. Save writes both " +
       "offsets.json and any overlay you have cleaned; Reset re-cuts the " +

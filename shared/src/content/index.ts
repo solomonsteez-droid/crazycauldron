@@ -42,8 +42,13 @@ export const SKILL_IDS = CONFIG.skills.list;
 
 export const TERRAIN = terrainJson as unknown as TerrainFile;
 
+const shopFile = shopJson as unknown as ShopFile;
+
 /** What the shop sells, when the shop is on. */
-export const SHOP_ITEMS: ShopItem[] = (shopJson as unknown as ShopFile).items;
+export const SHOP_ITEMS: ShopItem[] = shopFile.items;
+
+/** Priced, kept, and not for sale while the slot they belong to is dormant. */
+export const DORMANT_SHOP_ITEMS: ShopItem[] = shopFile.dormant ?? [];
 
 /** The price of one cosmetic in whole $COOK, or undefined if it is not sold. */
 export function shopPrice(itemId: string): number | undefined {

@@ -47,6 +47,13 @@ export interface BodyEntry {
   walk?: Record<string, WalkCycle>;
 }
 
+/** A companion creature, at the size the pipeline cut it to. */
+export interface CompanionEntry {
+  id: string;
+  width: number;
+  height: number;
+}
+
 /** Scenery the pipeline cut for one map, with the size each piece came out. */
 export interface DecorEntry {
   map: number;
@@ -66,7 +73,10 @@ export interface Manifest {
   bodyFrame: { width: number; height: number };
   bodies: Record<string, BodyEntry>;
   hats: OverlayEntry[];
+  /** Cut and kept, drawn by nothing: the cloak slot is dormant. */
   cloaks: OverlayEntry[];
+  /** Creatures that walk with a player. Empty until art arrives. */
+  companions: CompanionEntry[];
   props: string[];
   /** Recipe ids that have a processed dish icon. */
   dishes: string[];
@@ -138,6 +148,7 @@ const EMPTY_MANIFEST: Manifest = {
   bodies: {},
   hats: [],
   cloaks: [],
+  companions: [],
   props: [],
   dishes: [],
   ingredients: [],

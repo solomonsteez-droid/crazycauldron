@@ -972,6 +972,53 @@ function buildIngredients(): string[] {
  * The client loads these by convention and falls back to generated placeholders
  * when they are absent, so an empty folder here is information, not a failure.
  */
+/**
+ * How wide a companion is cut.
+ *
+ * Sixteen pixels against a 25px figure: big enough to read as a creature,
+ * small enough to sit at somebody's heel without competing with them. Height
+ * follows whatever was drawn, because a cat and a bird are not the same shape.
+ */
+const COMPANION_WIDTH = 16;
+
+/**
+ * Cuts whatever is in sprites/companions/, if anything is.
+ *
+ * The slot ships before the art does, so an empty folder is the expected case
+ * and says so rather than warning. Each drop is one creature on magenta, keyed
+ * and trimmed like every other standalone item.
+ */
+function buildCompanions(): { id: string; width: number; height: number }[] {
+  const folder = path.join(SRC, "companions");
+  const files = listPngs(folder);
+  if (files.length === 0) {
+    note("skipped", "sprites/companions/ - empty, nobody has a companion yet");
+    return [];
+  }
+
+  const made: { id: string; width: number; height: number }[] = [];
+  for (const file of files) {
+    const id = file.replace(/\.png$/i, "");
+    const keyed = denoise(removeChroma(load(path.join(folder, file))));
+    const bounds = alphaBounds(keyed);
+    if (!bounds || bounds.width < 8 || bounds.height < 8) {
+      note("skipped", `sprites/companions/${file} - nothing left after keying`);
+      continue;
+    }
+
+    const tight = crop(keyed, bounds);
+    const w = COMPANION_WIDTH;
+    const h = Math.max(1, Math.round((tight.height / tight.width) * w));
+    const small = downscaleAveraged(tight, w, h);
+    const image = quantise(small, [...QUANTISE_RAMP, ...dominantColours(small, 8)]);
+
+    save(path.join(OUT, "companions", id + ".png"), image);
+    note("made", `generated/companions/${id}.png ${w}x${h}`);
+    made.push({ id, width: w, height: h });
+  }
+  return made;
+}
+
 function surveyOptional(): Record<string, string[]> {
   const wanted: Record<string, string[]> = {
     ui: ["scroll_card", "ribbon", "button", "slot", "xp_bar", "heat_bar"].map((n) => `${n}.png`),
@@ -1137,6 +1184,9 @@ function main() {
   const ingredientIcons = buildIngredients();
   const nodes = buildNodes();
 
+  // --- companions ---------------------------------------------------------
+  const companions = buildCompanions();
+
   // --- terrain ------------------------------------------------------------
   const terrain = buildTerrain();
   const decor = buildDecor();
@@ -1149,6 +1199,7 @@ function main() {
     bodies,
     hats: overlays.hats,
     cloaks: overlays.cloaks,
+    companions,
     props,
     dishes,
     ingredients: ingredientIcons,

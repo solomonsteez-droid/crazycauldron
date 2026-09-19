@@ -215,7 +215,7 @@ export class HubRoom extends Room<{ state: HubState; client: Client<{ auth: Join
      */
     player.body = claims.wallet.charCodeAt(1) % 2 === 0 ? "male" : "female";
     player.hatId = session.state.hatId;
-    player.cloakId = session.state.cloakId;
+    player.companionId = session.state.companionId;
 
     this.state.players.set(client.sessionId, player);
     this.expiries.set(client.sessionId, claims.exp);
@@ -808,13 +808,17 @@ export class HubRoom extends Room<{ state: HubState; client: Client<{ auth: Join
     const player = this.state.players.get(client.sessionId);
     if (!session || !player) return;
 
-    const kind = message?.kind === "hat" ? "hat" : "cloak";
+    /*
+     * Hats, and nothing else. The cloak slot is dormant, so an equip naming a
+     * cloak is refused the same way an equip naming a fish would be - the
+     * item is real and this is not somewhere it can go.
+     */
     const itemId = String(message?.itemId ?? "");
 
     if (itemId !== "") {
       const item = wardrobeItem(itemId);
-      if (!item || item.kind !== kind) {
-        return this.reject(client, MSG_EQUIP, "unknown_item", "No such garment.");
+      if (!item || item.kind !== "hat") {
+        return this.reject(client, MSG_EQUIP, "unknown_item", "No such hat.");
       }
       if (!session.state.canWear(itemId)) {
         const tier = item.unlock.type === "tier";
@@ -827,11 +831,8 @@ export class HubRoom extends Room<{ state: HubState; client: Client<{ auth: Join
       }
     }
 
-    if (kind === "hat") session.state.hatId = itemId;
-    else session.state.cloakId = itemId;
-
+    session.state.hatId = itemId;
     player.hatId = session.state.hatId;
-    player.cloakId = session.state.cloakId;
     session.save();
     this.sendProfile(session);
   }
@@ -889,8 +890,34 @@ export class HubRoom extends Room<{ state: HubState; client: Client<{ auth: Join
     const player = this.state.players.get(client.sessionId);
     if (!session || !player) return;
 
+    /*
+     * The companion slot has no unlocks yet, so this is the only way to put
+     * one on a player. It exists so the following, the interpolation and the
+     * bob can be watched before anything grants a companion - a scaffold
+     * nobody can see is a scaffold nobody can check.
+     */
+    if (message?.command === "companion") {
+      const id = String(message.value ?? "").trim();
+      if (id !== "" && !/^[a-z0-9_]+$/.test(id)) {
+        return this.reject(client, MSG_DEV, "bad_companion", "Ids are lower case and digits.");
+      }
+      session.state.companionId = id;
+      player.companionId = id;
+      log.warn("dev.companion", { wallet: session.state.wallet, companionId: id });
+      return client.send(MSG_REJECTED, {
+        action: MSG_DEV,
+        reason: "ok",
+        message: id ? `Companion set to ${id}.` : "Companion cleared.",
+      });
+    }
+
     if (message?.command !== "level") {
-      return this.reject(client, MSG_DEV, "unknown_command", "Try: /dev level <n>");
+      return this.reject(
+        client,
+        MSG_DEV,
+        "unknown_command",
+        "Try: /dev level <n>, or /dev companion <id>",
+      );
     }
 
     const level = Math.floor(Number(message.value));

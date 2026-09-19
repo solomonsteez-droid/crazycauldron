@@ -1,22 +1,20 @@
 /**
- * One player on screen: body, cloak, hat and name, in that order, which is the
- * order they overlap in.
+ * One player on screen: body, hat and name, in that order, which is the order
+ * they overlap in.
  *
- * The cloak is a full-front garment - one image, entirely in front of the
- * body, neckline at the throat and hem at the shins. It was split in two for
- * a while, a collar in front and a drape behind, so that the cloth hung off
- * the shoulders; at 26 pixels wide that seam cost more than the depth bought,
- * and the body showed through a garment that is closed at the front.
+ * A hat is the only thing worn. The cloak slot is dormant - the art and the
+ * pipeline that cuts it are still here, and nothing draws it - so this class
+ * has no opinion about cloaks at all rather than an opinion it never acts on.
  *
  * The sprites are separate so a wardrobe change is a texture swap rather than
- * a re-render, and so the garments can sit at hand-tuned offsets per
- * direction. The container's origin is the character's feet, which is the
- * point that must not wander between frames.
+ * a re-render, and so the hat can sit at hand-tuned offsets per direction. The
+ * container's origin is the character's feet, which is the point that must not
+ * wander between frames.
  */
 
 import Phaser from "phaser";
 import { PALETTE, hex } from "@crazycauldron/shared";
-import { BODY_FRAME, bodyKey, cloakKey, hatKey } from "../art/assets.js";
+import { BODY_FRAME, bodyKey, hatKey } from "../art/assets.js";
 import {
   defaultOffsets,
   offsetFor,
@@ -62,7 +60,6 @@ interface Pose {
 export interface AvatarLook {
   body: string;
   hatId: string;
-  cloakId: string;
   displayName: string;
   isSelf: boolean;
 }
@@ -70,7 +67,6 @@ export interface AvatarLook {
 export class Avatar {
   readonly container: Phaser.GameObjects.Container;
   private readonly body: Phaser.GameObjects.Sprite;
-  private readonly cloak: Phaser.GameObjects.Image;
   private readonly hat: Phaser.GameObjects.Image;
   private readonly label: Phaser.GameObjects.Text;
 
@@ -110,7 +106,6 @@ export class Avatar {
       .sprite(0, 0, bodyKey(look.body), `${look.body}_idle_down`)
       .setOrigin(0.5, 1);
 
-    this.cloak = scene.add.image(0, 0, "__MISSING").setOrigin(0, 0).setVisible(false);
     this.hat = scene.add.image(0, 0, "__MISSING").setOrigin(0, 0).setVisible(false);
 
     this.label = scene.add
@@ -121,13 +116,8 @@ export class Avatar {
       })
       .setOrigin(0.5, 1);
 
-    // Body, cloak, hat: the order they overlap in, back to front.
-    this.container = scene.add.container(x, y, [
-      this.body,
-      this.cloak,
-      this.hat,
-      this.label,
-    ]);
+    // Body, hat, name: the order they overlap in, back to front.
+    this.container = scene.add.container(x, y, [this.body, this.hat, this.label]);
     this.apply();
   }
 
@@ -249,6 +239,18 @@ export class Avatar {
     return this.label;
   }
 
+  /**
+   * The way this character is drawn facing right now.
+   *
+   * The rendered direction rather than the server's, so anything that hangs
+   * off the character - a companion trailing behind its left shoulder - turns
+   * with what is on screen instead of with a state patch that may be a step
+   * behind it.
+   */
+  get heading(): Direction {
+    return this.direction;
+  }
+
   /** What this avatar is doing right now, for the debug overlay. */
   debugState(): { animation: string; frame: number; direction: Direction; walking: boolean } {
     return {
@@ -279,17 +281,6 @@ export class Avatar {
     const hatTexture = hatKey(this.look.hatId, facingAway && hatEntry?.back === true);
     this.hat.setVisible(Boolean(this.look.hatId) && this.scene.textures.exists(hatTexture));
     if (this.hat.visible) this.hat.setTexture(hatTexture);
-
-    /*
-     * One image at every angle. Left and right are the same art flipped, and
-     * the view from behind is the same art again - a cloak is close enough to
-     * symmetric from the back that a second drawing would be one more thing
-     * to keep in step for no visible gain.
-     */
-    const cloak = this.look.cloakId;
-    const cloakTexture = cloakKey(cloak);
-    this.cloak.setVisible(Boolean(cloak) && this.scene.textures.exists(cloakTexture));
-    if (this.cloak.visible) this.cloak.setTexture(cloakTexture);
 
     this.label.setText(this.look.displayName);
     this.label.setColor(this.look.isSelf ? hex(PALETTE.accent) : hex(PALETTE.ink));
@@ -336,10 +327,7 @@ export class Avatar {
     const top = -BODY_FRAME.height + this.pose.dy;
     const bob = this.walking && BOB_FRAMES.has(this.sourceFrame()) ? -1 : 0;
 
-    for (const [kind, sprite, id] of [
-      ["cloaks", this.cloak, this.look.cloakId],
-      ["hats", this.hat, this.look.hatId],
-    ] as const) {
+    for (const [kind, sprite, id] of [["hats", this.hat, this.look.hatId]] as const) {
       if (!sprite.visible || !id) continue;
 
       const entry = this.manifest[kind].find((e) => e.id === id);

@@ -35,7 +35,7 @@ recipes.json       20 recipes: ingredients, technique, requirements, XP, price
 sections.json      what each gathering area *is*: its name, its price of entry,
                    and the 12 things that grow there
 skills.json        both XP curves, every unlock, and the tuning constants
-wardrobe.json      hats and cloaks, and what earns each one
+wardrobe.json      hats and what earns each one; cloaks, kept and dormant
 ambience.json      villagers, particles, day length, and every sound cue
 maps/*.json        the four painted areas: a walkable mask, the spawn, the
                    gates and counters, and where each node stands
@@ -198,6 +198,21 @@ click, and starts the stride from its own answer - while the tween still only
 ever moves between cells the server has confirmed. A mispredicted route costs a
 wrong-footed stride for a frame; a mispredicted *position* would cost a player
 walking through a wall, which is why only one of the two is guessed at.
+
+**A slot can be switched off without being deleted.** Cloaks are not worn at
+launch: nothing renders one, no panel offers one, and the room state has no
+field for one. The art, the pipeline that cuts it and every unlock condition
+are all still here, moved to a `dormant` list in `wardrobe.json` - and a player
+who earned the Midnight cloak still has it in their record, because migration
+reads both lists while everything that grants or equips reads only the live
+one. Turning the slot back on is moving entries between two arrays.
+
+**Companions are scaffolding with the hard part already built.** A
+`companionId` is replicated per player and drawn as a creature that trails one
+cell behind and to their left, chasing rather than sticking, bobbing a pixel.
+Its position is derived entirely from the player it follows, so nothing about
+it goes on the wire and every client draws it in the same place. Nothing grants
+one yet; `cc.companion(id)` in development is how you look at it.
 
 **Which frames a walk cycle plays is measured, not assumed.** `npm run sprites`
 compares the four drawings of each direction two ways - how much of the outline

@@ -67,9 +67,24 @@ export class PlayerState {
   panTier: number;
   bagTier: number;
   buffExpiresAt: number;
-  /** Equipped wardrobe items. The wool cloak is the starting garment. */
+  /** The equipped hat. Hats are the only garment worn at launch. */
   hatId: string;
+  /**
+   * Kept, not worn.
+   *
+   * The cloak slot is dormant: nothing renders it, no panel offers it and it
+   * is absent from room state. The value is still loaded and saved so that a
+   * player who earned a cloak still has it when the slot comes back.
+   */
   cloakId: string;
+  /**
+   * The companion walking with this player. Nothing grants one yet.
+   *
+   * Not persisted, deliberately: a column for a slot with no way to fill it
+   * would be a migration on two databases in exchange for nothing. It lands
+   * with the unlocks.
+   */
+  companionId = "";
   /** Permanently earned items. Tier items are never kept here. */
   readonly unlockedItems: Set<string>;
   /** Highest tier the last cached $COOK balance supports; refreshed on join. */
@@ -309,12 +324,11 @@ export class PlayerState {
    */
   enforceTier(): string[] {
     const removed: string[] = [];
-    for (const slot of ["hatId", "cloakId"] as const) {
-      const itemId = this[slot];
-      if (itemId && requiredTier(itemId) && !this.canWear(itemId)) {
-        removed.push(itemId);
-        this[slot] = slot === "cloakId" ? STARTER_CLOAK : "";
-      }
+    // Only the hat, because only the hat is worn.
+    const itemId = this.hatId;
+    if (itemId && requiredTier(itemId) && !this.canWear(itemId)) {
+      removed.push(itemId);
+      this.hatId = "";
     }
     return removed;
   }
@@ -326,7 +340,7 @@ export class PlayerState {
       const unlocked = tier
         ? isUnlocked(item.unlock, snapshot)
         : this.unlockedItems.has(item.id);
-      const equipped = item.id === this.hatId || item.id === this.cloakId;
+      const equipped = item.id === this.hatId;
       return {
         id: item.id,
         kind: item.kind,
@@ -429,7 +443,6 @@ export class PlayerState {
       titles: titlesEarned(levels),
       wardrobe: this.wardrobeViews(),
       hatId: this.hatId,
-      cloakId: this.cloakId,
       tier: this.tier,
       nextGoal: goal ? describeUnlock(goal) : null,
       serverNow: Date.now(),

@@ -363,4 +363,6 @@ export interface ShopItem {
 
 export interface ShopFile {
   items: ShopItem[];
+  /** Priced but not sold, because the slot they belong to is switched off. */
+  dormant?: ShopItem[];
 }

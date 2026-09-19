@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-19T22:45:51.676Z",
+  "generatedAt": "2026-09-19T23:13:35.730Z",
   "bodyFrame": {
     "width": 32,
     "height": 48
@@ -555,76 +555,42 @@
       "widthPct": 0.84
     }
   ],
-  "cloaks": [
+  "cloaks": [],
+  "companions": [
     {
-      "id": "cloak_01_wool",
-      "width": 26,
-      "height": 22,
-      "offset": {
-        "x": 3,
-        "y": 22
-      },
-      "widthPct": 1.04
+      "id": "companion_01_hen",
+      "width": 16,
+      "height": 21
     },
     {
-      "id": "cloak_02_patched",
-      "width": 26,
-      "height": 22,
-      "offset": {
-        "x": 3,
-        "y": 22
-      },
-      "widthPct": 1.04
+      "id": "companion_02_piglet",
+      "width": 16,
+      "height": 13
     },
     {
-      "id": "cloak_03_berry",
-      "width": 26,
-      "height": 22,
-      "offset": {
-        "x": 3,
-        "y": 22
-      },
-      "widthPct": 1.04
+      "id": "companion_03_berrymouse",
+      "width": 16,
+      "height": 18
     },
     {
-      "id": "cloak_04_rugged",
-      "width": 26,
-      "height": 22,
-      "offset": {
-        "x": 3,
-        "y": 22
-      },
-      "widthPct": 1.04
+      "id": "companion_04_mole",
+      "width": 16,
+      "height": 18
     },
     {
-      "id": "cloak_05_midnight",
-      "width": 26,
-      "height": 22,
-      "offset": {
-        "x": 3,
-        "y": 22
-      },
-      "widthPct": 1.04
+      "id": "companion_05_owlet",
+      "width": 16,
+      "height": 19
     },
     {
-      "id": "cloak_06_silver",
-      "width": 26,
-      "height": 22,
-      "offset": {
-        "x": 3,
-        "y": 22
-      },
-      "widthPct": 1.04
+      "id": "companion_06_glowslime",
+      "width": 16,
+      "height": 18
     },
     {
-      "id": "cloak_07_gold",
-      "width": 26,
-      "height": 22,
-      "offset": {
-        "x": 3,
-        "y": 22
-      },
-      "widthPct": 1.04
+      "id": "companion_07_emberfox",
+      "width": 16,
+      "height": 17
     }
   ],
   "props": [

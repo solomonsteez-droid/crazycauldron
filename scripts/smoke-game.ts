@@ -196,6 +196,7 @@ interface SelfView {
   tileX: number;
   tileY: number;
   section: number;
+  companionId: string;
 }
 
 interface VillagerView {
@@ -417,9 +418,15 @@ async function main() {
   check("starts with no coins", profile.coins === 0);
   check("starts with 16 carry slots", profile.carrySlots === 16, `${profile.carrySlots}`);
   check("Meadows is unlocked", profile.unlockedSections.includes(1));
-  check("starts wearing the wool cloak", profile.cloakId === "cloak_01_wool", profile.cloakId);
   check("starts bare-headed", profile.hatId === "");
-  check("wardrobe lists every item", profile.wardrobe.length === 16, `${profile.wardrobe.length}`);
+  check("wardrobe lists every hat", profile.wardrobe.length === 9, `${profile.wardrobe.length}`);
+  // The cloak slot is dormant: the garments exist in the content file and
+  // nothing offers them, so nothing about them reaches a player.
+  check(
+    "and offers no cloak",
+    profile.wardrobe.every((w) => w.kind === "hat"),
+    profile.wardrobe.map((w) => w.kind).join(","),
+  );
   check(
     "locked items explain themselves",
     profile.wardrobe.find((w) => w.id === "hat_02_straw")?.requirement.includes("foraging") ?? false,
@@ -715,6 +722,33 @@ async function main() {
   room.send(MSG_DEV, { command: "nonsense" });
   await sleep(300);
   check("an unknown dev command is refused", rejected("unknown_command"));
+
+  /*
+   * The companion slot. Nothing grants one yet, so the dev command is the only
+   * way in - and a slot that is replicated but never exercised is a slot
+   * nobody finds out is broken until the day it matters.
+   */
+  console.log("\n-- companions --");
+  check("nobody starts with a companion", self(room).companionId === "", self(room).companionId);
+
+  mail.drain(MSG_REJECTED);
+  room.send(MSG_DEV, { command: "companion", value: "companion_01_hen" });
+  await sleep(300);
+  check(
+    "one can be put on",
+    self(room).companionId === "companion_01_hen",
+    self(room).companionId,
+  );
+
+  room.send(MSG_DEV, { command: "companion", value: "" });
+  await sleep(300);
+  check("and taken off again", self(room).companionId === "", self(room).companionId);
+
+  mail.drain(MSG_REJECTED);
+  room.send(MSG_DEV, { command: "companion", value: "../../etc/passwd" });
+  await sleep(300);
+  check("an id that is not an id is refused", rejected("bad_companion"));
+  check("and nothing was set", self(room).companionId === "", self(room).companionId);
 
   // --- villagers -----------------------------------------------------------
   console.log(`

@@ -33,16 +33,13 @@ export const bodyKey = (body: string) => `body:${body}`;
 export const hatKey = (id: string, back = false) => `hat:${id}${back ? ":back" : ""}`;
 
 /**
- * A cloak. One image, drawn whole and drawn in front of the body.
+ * A companion, walking beside its player.
  *
- * It was three for a while - a collar in front and a drape behind, so the
- * garment hung off the shoulders. At 26 pixels wide the seam cost more than
- * the depth bought, and the body showed through a garment that is closed at
- * the front. The up view uses the same image; a cloak is near enough
- * symmetric from behind that a second drawing would only be one more thing to
- * keep in step.
+ * One image at every angle. A pet at this size is a silhouette with two eyes;
+ * four drawings of one would be four chances for them to disagree, and the
+ * follower turns by moving rather than by facing.
  */
-export const cloakKey = (id: string) => `cloak:${id}`;
+export const companionKey = (id: string) => `companion:${id}`;
 export const ingredientKey = (id: string) => `ingredient:${id}`;
 export const dishKey = (recipeId: string) => `dish:${recipeId}`;
 /**
@@ -135,8 +132,8 @@ export function queueArt(scene: Phaser.Scene, manifest: Manifest): void {
     scene.load.image(hatKey(hat.id), `${GENERATED}/hats/${hat.id}.png`);
     if (hat.back) scene.load.image(hatKey(hat.id, true), `${GENERATED}/hats/${hat.id}_back.png`);
   }
-  for (const cloak of manifest.cloaks) {
-    scene.load.image(cloakKey(cloak.id), `${GENERATED}/cloaks/${cloak.id}.png`);
+  for (const companion of manifest.companions) {
+    scene.load.image(companionKey(companion.id), `${GENERATED}/companions/${companion.id}.png`);
   }
   /*
    * Of the generated props only the three gate arches are loaded. The

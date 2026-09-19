@@ -67,6 +67,7 @@ import { Ambience } from "../world/ambience.js";
 import { sound } from "../world/sound.js";
 import { directionFor, directionForVector, loadArt, type Manifest, type OffsetsFile } from "../art/manifest.js";
 import { WalkDebug, type VectorSource } from "../dev/walkDebug.js";
+import { Companion } from "../world/companion.js";
 import { LABEL_SCREEN_PX, labelScale, planCamera } from "../map/camera.js";
 import { TEX_MARKER } from "../map/textures.js";
 import type { HubStateView, KickNotice, PlayerView, VillagerView } from "../net/state.js";
@@ -102,6 +103,8 @@ interface HubSceneData {
 
 interface AvatarEntry {
   avatar: Avatar;
+  /** Only players have one; villagers walk alone. */
+  companion?: Companion;
   tween?: Phaser.Tweens.Tween;
   /** The last vector a walk direction was chosen from, for the debug overlay. */
   vector?: { dx: number; dy: number; source: VectorSource };
@@ -279,13 +282,28 @@ export class HubScene extends Phaser.Scene {
         this.room.send(MSG_DEV, { command: "level", value: n });
         return `asked the server for level ${n}`;
       },
-      help: () => "cc.level(n) - set Chef and every skill to n",
+      /*
+       * The only way to get a companion: the slot has no unlocks yet, and a
+       * follower nobody can put on is a follower nobody can look at.
+       */
+      companion: (id: string) => {
+        this.room.send(MSG_DEV, { command: "companion", value: id });
+        const known = this.manifest.companions.map((c) => c.id);
+        return id
+          ? `asked for ${id}${known.includes(id) ? "" : ` (no art; known: ${known.join(", ")})`}`
+          : "asked to clear the companion";
+      },
+      help: () =>
+        [
+          "cc.level(n)       - set Chef and every skill to n",
+          "cc.companion(id)  - walk with a companion; \"\" clears it",
+        ].join("\n"),
     };
     (window as unknown as { cc?: typeof dev }).cc = dev;
-    console.info("dev: cc.level(n) sets Chef Level and all skills. Development only.");
+    console.info("dev: cc.help() lists what is available. Development only.");
   }
 
-  override update(now: number) {
+  override update(now: number, delta: number) {
     /*
      * A prediction that the server never acted on is a move it refused -
      * blocked ground, out of range, too many messages - and the character
@@ -296,7 +314,23 @@ export class HubScene extends Phaser.Scene {
 
     // Everyone in the room breathes, fidgets and dances - the motion is
     // procedural, so it costs the same for one player or thirty.
-    for (const entry of this.avatars.values()) entry.avatar.tick(now);
+    for (const entry of this.avatars.values()) {
+      entry.avatar.tick(now);
+      /*
+       * Companions chase from here rather than from a state patch. Their whole
+       * position is derived from the player they follow, so there is nothing
+       * to replicate and nothing to arrive late - they simply keep up, every
+       * frame, on every client, identically.
+       */
+      entry.companion?.follow(
+        entry.avatar.container.x,
+        entry.avatar.container.y,
+        entry.avatar.heading,
+        entry.avatar.container.depth,
+        now,
+        delta,
+      );
+    }
     for (const entry of this.villagers.values()) entry.avatar.tick(now);
 
     this.walkDebug?.update([...this.avatars.values(), ...this.villagers.values()]);
@@ -654,7 +688,7 @@ export class HubScene extends Phaser.Scene {
     else if (id === "outfitter") {
       // The outfitter sells upgrades and keeps the wardrobe; both open here.
       openShop(this.panelCallbacks());
-      openWardrobe((kind, itemId) => this.room.send(MSG_EQUIP, { kind, itemId }));
+      openWardrobe((itemId) => this.room.send(MSG_EQUIP, { kind: "hat", itemId }));
     }
   }
 
@@ -823,7 +857,6 @@ export class HubScene extends Phaser.Scene {
       {
         body: villager.body || "male",
         hatId: villager.hatId ?? "",
-        cloakId: villager.cloakId ?? "",
         displayName: villager.name,
         isSelf: false,
       },
@@ -923,7 +956,6 @@ export class HubScene extends Phaser.Scene {
       {
         body: player.body || "male",
         hatId: player.hatId ?? "",
-        cloakId: player.cloakId ?? "",
         displayName: player.displayName,
         isSelf,
       },
@@ -935,7 +967,12 @@ export class HubScene extends Phaser.Scene {
     avatar.setDirection(directionFor(player.facing), player.moving);
     avatar.setActivity(player.activity ?? "");
 
-    const entry: AvatarEntry = { avatar };
+    const companion = new Companion(this);
+    companion.setCompanion(player.companionId ?? "");
+    companion.setVisible(player.section === this.currentSection);
+    companion.snapTo(position.x, position.y, avatar.heading);
+
+    const entry: AvatarEntry = { avatar, companion };
     this.avatars.set(sessionId, entry);
 
     this.watch(player).onChange(() => this.onPlayerChanged(sessionId, player));
@@ -966,10 +1003,11 @@ export class HubScene extends Phaser.Scene {
     avatar.setLook({
       body: player.body || "male",
       hatId: player.hatId ?? "",
-      cloakId: player.cloakId ?? "",
       displayName: player.displayName,
       isSelf,
     });
+    entry.companion?.setCompanion(player.companionId ?? "");
+    entry.companion?.setVisible(player.section === this.currentSection);
     avatar.setActivity(player.activity ?? "");
 
     /*
@@ -1064,6 +1102,10 @@ export class HubScene extends Phaser.Scene {
       entry.tween?.stop();
       entry.avatar.container.setPosition(at.x, at.y);
       entry.avatar.container.setVisible(player.section === this.currentSection);
+      // Snapped rather than chased: a companion should not be seen crossing
+      // the map to catch up with somebody who walked through a gate.
+      entry.companion?.setVisible(player.section === this.currentSection);
+      entry.companion?.snapTo(at.x, at.y, entry.avatar.heading);
     });
   }
 
@@ -1071,6 +1113,7 @@ export class HubScene extends Phaser.Scene {
     const entry = this.avatars.get(sessionId);
     if (!entry) return;
     entry.tween?.stop();
+    entry.companion?.destroy();
     entry.avatar.destroy();
     this.avatars.delete(sessionId);
   }

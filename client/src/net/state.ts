@@ -35,7 +35,8 @@ export interface PlayerView {
   activity: string;
   body: string;
   hatId: string;
-  cloakId: string;
+  /** The creature walking with them, or empty. Drawn, never replicated further. */
+  companionId: string;
 }
 
 /** A hub resident. No wallet and no progress - they are scenery that walks. */
@@ -48,7 +49,6 @@ export interface VillagerView {
   moving: boolean;
   body: string;
   hatId: string;
-  cloakId: string;
 }
 
 export interface HubStateView {

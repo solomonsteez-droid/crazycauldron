@@ -13,6 +13,9 @@ import {
   AMBIENCE,
   AREAS,
   HUB_MAP,
+  ALL_WARDROBE_ITEMS,
+  DORMANT_SHOP_ITEMS,
+  DORMANT_WARDROBE_ITEMS,
   SHOP_ITEMS,
   WARDROBE_ITEMS,
   areaFor,
@@ -233,7 +236,13 @@ for (const skill of ["firecraft", "knifework", "spicecraft"] as const) {
  */
 const villagerIds = new Set<string>();
 const hatIds = new Set(WARDROBE_ITEMS.filter((i) => i.kind === "hat").map((i) => i.id));
-const cloakIds = new Set(WARDROBE_ITEMS.filter((i) => i.kind === "cloak").map((i) => i.id));
+/*
+ * Dormant, and still checked. A villager's cloak is not drawn while the slot
+ * is off, but the assignment is kept - and an id that stops resolving is a
+ * rename nobody finished, which is worth catching now rather than on the day
+ * the slot comes back.
+ */
+const cloakIds = new Set(ALL_WARDROBE_ITEMS.filter((i) => i.kind === "cloak").map((i) => i.id));
 
 for (const villager of AMBIENCE.villagers.roster) {
   if (!SNAKE.test(villager.id)) note(`villager id is not snake_case: ${villager.id}`);
@@ -357,7 +366,12 @@ const shopSeen = new Set<string>();
 for (const item of SHOP_ITEMS) {
   const wardrobe = WARDROBE_ITEMS.find((w) => w.id === item.itemId);
   if (!wardrobe) {
-    note(`the shop sells ${item.itemId}, which is not a wardrobe item`);
+    const dormant = DORMANT_WARDROBE_ITEMS.some((w) => w.id === item.itemId);
+    note(
+      dormant
+        ? `the shop sells ${item.itemId}, which belongs to a dormant slot - nobody could wear it`
+        : `the shop sells ${item.itemId}, which is not a wardrobe item`,
+    );
     continue;
   }
   if (wardrobe.unlock.type === "tier") {
@@ -374,6 +388,32 @@ for (const item of SHOP_ITEMS) {
   shopSeen.add(item.itemId);
 }
 
+// --- what is switched off --------------------------------------------------
+
+/*
+ * Dormant content is still content. It is not evaluated, which means nothing
+ * else would notice it rotting - a duplicate id, a price that cannot be
+ * halved, a garment that is dormant in one file and live in another. Checking
+ * it costs nothing and is the difference between switching a slot back on and
+ * excavating it.
+ */
+const liveIds = new Set(WARDROBE_ITEMS.map((i) => i.id));
+for (const item of DORMANT_WARDROBE_ITEMS) {
+  if (liveIds.has(item.id)) note(`${item.id} is both live and dormant`);
+  if (!SNAKE.test(item.id)) note(`dormant wardrobe id is not snake_case: ${item.id}`);
+  if (!item.name) note(`dormant item ${item.id} has no name`);
+}
+
+const dormantIds = new Set(DORMANT_WARDROBE_ITEMS.map((i) => i.id));
+for (const item of DORMANT_SHOP_ITEMS) {
+  if (!dormantIds.has(item.itemId) && !liveIds.has(item.itemId)) {
+    note(`the dormant shop prices ${item.itemId}, which is not a wardrobe item at all`);
+  }
+  if (item.cook % 2 !== 0) {
+    note(`dormant ${item.itemId} costs ${item.cook} $COOK, which cannot be halved`);
+  }
+}
+
 // --- report ----------------------------------------------------------------
 console.log(
   `content: ${INGREDIENTS.length} ingredients, ${RECIPES.length} recipes, ${SECTIONS.length} sections, ${SECTIONS.reduce((n, s) => n + s.nodes.length, 0)} nodes`,
@@ -385,7 +425,12 @@ console.log(
 console.log(
   `ambience: ${AMBIENCE.villagers.roster.length} villagers, ${villagerGround().length} cells they may walk`,
 );
-console.log(`shop: ${SHOP_ITEMS.length} cosmetics for $COOK`);
+console.log(
+  `shop: ${SHOP_ITEMS.length} cosmetics for $COOK, ${DORMANT_SHOP_ITEMS.length} priced but dormant`,
+);
+console.log(
+  `wardrobe: ${WARDROBE_ITEMS.length} items worn, ${DORMANT_WARDROBE_ITEMS.length} kept for a slot that is switched off`,
+);
 
 if (problems.length === 0) {
   console.log("validate-content: OK");

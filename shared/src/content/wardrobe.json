@@ -1,5 +1,6 @@
 {
   "_comment": "Wardrobe items and how each is earned. Tier thresholds are $COOK balances, read from the same cached figure the hold check already uses.",
+  "_dormant": "Cloaks are not worn at launch. The art, the pipeline and the conditions below all still exist - nothing here was deleted - but nothing reads 'dormant' when deciding what a player has earned or may put on. Moving these back into 'items' is what turns the slot on again, and every unlock is exactly as it was.",
   "tiers": [
     {
       "id": "bronze",
@@ -16,29 +17,12 @@
   ],
   "items": [
     {
-      "id": "cloak_01_wool",
-      "kind": "cloak",
-      "name": "Wool cloak",
-      "unlock": {
-        "type": "start"
-      }
-    },
-    {
       "id": "hat_01_chef",
       "kind": "hat",
       "name": "Chef toque",
       "unlock": {
         "type": "cookQuality",
         "minQuality": "fine"
-      }
-    },
-    {
-      "id": "cloak_02_patched",
-      "kind": "cloak",
-      "name": "Patched cloak",
-      "unlock": {
-        "type": "chefLevel",
-        "level": 5
       }
     },
     {
@@ -52,15 +36,6 @@
       }
     },
     {
-      "id": "cloak_03_berry",
-      "kind": "cloak",
-      "name": "Berry cloak",
-      "unlock": {
-        "type": "chefLevel",
-        "level": 10
-      }
-    },
-    {
       "id": "hat_03_mushroom",
       "kind": "hat",
       "name": "Mushroom cap",
@@ -70,31 +45,12 @@
       }
     },
     {
-      "id": "cloak_04_rugged",
-      "kind": "cloak",
-      "name": "Rugged cloak",
-      "unlock": {
-        "type": "skillLevel",
-        "skill": "prospecting",
-        "level": 10
-      }
-    },
-    {
       "id": "hat_04_acorn",
       "kind": "hat",
       "name": "Acorn cap",
       "unlock": {
         "type": "sectionRecipes",
         "section": 2
-      }
-    },
-    {
-      "id": "cloak_05_midnight",
-      "kind": "cloak",
-      "name": "Midnight cloak",
-      "unlock": {
-        "type": "chefLevel",
-        "level": 20
       }
     },
     {
@@ -136,21 +92,68 @@
       }
     },
     {
-      "id": "cloak_06_silver",
-      "kind": "cloak",
-      "name": "Silver cloak",
-      "unlock": {
-        "type": "tier",
-        "tier": "silver"
-      }
-    },
-    {
       "id": "hat_09_gold",
       "kind": "hat",
       "name": "Gold toque",
       "unlock": {
         "type": "tier",
         "tier": "gold"
+      }
+    }
+  ],
+  "dormant": [
+    {
+      "id": "cloak_01_wool",
+      "kind": "cloak",
+      "name": "Wool cloak",
+      "unlock": {
+        "type": "start"
+      }
+    },
+    {
+      "id": "cloak_02_patched",
+      "kind": "cloak",
+      "name": "Patched cloak",
+      "unlock": {
+        "type": "chefLevel",
+        "level": 5
+      }
+    },
+    {
+      "id": "cloak_03_berry",
+      "kind": "cloak",
+      "name": "Berry cloak",
+      "unlock": {
+        "type": "chefLevel",
+        "level": 10
+      }
+    },
+    {
+      "id": "cloak_04_rugged",
+      "kind": "cloak",
+      "name": "Rugged cloak",
+      "unlock": {
+        "type": "skillLevel",
+        "skill": "prospecting",
+        "level": 10
+      }
+    },
+    {
+      "id": "cloak_05_midnight",
+      "kind": "cloak",
+      "name": "Midnight cloak",
+      "unlock": {
+        "type": "chefLevel",
+        "level": 20
+      }
+    },
+    {
+      "id": "cloak_06_silver",
+      "kind": "cloak",
+      "name": "Silver cloak",
+      "unlock": {
+        "type": "tier",
+        "tier": "silver"
       }
     },
     {

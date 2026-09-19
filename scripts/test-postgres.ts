@@ -132,7 +132,6 @@ interface Profile {
   coins: number;
   chefXp: number;
   hatId: string;
-  cloakId: string;
   bag: { id: string; qty: number }[];
 }
 
@@ -218,7 +217,7 @@ async function main(): Promise<void> {
     const { token, wallet } = await signIn();
     const first = await play(token);
     check("a session earned progress", first.chefXp > 0, `${first.chefXp} chef XP`);
-    check("and was handed a starting cloak", first.cloakId === "cloak_01_wool", first.cloakId);
+    check("and starts bare-headed", first.hatId === "", first.hatId || "(none)");
 
     console.log("\n-- it survives a restart --");
     await stopServer(server);
@@ -227,7 +226,7 @@ async function main(): Promise<void> {
     const again = await play(token);
     check("the XP came back", again.chefXp >= first.chefXp, `${again.chefXp} chef XP`);
     check("the coins came back", again.coins >= first.coins, `${again.coins} coins`);
-    check("and so did the wallet's row", again.cloakId === first.cloakId, again.cloakId);
+    check("and so did the wallet's row", again.hatId === first.hatId, again.hatId || "(none)");
 
     console.log("\n-- backup and restore --");
     await stopServer(server);

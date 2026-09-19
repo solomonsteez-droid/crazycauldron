@@ -1,16 +1,52 @@
 {
   "//": "Cosmetics that can be bought with $COOK instead of earned. Prices are whole $COOK; half of each is burned and half goes to the treasury, so an odd number would round - keep them even. Tier garments are deliberately absent: they are held, not owned, and buying one would spend the balance that grants it.",
+  "_dormant": "Cloaks are not worn at launch, so they are not sold either - charging for a garment nobody can put on would be taking money for nothing. The prices are kept here so that turning the slot back on does not mean pricing them again.",
   "items": [
-    { "itemId": "hat_01_chef", "cook": 2000 },
-    { "itemId": "hat_02_straw", "cook": 4000 },
-    { "itemId": "hat_03_mushroom", "cook": 6000 },
-    { "itemId": "hat_04_acorn", "cook": 8000 },
-    { "itemId": "hat_05_circlet", "cook": 12000 },
-    { "itemId": "hat_06_dragonscale", "cook": 20000 },
-    { "itemId": "hat_07_moonpetal", "cook": 20000 },
-    { "itemId": "cloak_02_patched", "cook": 2000 },
-    { "itemId": "cloak_03_berry", "cook": 6000 },
-    { "itemId": "cloak_04_rugged", "cook": 10000 },
-    { "itemId": "cloak_05_midnight", "cook": 16000 }
+    {
+      "itemId": "hat_01_chef",
+      "cook": 2000
+    },
+    {
+      "itemId": "hat_02_straw",
+      "cook": 4000
+    },
+    {
+      "itemId": "hat_03_mushroom",
+      "cook": 6000
+    },
+    {
+      "itemId": "hat_04_acorn",
+      "cook": 8000
+    },
+    {
+      "itemId": "hat_05_circlet",
+      "cook": 12000
+    },
+    {
+      "itemId": "hat_06_dragonscale",
+      "cook": 20000
+    },
+    {
+      "itemId": "hat_07_moonpetal",
+      "cook": 20000
+    }
+  ],
+  "dormant": [
+    {
+      "itemId": "cloak_02_patched",
+      "cook": 2000
+    },
+    {
+      "itemId": "cloak_03_berry",
+      "cook": 6000
+    },
+    {
+      "itemId": "cloak_04_rugged",
+      "cook": 10000
+    },
+    {
+      "itemId": "cloak_05_midnight",
+      "cook": 16000
+    }
   ]
 }
