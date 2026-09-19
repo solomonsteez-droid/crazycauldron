@@ -1,0 +1,11 @@
+# The committed client build is an artefact, not source. Git normalises line
+# endings in anything it thinks is text, which would rewrite the bundle on
+# every checkout - different bytes on Windows and Linux for the same commit,
+# and a served file that is not the one that was built. Nothing here is edited
+# by hand, so nothing here should be touched.
+/client/dist/** -text -diff
+
+# Source art is binary and large. Marking it stops git trying to diff a 2048px
+# PNG and stops any chance of a checkout mangling one.
+/art/** -text -diff
+*.png binary
