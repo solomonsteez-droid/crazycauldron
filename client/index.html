@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CrazyCauldron</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --ink: #f3e9d2;
+        --dim: #9a8f7a;
+        --bg: #14101a;
+        --accent: #7ce08a;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: var(--bg);
+        color: var(--ink);
+        font: 14px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        overflow: hidden;
+      }
+      #game { position: fixed; inset: 0; }
+      #game canvas { display: block; image-rendering: pixelated; }
+      /* The UI layer floats over the canvas; scenes toggle its children. */
+      #ui {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+      }
+      #ui > * { pointer-events: auto; }
+      #boot {
+        text-align: center;
+        color: var(--dim);
+      }
+      #boot strong { display: block; color: var(--ink); font-size: 18px; letter-spacing: 0.08em; }
+    </style>
+  </head>
+  <body>
+    <div id="game"></div>
+    <div id="ui">
+      <div id="boot"><strong>CRAZYCAULDRON</strong>warming the cauldron&hellip;</div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

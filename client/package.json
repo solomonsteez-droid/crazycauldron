@@ -1,0 +1,22 @@
+{
+  "name": "@crazycauldron/client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@crazycauldron/shared": "*",
+    "bs58": "^6.0.0",
+    "colyseus.js": "^0.15.26",
+    "phaser": "^3.86.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10"
+  }
+}
