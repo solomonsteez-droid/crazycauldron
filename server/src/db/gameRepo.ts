@@ -291,8 +291,31 @@ export class SqliteGameRepository implements GameRepository {
   }
 
   topByChefXp(limit: number): LeaderboardEntry[] {
-    return this.selectTop
-      .all(limit)
-      .map((r) => ({ wallet: r.wallet, displayName: r.display_name, chefXp: r.chef_xp }));
+    const rows = this.selectTop.all(limit);
+    if (rows.length === 0) return [];
+
+    // One extra read for the whole page rather than one per row. Skill XP is
+    // needed only to work out which level-20 titles each chef has earned.
+    const placeholders = rows.map(() => "?").join(", ");
+    const skillRows = this.db
+      .prepare<string[], SkillRow & { wallet: string }>(
+        `SELECT wallet, skill, xp FROM player_skill_xp WHERE wallet IN (${placeholders})`,
+      )
+      .all(...rows.map((r) => r.wallet));
+
+    const byWallet = new Map<string, Record<SkillId, number>>();
+    for (const row of rows) byWallet.set(row.wallet, emptyXp());
+    for (const skill of skillRows) {
+      if (!(SKILL_IDS as string[]).includes(skill.skill)) continue;
+      const bucket = byWallet.get(skill.wallet);
+      if (bucket) bucket[skill.skill as SkillId] = skill.xp;
+    }
+
+    return rows.map((r) => ({
+      wallet: r.wallet,
+      displayName: r.display_name,
+      chefXp: r.chef_xp,
+      skillXp: byWallet.get(r.wallet) ?? emptyXp(),
+    }));
   }
 }

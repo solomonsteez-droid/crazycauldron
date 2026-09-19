@@ -1,12 +1,13 @@
 /**
  * Headless end-to-end check of the cooking loop against a running server.
  *
- * Signs in a fresh wallet, walks to the Meadows gate, gathers, cooks a Meadow
- * flatbread on the heat bar, sells it and buys an upgrade - asserting the
- * server's own replies at every step. This is the loop the brief describes,
- * driven the way the client drives it, with no browser involved.
+ * Signs in a fresh wallet, walks to the Meadows, gathers, cooks Meadow
+ * flatbread on the heat bar, sells one at the tavern and eats one for the buff -
+ * asserting the server's own replies at every step, including the ones that
+ * should be refused. This is the loop the brief describes, driven the way the
+ * client drives it, with no browser involved.
  *
- *   npm run dev            # in another terminal
+ *   npm run dev                      # in another terminal
  *   npx tsx scripts/smoke-game.ts
  */
 
@@ -15,7 +16,8 @@ import bs58 from "bs58";
 import nacl from "tweetnacl";
 import {
   HUB_PORTALS,
-  MSG_BOUGHT,
+  HUB_STATIONS,
+  MSG_ATE,
   MSG_BUY,
   MSG_COOK_PREP,
   MSG_COOK_PREPARED,
@@ -35,9 +37,11 @@ import {
   MSG_SOLD,
   MSG_TRAVEL,
   findSection,
+  type AtePayload,
   type CookPreparedPayload,
   type CookResultPayload,
   type GatherResultPayload,
+  type GatherStartedPayload,
   type HeatBarPayload,
   type NodesPayload,
   type ProfilePayload,
@@ -55,18 +59,76 @@ function check(label: string, ok: boolean, detail = ""): void {
   if (!ok) failures += 1;
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** Waits for one server message, failing loudly rather than hanging forever. */
-function next<T>(room: Room, type: string, timeoutMs = 15000): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`timed out waiting for "${type}"`)), timeoutMs);
-    room.onMessage(type, (payload: T) => {
-      clearTimeout(timer);
-      resolve(payload);
+/**
+ * A queue per message type.
+ *
+ * colyseus.js keeps one handler per type, so registering a fresh listener for
+ * each await would silently unhook the previous one. Everything lands in a
+ * queue instead and `next()` takes from it - which also means a message that
+ * arrives before its await is not lost.
+ */
+class Mailbox {
+  private readonly queues = new Map<string, unknown[]>();
+  private readonly waiters = new Map<string, ((value: unknown) => void)[]>();
+
+  listen(room: Room, type: string) {
+    room.onMessage(type, (payload: unknown) => {
+      const waiting = this.waiters.get(type);
+      if (waiting && waiting.length > 0) {
+        waiting.shift()?.(payload);
+        return;
+      }
+      const queue = this.queues.get(type) ?? [];
+      queue.push(payload);
+      this.queues.set(type, queue);
     });
-  });
+  }
+
+  next<T>(type: string, timeoutMs = 20000): Promise<T> {
+    const queued = this.queues.get(type);
+    if (queued && queued.length > 0) return Promise.resolve(queued.shift() as T);
+
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`timed out waiting for "${type}"`)), timeoutMs);
+      const waiting = this.waiters.get(type) ?? [];
+      waiting.push((value) => {
+        clearTimeout(timer);
+        resolve(value as T);
+      });
+      this.waiters.set(type, waiting);
+    });
+  }
+
+  /** Everything of a type received so far, without consuming it. */
+  peekAll<T>(type: string): T[] {
+    return [...((this.queues.get(type) ?? []) as T[])];
+  }
+
+  /** Takes one if it has already arrived, without waiting for one that has not. */
+  tryNext<T>(type: string): T | undefined {
+    return (this.queues.get(type) ?? []).shift() as T | undefined;
+  }
+
+  drain(type: string) {
+    this.queues.set(type, []);
+  }
 }
+
+const mail = new Mailbox();
+
+/** The latest profile the server sent; every payout refreshes it. */
+let profile: ProfilePayload;
+
+async function takeProfile(): Promise<ProfilePayload> {
+  profile = await mail.next<ProfilePayload>(MSG_PROFILE);
+  return profile;
+}
+
+const rejections = () => mail.peekAll<RejectedPayload>(MSG_REJECTED);
+const rejected = (reason: string) => rejections().some((r) => r.reason === reason);
+const countOf = (id: string) => profile.inventory.find((stack) => stack.id === id)?.qty ?? 0;
 
 async function signIn(): Promise<{ token: string; wallet: string }> {
   const kp = nacl.sign.keyPair();
@@ -77,14 +139,13 @@ async function signIn(): Promise<{ token: string; wallet: string }> {
   const signature = bs58.encode(
     nacl.sign.detached(new TextEncoder().encode(nonce.message), kp.secretKey),
   );
-  const verified = (await (
+  return (await (
     await fetch(`${HTTP}/auth/verify`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ address, message: nonce.message, signature }),
     })
   ).json()) as { token: string; wallet: string };
-  return verified;
 }
 
 interface SelfView {
@@ -111,7 +172,7 @@ async function waitForSection(room: Room, section: number, timeoutMs = 5000): Pr
 }
 
 /** Sends a destination and waits until the server has actually walked us there. */
-async function walkTo(room: Room, target: TilePos, timeoutMs = 20000): Promise<void> {
+async function walkTo(room: Room, target: TilePos, timeoutMs = 25000): Promise<void> {
   room.send(MSG_MOVE, target);
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -122,215 +183,93 @@ async function walkTo(room: Room, target: TilePos, timeoutMs = 20000): Promise<v
   throw new Error(`never reached ${target.tileX},${target.tileY}`);
 }
 
-async function main() {
-  console.log(`smoke-game against ${HTTP}\n`);
-
-  const { token, wallet } = await signIn();
-  console.log(`signed in as ${wallet}\n`);
-
-  const entered = (await (
-    await fetch(`${HTTP}/play/enter`, {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-    })
-  ).json()) as { room: string; reservation: unknown };
-
-  const room = await new Client(WS).consumeSeatReservation(entered.reservation as never);
-  const rejections: RejectedPayload[] = [];
-  room.onMessage(MSG_REJECTED, (r: RejectedPayload) => rejections.push(r));
-
-  let profile = await next<ProfilePayload>(room, MSG_PROFILE);
-  console.log("-- sign-in --");
-  check("profile arrives on join", profile.wallet === wallet);
-  check("starts at Chef 1", profile.chefLevel === 1, `chef ${profile.chefLevel}`);
-  check("starts with no coins", profile.coins === 0);
-  check("starts with 16 carry slots", profile.carrySlots === 16, `${profile.carrySlots}`);
-  check("Meadows is unlocked", profile.unlockedSections.includes(1));
-  check("next goal is set", profile.nextGoal !== null, profile.nextGoal ?? "");
-
-  // --- travel --------------------------------------------------------------
-  console.log("\n-- travel --");
-  const portal = HUB_PORTALS.find((p) => p.section === 1);
-  const forestPortal = HUB_PORTALS.find((p) => p.section === 2);
-  if (!portal || !forestPortal) throw new Error("missing portals in content");
-
-  room.send(MSG_TRAVEL, { section: 1 });
-  await sleep(300);
-  check("travel refused away from the gate", rejections.some((r) => r.reason === "not_at_portal"));
-
-  // A Chef 1 player standing at the Deep Forest gate should be told the level.
-  const locked = findSection(2);
-  await walkTo(room, { tileX: forestPortal.tileX, tileY: forestPortal.tileY });
-  room.send(MSG_TRAVEL, { section: 2 });
-  await sleep(300);
-  check(
-    "locked section names its Chef Level",
-    rejections.some(
-      (r) => r.reason === "locked" && r.message.includes(String(locked?.unlockChefLevel)),
-    ),
-  );
-
-  await walkTo(room, { tileX: portal.tileX, tileY: portal.tileY });
-  room.send(MSG_TRAVEL, { section: 1 });
-  const nodes = await next<NodesPayload>(room, MSG_NODES);
-  check("arrived in the Meadows", nodes.section === 1 && (await waitForSection(room, 1)));
-  check("section has 12 nodes", nodes.nodes.length === 12, `${nodes.nodes.length}`);
-  check("nodes start ready", nodes.nodes.every((n) => n.readyAt === 0));
-
-  // --- gathering -----------------------------------------------------------
-  console.log("\n-- gathering --");
-  const meadows = findSection(1);
-  if (!meadows) throw new Error("no meadows section");
-
-  const sunwheatNodes = meadows.nodes.filter((n) => n.ingredient === "sunwheat");
-  const saltNode = meadows.nodes.find((n) => n.ingredient === "rock_salt");
-  if (sunwheatNodes.length === 0 || !saltNode) throw new Error("meadows is missing nodes");
-
-  const before = rejections.length;
-  const firstNode = sunwheatNodes[0]!;
-  await walkTo(room, { tileX: firstNode.tileX, tileY: firstNode.tileY });
-
-  room.send(MSG_GATHER, { nodeId: firstNode.id });
-  const started = await next<{ durationMs: number }>(room, MSG_GATHER_STARTED);
-  check("foraging takes 3s at level 1", started.durationMs === 3000, `${started.durationMs}ms`);
-
-  // A second gather while the first is running must be refused outright.
-  room.send(MSG_GATHER, { nodeId: firstNode.id });
-  const gathered = await next<GatherResultPayload>(room, MSG_GATHER_RESULT);
-  check("one action at a time", rejections.slice(before).some((r) => r.reason === "busy"));
-  check("yielded 1-2 sunwheat", gathered.qty >= 1 && gathered.qty <= 2, `${gathered.qty}`);
-  check("awarded 5-15 foraging XP", gathered.skillXp >= 5 && gathered.skillXp <= 15, `${gathered.skillXp}`);
-  check("chef XP mirrors skill XP", gathered.chefXp === gathered.skillXp);
-  check("node went on a 60s cooldown", Math.round((gathered.readyAt - Date.now()) / 1000) >= 55);
-
-  profile = await next<ProfilePayload>(room, MSG_PROFILE);
-  check("sunwheat is in the bag", profile.inventory.some((s) => s.id === "sunwheat"));
-
-  room.send(MSG_GATHER, { nodeId: firstNode.id });
-  await sleep(400);
-  check("cooldown blocks a regather", rejections.some((r) => r.reason === "cooldown"));
-
-  // Gather until we hold enough for a flatbread: sunwheat 2 + rock_salt 1.
-  const held = () => {
-    const p = profile;
-    const find = (id: string) => p.inventory.find((s) => s.id === id)?.qty ?? 0;
-    return { sunwheat: find("sunwheat"), rock_salt: find("rock_salt") };
-  };
-
-  for (const node of sunwheatNodes.slice(1)) {
-    if (held().sunwheat >= 2) break;
-    await walkTo(room, { tileX: node.tileX, tileY: node.tileY });
-    room.send(MSG_GATHER, { nodeId: node.id });
-    await next<GatherResultPayload>(room, MSG_GATHER_RESULT);
-    profile = await next<ProfilePayload>(room, MSG_PROFILE);
-  }
-
-  await walkTo(room, { tileX: saltNode.tileX, tileY: saltNode.tileY });
-  room.send(MSG_GATHER, { nodeId: saltNode.id });
-  const salt = await next<GatherResultPayload>(room, MSG_GATHER_RESULT);
-  check("prospecting awards prospecting XP", salt.skill === "prospecting");
-  profile = await next<ProfilePayload>(room, MSG_PROFILE);
-
-  const stock = held();
-  check(
-    "holding enough for a flatbread",
-    stock.sunwheat >= 2 && stock.rock_salt >= 1,
-    `sunwheat ${stock.sunwheat}, rock_salt ${stock.rock_salt}`,
-  );
-
-  const foraging = profile.skills.find((s) => s.id === "foraging");
-  check("foraging XP accumulated", (foraging?.xp ?? 0) > 0, `${foraging?.xp ?? 0} xp`);
-  check("chef XP accumulated", profile.chefXp > 0, `${profile.chefXp} xp`);
-
-  // --- cooking -------------------------------------------------------------
-  console.log("\n-- cooking --");
-  const hubPortal = findSection(1)!.returnPortal;
-  await walkTo(room, hubPortal);
-  room.send(MSG_TRAVEL, { section: 0 });
-  check("back in the hub", await waitForSection(room, 0));
-
-  // A click whose reported time is nowhere near the server's own measurement is
-  // thrown away. Nothing is consumed, so the real cook can follow immediately.
-  room.send(MSG_COOK_START, { recipeId: "meadow_flatbread" });
-  const fakePrep = await next<CookPreparedPayload>(room, MSG_COOK_PREPARED);
-  await sleep(fakePrep.prepMs);
-  room.send(MSG_COOK_PREP, { cookId: fakePrep.cookId });
-  const fakeBar = await next<HeatBarPayload>(room, MSG_HEAT_BAR);
-  room.send(MSG_COOK_STOP, { cookId: fakeBar.cookId, elapsedMs: fakeBar.durationMs });
-  await sleep(500);
-  check(
-    "a click out of step with the server is refused",
-    rejections.some((r) => r.reason === "implausible_latency"),
-  );
-  const stillHeld = held();
-  check(
-    "a refused click consumes nothing",
-    stillHeld.sunwheat === stock.sunwheat && stillHeld.rock_salt === stock.rock_salt,
-    `sunwheat ${stillHeld.sunwheat}, rock_salt ${stillHeld.rock_salt}`,
-  );
-
-  room.send(MSG_COOK_START, { recipeId: "meadow_flatbread" });
-
-  // Prep is a real step, not a delay: the server holds the bar until the hold
-  // completes, so the client has to serve its 1.5s before it sees the marker.
-  const prep = await next<CookPreparedPayload>(room, MSG_COOK_PREPARED);
-  check("prep is required at knifework 1", !prep.autoPrep && prep.prepMs === 1500, `${prep.prepMs}ms`);
-  await sleep(prep.prepMs);
-  room.send(MSG_COOK_PREP, { cookId: prep.cookId });
-
-  const bar = await next<HeatBarPayload>(room, MSG_HEAT_BAR);
-  check("heat bar runs for 3s", bar.durationMs === 3000, `${bar.durationMs}ms`);
-  check("window is 12% at firecraft 1", Math.round(bar.windowPct) === 12, `${bar.windowPct.toFixed(1)}%`);
-  check("server picked a start offset", bar.startOffset >= 0 && bar.startOffset <= 1);
-
-  // Solve for the moment the marker sits dead centre of the window.
-  const elapsedForCentre = solveForCentre(bar);
-  await sleep(Math.max(elapsedForCentre, 0));
-  room.send(MSG_COOK_STOP, { cookId: bar.cookId, elapsedMs: elapsedForCentre });
-
-  const cooked = await next<CookResultPayload>(room, MSG_COOK_RESULT);
-
-  // The marker really did land inside the window...
-  const landedInWindow = Math.abs(cooked.markerPos - cooked.windowCentre) <= bar.windowPct / 200;
-  check("the marker stopped inside the window", landedInWindow,
-    `marker ${cooked.markerPos.toFixed(3)} vs centre ${cooked.windowCentre.toFixed(3)}`);
-
-  // ...but Knifework 1 caps the prep at Common, so a perfect stop still plates
-  // a Common dish. That cap is the whole reason to level knifework.
-  check("knifework 1 caps the dish at Common", cooked.quality === "common", cooked.quality);
-  check("firecraft was paid", cooked.skillXp.some((x) => x.skill === "firecraft" && x.xp > 0));
-  check("chef XP was paid", cooked.chefXp > 0, `${cooked.chefXp} xp`);
-  check("meadow flatbread pays 10 XP at Common", cooked.chefXp === 10, `${cooked.chefXp}`);
-
-  profile = await next<ProfilePayload>(room, MSG_PROFILE);
-  check("the dish is in the bag", profile.inventory.some((s) => s.kind === "dish"));
-  check("ingredients were consumed", (profile.inventory.find((s) => s.id === "sunwheat")?.qty ?? 0) === stock.sunwheat - 2);
-  check("codex recorded the recipe", profile.codex.some((c) => c.recipeId === "meadow_flatbread" && c.cooked));
-
-  // --- economy -------------------------------------------------------------
-  console.log("\n-- economy --");
-  const dish = profile.inventory.find((s) => s.kind === "dish");
-  if (!dish) throw new Error("no dish to sell");
-
-  room.send(MSG_SELL, { stackKey: dish.key, qty: 1 });
-  const sold = await next<SoldPayload>(room, MSG_SOLD);
-  check("a Common flatbread sells for 5", sold.coins === 5, `${sold.coins} coins`);
-  check("coins went up", sold.totalCoins === sold.coins, `${sold.totalCoins}`);
-  profile = await next<ProfilePayload>(room, MSG_PROFILE);
-
-  room.send(MSG_BUY, { kind: "bag", tier: 1 });
-  await sleep(300);
-  check("cannot buy what you cannot afford", rejections.some((r) => r.reason === "too_poor"));
-
-  console.log(`\n${failures === 0 ? "smoke-game: OK" : `smoke-game: ${failures} failure(s)`}`);
-  await room.leave();
-  process.exit(failures === 0 ? 0 : 1);
+interface NodeDef {
+  id: string;
+  ingredient: string;
+  tileX: number;
+  tileY: number;
 }
 
 /**
- * The marker bounces between 0 and 1 at `speed` per ms. Walk it forward in
- * small steps and return the elapsed time closest to the window centre - the
- * same arithmetic the server uses in reverse.
+ * Gathers one node, tolerating a refusal.
+ *
+ * A node the caller already worked is still regrowing, and the server answers
+ * that with a rejection rather than a result - so waiting only on the result
+ * would hang. Returns null when the node refused.
+ */
+async function tryGather(room: Room, node: NodeDef): Promise<GatherResultPayload | null> {
+  mail.drain(MSG_REJECTED);
+  room.send(MSG_GATHER, { nodeId: node.id });
+
+  const deadline = Date.now() + 10000;
+  while (Date.now() < deadline) {
+    const result = mail.tryNext<GatherResultPayload>(MSG_GATHER_RESULT);
+    if (result) {
+      await takeProfile();
+      return result;
+    }
+    if (rejections().length > 0) {
+      mail.drain(MSG_REJECTED);
+      return null;
+    }
+    await sleep(50);
+  }
+  throw new Error(`gather on ${node.id} neither completed nor was refused`);
+}
+
+/**
+ * Gathers from every node of one ingredient until `want` are held, waiting out
+ * per-player cooldowns rather than giving up short.
+ *
+ * `known` seeds cooldowns the caller has already caused, so the first pass does
+ * not waste a walk on a node it just emptied.
+ */
+async function stockUp(
+  room: Room,
+  nodes: NodeDef[],
+  ingredientId: string,
+  want: number,
+  known: Map<string, number> = new Map(),
+) {
+  const matching = nodes.filter((n) => n.ingredient === ingredientId);
+  if (matching.length === 0) throw new Error(`no ${ingredientId} nodes`);
+
+  const cooldowns = new Map(known);
+  const COMMON_RESPAWN_MS = 60000;
+  let guard = 0;
+
+  while (countOf(ingredientId) < want && guard < 20) {
+    guard += 1;
+    let gatheredSomething = false;
+
+    for (const node of matching) {
+      if (countOf(ingredientId) >= want) break;
+      if (Date.now() < (cooldowns.get(node.id) ?? 0)) continue;
+
+      await walkTo(room, { tileX: node.tileX, tileY: node.tileY });
+      const result = await tryGather(room, node);
+      if (result) {
+        cooldowns.set(node.id, result.readyAt);
+        gatheredSomething = true;
+      } else {
+        cooldowns.set(node.id, Date.now() + COMMON_RESPAWN_MS);
+      }
+    }
+
+    if (countOf(ingredientId) >= want) return;
+    if (!gatheredSomething) {
+      const soonest = Math.min(...cooldowns.values());
+      const wait = Math.max(soonest - Date.now() + 250, 500);
+      console.log(`       (waiting ${Math.ceil(wait / 1000)}s for ${ingredientId} to regrow)`);
+      await sleep(wait);
+    }
+  }
+}
+
+/**
+ * The marker bounces between 0 and 1 at `speed` per ms. Walk it forward and
+ * return the elapsed time closest to the window centre - the same arithmetic
+ * the server runs in reverse.
  */
 function solveForCentre(bar: HeatBarPayload): number {
   let best = 0;
@@ -346,6 +285,283 @@ function solveForCentre(bar: HeatBarPayload): number {
     }
   }
   return best;
+}
+
+/** Runs a whole cook: start, prep, stop dead centre, collect the result. */
+async function cookOnce(room: Room, recipeId: string): Promise<CookResultPayload> {
+  room.send(MSG_COOK_START, { recipeId });
+  const prep = await mail.next<CookPreparedPayload>(MSG_COOK_PREPARED);
+  if (!prep.autoPrep) {
+    await sleep(prep.prepMs);
+    room.send(MSG_COOK_PREP, { cookId: prep.cookId });
+  }
+  const bar = await mail.next<HeatBarPayload>(MSG_HEAT_BAR);
+  const elapsed = solveForCentre(bar);
+  await sleep(elapsed);
+  room.send(MSG_COOK_STOP, { cookId: bar.cookId, elapsedMs: elapsed });
+
+  const result = await mail.next<CookResultPayload>(MSG_COOK_RESULT);
+  await takeProfile();
+  return result;
+}
+
+const station = (id: string): TilePos => {
+  const found = HUB_STATIONS.find((entry) => entry.id === id);
+  if (!found) throw new Error(`no ${id} station in content`);
+  return { tileX: found.tileX, tileY: found.tileY };
+};
+
+async function main() {
+  console.log(`smoke-game against ${HTTP}\n`);
+
+  const { token, wallet } = await signIn();
+  console.log(`signed in as ${wallet}\n`);
+
+  const entered = (await (
+    await fetch(`${HTTP}/play/enter`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    })
+  ).json()) as { room: string; reservation: unknown };
+
+  const room = await new Client(WS).consumeSeatReservation(entered.reservation as never);
+  for (const type of [
+    MSG_PROFILE,
+    MSG_NODES,
+    MSG_REJECTED,
+    MSG_GATHER_STARTED,
+    MSG_GATHER_RESULT,
+    MSG_COOK_PREPARED,
+    MSG_HEAT_BAR,
+    MSG_COOK_RESULT,
+    MSG_SOLD,
+    MSG_ATE,
+  ]) {
+    mail.listen(room, type);
+  }
+
+  // --- sign-in -------------------------------------------------------------
+  await takeProfile();
+  console.log("-- sign-in --");
+  check("profile arrives on join", profile.wallet === wallet);
+  check("starts at Chef 1", profile.chefLevel === 1, `chef ${profile.chefLevel}`);
+  check("starts with no coins", profile.coins === 0);
+  check("starts with 16 carry slots", profile.carrySlots === 16, `${profile.carrySlots}`);
+  check("Meadows is unlocked", profile.unlockedSections.includes(1));
+  check("next goal is set", profile.nextGoal !== null, profile.nextGoal ?? "");
+  check(
+    "meadow flatbread is cookable from level 1",
+    profile.recipes.find((r) => r.recipeId === "meadow_flatbread")?.reasons.every(
+      (reason) => reason.startsWith("Needs 2 Sunwheat") || reason.startsWith("Needs 1 Rock salt"),
+    ) ?? false,
+    "only missing ingredients block it",
+  );
+
+  // --- travel --------------------------------------------------------------
+  console.log("\n-- travel --");
+  const portal = HUB_PORTALS.find((p) => p.section === 1);
+  const forestPortal = HUB_PORTALS.find((p) => p.section === 2);
+  if (!portal || !forestPortal) throw new Error("missing portals in content");
+
+  room.send(MSG_TRAVEL, { section: 1 });
+  await sleep(300);
+  check("travel refused away from the gate", rejected("not_at_portal"));
+
+  const locked = findSection(2);
+  await walkTo(room, { tileX: forestPortal.tileX, tileY: forestPortal.tileY });
+  room.send(MSG_TRAVEL, { section: 2 });
+  await sleep(300);
+  check(
+    "locked section names its Chef Level",
+    rejections().some(
+      (r) => r.reason === "locked" && r.message.includes(String(locked?.unlockChefLevel)),
+    ),
+  );
+
+  await walkTo(room, { tileX: portal.tileX, tileY: portal.tileY });
+  room.send(MSG_TRAVEL, { section: 1 });
+  const nodes = await mail.next<NodesPayload>(MSG_NODES);
+  check("arrived in the Meadows", nodes.section === 1 && (await waitForSection(room, 1)));
+  check("section has 12 nodes", nodes.nodes.length === 12, `${nodes.nodes.length}`);
+  check("nodes start ready", nodes.nodes.every((n) => n.readyAt === 0));
+
+  // --- gathering -----------------------------------------------------------
+  console.log("\n-- gathering --");
+  const meadows = findSection(1);
+  if (!meadows) throw new Error("no meadows section");
+
+  const sunwheatNodes = meadows.nodes.filter((n) => n.ingredient === "sunwheat");
+  const saltNode = meadows.nodes.find((n) => n.ingredient === "rock_salt");
+  const firstNode = sunwheatNodes[0];
+  if (!firstNode || !saltNode) throw new Error("meadows is missing nodes");
+
+  mail.drain(MSG_REJECTED);
+  await walkTo(room, { tileX: firstNode.tileX, tileY: firstNode.tileY });
+
+  room.send(MSG_GATHER, { nodeId: firstNode.id });
+  const started = await mail.next<GatherStartedPayload>(MSG_GATHER_STARTED);
+  check("foraging takes 3s at level 1", started.durationMs === 3000, `${started.durationMs}ms`);
+
+  // A second gather while the first is running must be refused outright.
+  room.send(MSG_GATHER, { nodeId: firstNode.id });
+  const gathered = await mail.next<GatherResultPayload>(MSG_GATHER_RESULT);
+  check("one action at a time", rejected("busy"));
+  check("yielded 1-2 sunwheat", gathered.qty >= 1 && gathered.qty <= 2, `${gathered.qty}`);
+  check(
+    "awarded 5-15 foraging XP",
+    gathered.skillXp >= 5 && gathered.skillXp <= 15,
+    `${gathered.skillXp}`,
+  );
+  check("chef XP mirrors skill XP", gathered.chefXp === gathered.skillXp);
+  check("node went on a 60s cooldown", Math.round((gathered.readyAt - Date.now()) / 1000) >= 55);
+
+  await takeProfile();
+  check("sunwheat is in the bag", countOf("sunwheat") > 0);
+
+  room.send(MSG_GATHER, { nodeId: firstNode.id });
+  await sleep(400);
+  check("cooldown blocks a regather", rejected("cooldown"));
+
+  await walkTo(room, { tileX: saltNode.tileX, tileY: saltNode.tileY });
+  room.send(MSG_GATHER, { nodeId: saltNode.id });
+  const salt = await mail.next<GatherResultPayload>(MSG_GATHER_RESULT);
+  check("prospecting awards prospecting XP", salt.skill === "prospecting");
+  await takeProfile();
+
+  // Two flatbreads worth: one for the tavern, one to eat. Both nodes worked
+  // above are still regrowing, so seed their timers rather than rediscover them.
+  await stockUp(room, meadows.nodes, "sunwheat", 4, new Map([[firstNode.id, gathered.readyAt]]));
+  await stockUp(room, meadows.nodes, "rock_salt", 2, new Map([[saltNode.id, salt.readyAt]]));
+  check(
+    "holding enough for two flatbreads",
+    countOf("sunwheat") >= 4 && countOf("rock_salt") >= 2,
+    `sunwheat ${countOf("sunwheat")}, rock_salt ${countOf("rock_salt")}`,
+  );
+
+  const foraging = profile.skills.find((s) => s.id === "foraging");
+  check("foraging XP accumulated", (foraging?.xp ?? 0) > 0, `${foraging?.xp ?? 0} xp`);
+  check("chef XP accumulated", profile.chefXp > 0, `${profile.chefXp} xp`);
+
+  // --- cooking -------------------------------------------------------------
+  console.log("\n-- cooking --");
+  await walkTo(room, meadows.returnPortal);
+  room.send(MSG_TRAVEL, { section: 0 });
+  check("back in the hub", await waitForSection(room, 0));
+
+  mail.drain(MSG_REJECTED);
+  room.send(MSG_COOK_START, { recipeId: "meadow_flatbread" });
+  await sleep(300);
+  check("cooking is refused away from the kitchen", rejected("not_at_kitchen"));
+
+  await walkTo(room, station("kitchen"));
+
+  // A click whose reported time is nowhere near the server measurement is
+  // thrown away, and nothing is consumed by the attempt.
+  const sunwheatBefore = countOf("sunwheat");
+  room.send(MSG_COOK_START, { recipeId: "meadow_flatbread" });
+  const fakePrep = await mail.next<CookPreparedPayload>(MSG_COOK_PREPARED);
+  check("prep is required at knifework 1", !fakePrep.autoPrep && fakePrep.prepMs === 1500);
+  await sleep(fakePrep.prepMs);
+  room.send(MSG_COOK_PREP, { cookId: fakePrep.cookId });
+
+  const fakeBar = await mail.next<HeatBarPayload>(MSG_HEAT_BAR);
+  check("heat bar runs for 3s", fakeBar.durationMs === 3000, `${fakeBar.durationMs}ms`);
+  check(
+    "window is 12% at firecraft 1",
+    Math.round(fakeBar.windowPct) === 12,
+    `${fakeBar.windowPct.toFixed(1)}%`,
+  );
+
+  room.send(MSG_COOK_STOP, { cookId: fakeBar.cookId, elapsedMs: fakeBar.durationMs });
+  await sleep(500);
+  check("a click out of step with the server is refused", rejected("implausible_latency"));
+  check("a refused click consumes nothing", countOf("sunwheat") === sunwheatBefore);
+
+  const cooked = await cookOnce(room, "meadow_flatbread");
+  const landedInWindow = Math.abs(cooked.markerPos - cooked.windowCentre) <= fakeBar.windowPct / 200;
+  check(
+    "the marker stopped inside the window",
+    landedInWindow,
+    `marker ${cooked.markerPos.toFixed(3)} vs centre ${cooked.windowCentre.toFixed(3)}`,
+  );
+
+  // Knifework 1 caps prep at Common, so a perfect stop still plates a Common
+  // dish. That cap is the whole reason to level knifework.
+  check("knifework 1 caps the dish at Common", cooked.quality === "common", cooked.quality);
+  check("firecraft was paid", cooked.skillXp.some((x) => x.skill === "firecraft" && x.xp > 0));
+  check("meadow flatbread pays 10 XP at Common", cooked.chefXp === 10, `${cooked.chefXp}`);
+  check("ingredients were consumed", countOf("sunwheat") === sunwheatBefore - 2);
+  check("the dish is in the bag", profile.inventory.some((s) => s.kind === "dish"));
+  check(
+    "codex recorded the recipe",
+    profile.codex.some((c) => c.recipeId === "meadow_flatbread" && c.cooked),
+  );
+
+  // --- economy -------------------------------------------------------------
+  console.log("\n-- economy --");
+  const dish = profile.inventory.find((entry) => entry.kind === "dish");
+  if (!dish) throw new Error("no dish to sell");
+
+  mail.drain(MSG_REJECTED);
+  room.send(MSG_SELL, { stackKey: dish.key, qty: 1 });
+  await sleep(300);
+  check("selling is refused away from the tavern", rejected("not_at_tavern"));
+
+  await walkTo(room, station("tavern"));
+  room.send(MSG_SELL, { stackKey: dish.key, qty: 1 });
+  const sold = await mail.next<SoldPayload>(MSG_SOLD);
+  check("a Common flatbread sells for 5", sold.coins === 5, `${sold.coins} coins`);
+  check("coins went up", sold.totalCoins === 5, `${sold.totalCoins}`);
+  await takeProfile();
+
+  mail.drain(MSG_REJECTED);
+  room.send(MSG_BUY, { kind: "bag", tier: 1 });
+  await sleep(300);
+  check("buying is refused away from the outfitter", rejected("not_at_outfitter"));
+
+  await walkTo(room, station("outfitter"));
+  room.send(MSG_BUY, { kind: "bag", tier: 1 });
+  await sleep(300);
+  check("cannot buy what you cannot afford", rejected("too_poor"));
+
+  room.send(MSG_BUY, { kind: "bag", tier: 3 });
+  await sleep(300);
+  check("tiers cannot be skipped", rejected("skipped_tier"));
+
+  // --- buff ----------------------------------------------------------------
+  console.log("\n-- buff --");
+  await walkTo(room, station("kitchen"));
+  await cookOnce(room, "meadow_flatbread");
+
+  const spare = profile.inventory.find((entry) => entry.kind === "dish");
+  if (!spare) throw new Error("no dish to eat");
+
+  room.send(MSG_EAT, { stackKey: spare.key });
+  const ate = await mail.next<AtePayload>(MSG_ATE);
+  check("eating grants +10% gather speed", ate.gatherSpeedPct === 10, `${ate.gatherSpeedPct}%`);
+  const buffSeconds = Math.round((ate.buffExpiresAt - Date.now()) / 1000);
+  check("the buff runs for 5 minutes", buffSeconds >= 295 && buffSeconds <= 300, `${buffSeconds}s`);
+  await takeProfile();
+  check("the buff is on the profile", profile.buffExpiresAt > Date.now());
+
+  // --- leaderboard ---------------------------------------------------------
+  console.log("\n-- leaderboard --");
+  const board = (await (await fetch(`${HTTP}/play/leaderboard`)).json()) as {
+    rows: { wallet: string; chefLevel: number; chefXp: number }[];
+  };
+  check("leaderboard responds", Array.isArray(board.rows), `${board.rows.length} rows`);
+  check(
+    "this chef is on it",
+    board.rows.some((r) => r.wallet === wallet),
+  );
+  check(
+    "it is ordered by chef XP",
+    board.rows.every((r, i) => i === 0 || (board.rows[i - 1]?.chefXp ?? 0) >= r.chefXp),
+  );
+
+  console.log(`\n${failures === 0 ? "smoke-game: OK" : `smoke-game: ${failures} failure(s)`}`);
+  await room.leave();
+  process.exit(failures === 0 ? 0 : 1);
 }
 
 main().catch((err) => {

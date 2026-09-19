@@ -5,6 +5,7 @@ import {
   HUB_MAP,
   HUB_PORTALS,
   HUB_SPAWN,
+  HUB_STATIONS,
   KICK_AUTH_EXPIRED,
   KICK_INSUFFICIENT_HOLD,
   MAX_PATH_TILES,
@@ -15,6 +16,10 @@ import {
   MSG_COOK_RESULT,
   MSG_COOK_START,
   MSG_COOK_STOP,
+  MSG_ATE,
+  MSG_BOUGHT,
+  MSG_BUY,
+  MSG_EAT,
   MSG_GATHER,
   MSG_GATHER_RESULT,
   MSG_GATHER_STARTED,
@@ -24,6 +29,8 @@ import {
   MSG_NODES,
   MSG_PROFILE,
   MSG_REJECTED,
+  MSG_SELL,
+  MSG_SOLD,
   MSG_TRAVEL,
   PATCH_RATE_MS,
   facingFor,
@@ -37,18 +44,25 @@ import {
   type CookResultPayload,
   type CookStartIntent,
   type CookStopIntent,
+  type AtePayload,
+  type BoughtPayload,
+  type BuyIntent,
+  type EatIntent,
   type GatherIntent,
   type GatherResultPayload,
   type HeatBarPayload,
   type MoveIntent,
   type NodesPayload,
   type RejectedPayload,
+  type SellIntent,
+  type SoldPayload,
   type TilePos,
   type TravelIntent,
 } from "@crazycauldron/shared";
 import { config } from "../config.js";
 import { players as playerRepo } from "../db/index.js";
 import { makeHeatBar, planCook, resolveCook, validateClick } from "../game/cooking.js";
+import { buyUpgrade, eatStack, sellStack } from "../game/economy.js";
 import { completeGather, nodeStates, planGather } from "../game/gathering.js";
 import { loadSession, type Session } from "../game/session.js";
 import { log } from "../logger.js";
@@ -92,6 +106,9 @@ export class HubRoom extends Room<HubState> {
       this.onCookStop(client, message),
     );
     this.onMessage(MSG_COOK_CANCEL, (client) => this.onCookCancel(client));
+    this.onMessage(MSG_SELL, (client, message: SellIntent) => this.onSell(client, message));
+    this.onMessage(MSG_EAT, (client, message: EatIntent) => this.onEat(client, message));
+    this.onMessage(MSG_BUY, (client, message: BuyIntent) => this.onBuy(client, message));
 
     // One tick = one tile of progress for everyone currently walking.
     this.setSimulationInterval(() => this.stepMovement(), MOVE_STEP_MS);
@@ -418,6 +435,9 @@ export class HubRoom extends Room<HubState> {
     if (player.section !== HUB_MAP) {
       return this.reject(client, MSG_COOK_START, "not_in_hub", "The kitchen is back in the hub.");
     }
+    if (!this.atStation(client, "kitchen")) {
+      return this.reject(client, MSG_COOK_START, "not_at_kitchen", "Step up to the kitchen.");
+    }
 
     const now = Date.now();
     const refusal = session.guard.check(now);
@@ -579,6 +599,88 @@ export class HubRoom extends Room<HubState> {
     log.warn("cook.abandoned", { wallet: session.state.wallet });
     this.cancelCook(session, client);
     this.reject(client, MSG_COOK_START, "abandoned", "The pot went cold.");
+  }
+
+  // --- economy -------------------------------------------------------------
+
+  /**
+   * Standing at the right counter is part of the transaction: the tavern buys
+   * and the outfitter sells, and both check the player is actually there.
+   */
+  private atStation(client: Client, station: string): boolean {
+    const player = this.state.players.get(client.sessionId);
+    if (!player || player.section !== HUB_MAP) return false;
+
+    const tile = HUB_STATIONS.find((s) => s.id === station);
+    if (!tile) return false;
+    return isAdjacentOrOn(
+      { tileX: player.tileX, tileY: player.tileY },
+      { tileX: tile.tileX, tileY: tile.tileY },
+    );
+  }
+
+  private onSell(client: Client, message: SellIntent) {
+    const session = this.sessions.get(client.sessionId);
+    if (!session) return;
+
+    if (!this.atStation(client, "tavern")) {
+      return this.reject(client, MSG_SELL, "not_at_tavern", "Take it to the tavern.");
+    }
+
+    const result = sellStack(session.state, String(message?.stackKey ?? ""), message?.qty ?? 1);
+    if (!result.ok) return this.reject(client, MSG_SELL, result.reason, result.message);
+
+    session.save();
+    const payload: SoldPayload = {
+      name: result.name,
+      qty: result.qty,
+      coins: result.coins,
+      totalCoins: session.state.coins,
+    };
+    client.send(MSG_SOLD, payload);
+    this.sendProfile(session);
+  }
+
+  /** Eating works anywhere - it is your own food, in your own bag. */
+  private onEat(client: Client, message: EatIntent) {
+    const session = this.sessions.get(client.sessionId);
+    if (!session) return;
+
+    const result = eatStack(session.state, String(message?.stackKey ?? ""), Date.now());
+    if (!result.ok) return this.reject(client, MSG_EAT, result.reason, result.message);
+
+    session.save();
+    const payload: AtePayload = {
+      name: result.name,
+      buffExpiresAt: result.buffExpiresAt,
+      gatherSpeedPct: result.gatherSpeedPct,
+    };
+    client.send(MSG_ATE, payload);
+    this.sendProfile(session);
+  }
+
+  private onBuy(client: Client, message: BuyIntent) {
+    const session = this.sessions.get(client.sessionId);
+    if (!session) return;
+
+    if (!this.atStation(client, "outfitter")) {
+      return this.reject(client, MSG_BUY, "not_at_outfitter", "The outfitter is in the hub.");
+    }
+
+    const kind = message?.kind === "pan" ? "pan" : "bag";
+    const result = buyUpgrade(session.state, kind, message?.tier ?? 0);
+    if (!result.ok) return this.reject(client, MSG_BUY, result.reason, result.message);
+
+    session.save();
+    const payload: BoughtPayload = {
+      kind: result.kind,
+      tier: result.tier,
+      name: result.name,
+      coins: result.coins,
+      totalCoins: session.state.coins,
+    };
+    client.send(MSG_BOUGHT, payload);
+    this.sendProfile(session);
   }
 
   // --- outbound ------------------------------------------------------------

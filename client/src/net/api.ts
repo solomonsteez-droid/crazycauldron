@@ -2,6 +2,7 @@ import { ROOM_HUB, ROOM_WAITING } from "@crazycauldron/shared";
 import type {
   ApiError as ApiErrorBody,
   EnterResponse,
+  LeaderboardPayload,
   NonceResponse,
   VerifyRequest,
   VerifyResponse,
@@ -154,4 +155,13 @@ export interface CapacityResponse {
 
 export function fetchCapacity(): Promise<CapacityResponse> {
   return request<CapacityResponse>("/play/capacity", undefined, isCapacityResponse);
+}
+
+function isLeaderboard(body: unknown): body is LeaderboardPayload {
+  return isRecord(body) && Array.isArray(body.rows);
+}
+
+/** Top 20 chefs. Polled rather than pushed: it changes slowly and is public. */
+export function fetchLeaderboard(): Promise<LeaderboardPayload> {
+  return request<LeaderboardPayload>("/play/leaderboard", undefined, isLeaderboard);
 }

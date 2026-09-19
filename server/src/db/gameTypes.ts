@@ -41,6 +41,8 @@ export interface LeaderboardEntry {
   wallet: string;
   displayName: string;
   chefXp: number;
+  /** Carried so the row can show earned titles without a second round trip. */
+  skillXp: Record<SkillId, number>;
 }
 
 export interface GameRepository {
