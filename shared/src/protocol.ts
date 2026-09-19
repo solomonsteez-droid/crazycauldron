@@ -111,6 +111,8 @@ export interface ProfilePayload {
   /** Epoch ms, or 0 when no buff is running. */
   buffExpiresAt: number;
   codex: CodexEntryView[];
+  /** Every recipe, with the reasons any of them cannot be cooked right now. */
+  recipes: RecipeAvailabilityView[];
   unlockedSections: number[];
   titles: string[];
   nextGoal: string | null;

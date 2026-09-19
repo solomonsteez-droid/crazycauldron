@@ -30,6 +30,7 @@ import {
   type SkillLevels,
   type SkillView,
 } from "@crazycauldron/shared";
+import { recipeAvailability } from "./cooking.js";
 import type { CodexRecord, GameStateRecord, StackRecord } from "../db/gameTypes.js";
 
 export type ItemKind = "ingredient" | "dish";
@@ -309,6 +310,7 @@ export class PlayerState {
         bestQuality: entry.bestQuality,
         cookedCount: entry.cookedCount,
       })),
+      recipes: recipeAvailability(this),
       unlockedSections: [...this.unlockedSections].sort((a, b) => a - b),
       titles: titlesEarned(levels),
       nextGoal: goal ? describeUnlock(goal) : null,

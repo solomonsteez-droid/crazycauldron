@@ -102,6 +102,148 @@ const CSS = `
   color: #14101a;
 }
 
+/* Modal windows: the kitchen, tavern, shop, inventory and so on. */
+.cc-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(520px, calc(100vw - 32px));
+  max-height: min(70vh, 640px);
+  display: flex;
+  flex-direction: column;
+  background: rgba(20, 16, 26, 0.97);
+  border: 1px solid #3a3050;
+  border-radius: 10px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.6);
+}
+.cc-modal header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid #2c2440;
+}
+.cc-modal h2 {
+  margin: 0;
+  font-size: 14px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.cc-modal p { margin: 0 0 10px; color: #9a8f7a; }
+.cc-modal small { color: #6f6656; }
+.cc-modal-body { padding: 14px 16px 16px; overflow-y: auto; }
+.cc-close {
+  padding: 0 6px;
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+  color: #9a8f7a;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.cc-close:hover { color: #f3e9d2; }
+
+/* Scrolling rows shared by the kitchen, tavern, shop and inventory. */
+.cc-list { display: flex; flex-direction: column; gap: 6px; }
+.cc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  background: rgba(44, 36, 64, 0.35);
+  border: 1px solid #2c2440;
+  border-radius: 6px;
+}
+.cc-row strong { font-weight: 600; }
+.cc-row small { display: block; margin-top: 2px; font-size: 11px; }
+.cc-row .cc-btn { flex: 0 0 auto; padding: 6px 12px; font-size: 12px; }
+.cc-dim { opacity: 0.55; }
+.cc-dim strong { color: #9a8f7a; }
+
+/* The heat bar. */
+.cc-heat {
+  position: relative;
+  height: 28px;
+  margin: 6px 0 14px;
+  background: linear-gradient(90deg, #2a2136, #3a2a2a);
+  border: 1px solid #3a3050;
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: pointer;
+}
+.cc-heat-fine,
+.cc-heat-superb {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: block;
+}
+.cc-heat-fine { background: rgba(242, 181, 59, 0.28); }
+.cc-heat-superb { background: rgba(124, 224, 138, 0.55); }
+.cc-heat-marker {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 3px;
+  margin-left: -1px;
+  background: #f3e9d2;
+  box-shadow: 0 0 6px rgba(243, 233, 210, 0.9);
+}
+.cc-progress.cc-inline {
+  position: static;
+  transform: none;
+  width: 100%;
+  margin-bottom: 12px;
+}
+.cc-cook .cc-btn { width: 100%; }
+
+/* Skill and XP bars in the skills panel. */
+.cc-meter {
+  height: 6px;
+  margin-top: 4px;
+  background: #241d33;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.cc-meter > i { display: block; height: 100%; background: #7ce08a; }
+.cc-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.cc-tab {
+  padding: 5px 10px;
+  font: inherit;
+  font-size: 12px;
+  color: #cbbfa6;
+  background: transparent;
+  border: 1px solid #3a3050;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.cc-tab[aria-selected="true"] { color: #14101a; background: #7ce08a; border-color: #7ce08a; }
+
+/* Station buttons pinned bottom-left, the way a toolbar reads. */
+.cc-dock {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.cc-dock button {
+  padding: 7px 11px;
+  font: inherit;
+  font-size: 12px;
+  color: #cbbfa6;
+  background: rgba(20, 16, 26, 0.85);
+  border: 1px solid #3a3050;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.cc-dock button:hover { color: #f3e9d2; border-color: #7ce08a; }
+
 .cc-toast {
   position: fixed;
   left: 50%;
@@ -266,4 +408,82 @@ export function showProgress(label: string, durationMs: number): ProgressHandle 
       wrap.remove();
     },
   };
+}
+
+/* ------------------------------------------------------------------------ */
+/* Modals                                                                     */
+/* ------------------------------------------------------------------------ */
+
+export interface ModalHandle {
+  readonly body: HTMLElement;
+  readonly element: HTMLElement;
+  setTitle(text: string): void;
+  close(): void;
+  onClose(callback: () => void): void;
+}
+
+/**
+ * A dismissible window layered over the world.
+ *
+ * Unlike showPanel this does not clear the overlay, because the HUD has to stay
+ * visible behind it. Only one modal is open at a time - opening a second closes
+ * the first, which keeps the kitchen and the tavern from stacking up.
+ */
+export function openModal(title: string, className = ""): ModalHandle {
+  ensureStyles();
+  for (const existing of document.querySelectorAll(".cc-modal")) existing.remove();
+
+  const modal = document.createElement("div");
+  modal.className = className ? `cc-modal ${className}` : "cc-modal";
+
+  const header = document.createElement("header");
+  const heading = document.createElement("h2");
+  heading.textContent = title;
+
+  const close = document.createElement("button");
+  close.className = "cc-close";
+  close.textContent = "\u00d7";
+  close.setAttribute("aria-label", "Close");
+
+  header.append(heading, close);
+
+  const body = document.createElement("div");
+  body.className = "cc-modal-body";
+
+  modal.append(header, body);
+  uiRoot().append(modal);
+
+  const closers: (() => void)[] = [];
+  const handle: ModalHandle = {
+    element: modal,
+    body,
+    setTitle(text) {
+      heading.textContent = text;
+    },
+    close() {
+      if (!modal.isConnected) return;
+      modal.remove();
+      for (const callback of closers) callback();
+    },
+    onClose(callback) {
+      closers.push(callback);
+    },
+  };
+
+  close.addEventListener("click", () => handle.close());
+  return handle;
+}
+
+/** A labelled button row, used by every panel. */
+export function buttonRow(actions: Action[]): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "cc-actions";
+  for (const action of actions) {
+    const button = document.createElement("button");
+    button.className = action.secondary ? "cc-btn cc-secondary" : "cc-btn";
+    button.textContent = action.label;
+    button.addEventListener("click", () => void action.onClick());
+    row.append(button);
+  }
+  return row;
 }

@@ -17,6 +17,8 @@ import {
   HUB_PORTALS,
   MSG_BOUGHT,
   MSG_BUY,
+  MSG_COOK_PREP,
+  MSG_COOK_PREPARED,
   MSG_COOK_RESULT,
   MSG_COOK_START,
   MSG_COOK_STOP,
@@ -33,6 +35,7 @@ import {
   MSG_SOLD,
   MSG_TRAVEL,
   findSection,
+  type CookPreparedPayload,
   type CookResultPayload,
   type GatherResultPayload,
   type HeatBarPayload,
@@ -246,7 +249,35 @@ async function main() {
   room.send(MSG_TRAVEL, { section: 0 });
   check("back in the hub", await waitForSection(room, 0));
 
+  // A click whose reported time is nowhere near the server's own measurement is
+  // thrown away. Nothing is consumed, so the real cook can follow immediately.
   room.send(MSG_COOK_START, { recipeId: "meadow_flatbread" });
+  const fakePrep = await next<CookPreparedPayload>(room, MSG_COOK_PREPARED);
+  await sleep(fakePrep.prepMs);
+  room.send(MSG_COOK_PREP, { cookId: fakePrep.cookId });
+  const fakeBar = await next<HeatBarPayload>(room, MSG_HEAT_BAR);
+  room.send(MSG_COOK_STOP, { cookId: fakeBar.cookId, elapsedMs: fakeBar.durationMs });
+  await sleep(500);
+  check(
+    "a click out of step with the server is refused",
+    rejections.some((r) => r.reason === "implausible_latency"),
+  );
+  const stillHeld = held();
+  check(
+    "a refused click consumes nothing",
+    stillHeld.sunwheat === stock.sunwheat && stillHeld.rock_salt === stock.rock_salt,
+    `sunwheat ${stillHeld.sunwheat}, rock_salt ${stillHeld.rock_salt}`,
+  );
+
+  room.send(MSG_COOK_START, { recipeId: "meadow_flatbread" });
+
+  // Prep is a real step, not a delay: the server holds the bar until the hold
+  // completes, so the client has to serve its 1.5s before it sees the marker.
+  const prep = await next<CookPreparedPayload>(room, MSG_COOK_PREPARED);
+  check("prep is required at knifework 1", !prep.autoPrep && prep.prepMs === 1500, `${prep.prepMs}ms`);
+  await sleep(prep.prepMs);
+  room.send(MSG_COOK_PREP, { cookId: prep.cookId });
+
   const bar = await next<HeatBarPayload>(room, MSG_HEAT_BAR);
   check("heat bar runs for 3s", bar.durationMs === 3000, `${bar.durationMs}ms`);
   check("window is 12% at firecraft 1", Math.round(bar.windowPct) === 12, `${bar.windowPct.toFixed(1)}%`);
@@ -258,9 +289,18 @@ async function main() {
   room.send(MSG_COOK_STOP, { cookId: bar.cookId, elapsedMs: elapsedForCentre });
 
   const cooked = await next<CookResultPayload>(room, MSG_COOK_RESULT);
-  check("a perfect stop is Superb", cooked.quality === "superb", cooked.quality);
+
+  // The marker really did land inside the window...
+  const landedInWindow = Math.abs(cooked.markerPos - cooked.windowCentre) <= bar.windowPct / 200;
+  check("the marker stopped inside the window", landedInWindow,
+    `marker ${cooked.markerPos.toFixed(3)} vs centre ${cooked.windowCentre.toFixed(3)}`);
+
+  // ...but Knifework 1 caps the prep at Common, so a perfect stop still plates
+  // a Common dish. That cap is the whole reason to level knifework.
+  check("knifework 1 caps the dish at Common", cooked.quality === "common", cooked.quality);
   check("firecraft was paid", cooked.skillXp.some((x) => x.skill === "firecraft" && x.xp > 0));
   check("chef XP was paid", cooked.chefXp > 0, `${cooked.chefXp} xp`);
+  check("meadow flatbread pays 10 XP at Common", cooked.chefXp === 10, `${cooked.chefXp}`);
 
   profile = await next<ProfilePayload>(room, MSG_PROFILE);
   check("the dish is in the bag", profile.inventory.some((s) => s.kind === "dish"));
@@ -274,7 +314,7 @@ async function main() {
 
   room.send(MSG_SELL, { stackKey: dish.key, qty: 1 });
   const sold = await next<SoldPayload>(room, MSG_SOLD);
-  check("a Superb flatbread sells for 8", sold.coins === 8, `${sold.coins} coins`);
+  check("a Common flatbread sells for 5", sold.coins === 5, `${sold.coins} coins`);
   check("coins went up", sold.totalCoins === sold.coins, `${sold.totalCoins}`);
   profile = await next<ProfilePayload>(room, MSG_PROFILE);
 

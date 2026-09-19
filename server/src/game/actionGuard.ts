@@ -44,11 +44,26 @@ export class ActionGuard {
   }
 
   /**
-   * Ends the in-flight action. The spacing rule still applies afterwards, so a
-   * cancelled cook cannot be used to start the next action early.
+   * Ends a completed action. The spacing rule still applies afterwards, which
+   * is what stops a finished gather being followed instantly by another.
    */
   finish(): void {
     this.inFlight = null;
+  }
+
+  /**
+   * Ends an action that paid out nothing - a cancelled cook, a rejected click.
+   *
+   * Spacing is recharged to the time actually spent rather than the time the
+   * action would have taken. Holding a player out for the full seven seconds of
+   * a cook they abandoned punishes a misclick, and there is nothing to abuse:
+   * cancelling yields no items, no XP and no coins.
+   */
+  abandon(now: number): void {
+    this.inFlight = null;
+    if (this.lastStartedAt > 0) {
+      this.lastDurationMs = Math.max(0, now - this.lastStartedAt);
+    }
   }
 
   get busy(): boolean {

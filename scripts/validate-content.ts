@@ -76,6 +76,28 @@ for (const r of RECIPES) {
   }
 }
 
+/*
+ * Starter recipes (those stating no requirements) are exempt from the technique
+ * gate, or a new player could cook nothing at all. Every other recipe must
+ * state a Firecraft level that already satisfies its own technique, so the
+ * exemption never silently widens.
+ */
+const techniqueGate = new Map<string, number>();
+for (const u of CONFIG.unlocks.firecraft) {
+  if (u.kind === "technique") techniqueGate.set(String(u.value), u.level);
+}
+for (const r of RECIPES) {
+  if (Object.keys(r.requirements).length === 0) continue;
+  const gate = techniqueGate.get(r.technique);
+  if (gate === undefined || gate <= 1) continue; // Level 1 is the floor everyone starts on.
+  const stated = r.requirements.firecraft ?? 0;
+  if (stated < gate) {
+    note(
+      `recipe ${r.id} states firecraft ${stated || "none"} but its technique "${r.technique}" needs ${gate}`,
+    );
+  }
+}
+
 // --- ingredient slots ------------------------------------------------------
 const maxSlots = ingredientSlots(maxLevels);
 for (const r of RECIPES) {
@@ -175,6 +197,27 @@ for (const r of RECIPES) {
 const startingLevels = levelsFromXp(emptySkillXp());
 if (startingLevels.firecraft !== 1) note("a new player does not start at firecraft 1");
 if (skillXpToReach(1) !== 0) note("level 1 should cost no XP");
+
+/*
+ * The deadlock guard. Cooking is the only source of Firecraft, Knifework and
+ * Spicecraft XP, so if nothing at all is cookable on a fresh account the whole
+ * progression never starts. This is what the starter-recipe exception exists
+ * for; assert it actually works rather than trusting it.
+ */
+const startingSlots = ingredientSlots(startingLevels);
+const openers = RECIPES.filter((r) => {
+  const meetsStated = Object.entries(r.requirements).every(
+    ([skill, level]) => startingLevels[skill as SkillId] >= level,
+  );
+  const isStarter = Object.keys(r.requirements).length === 0;
+  const hasTechnique = isStarter || techniquesUnlocked(startingLevels).has(r.technique);
+  return meetsStated && hasTechnique && r.ingredients.length <= startingSlots;
+});
+if (openers.length === 0) {
+  note("a brand new player can cook nothing at all - progression can never start");
+} else {
+  console.log(`  note: a new player can cook ${openers.map((r) => r.id).join(", ")}`);
+}
 
 // --- report ----------------------------------------------------------------
 console.log(

@@ -5,9 +5,16 @@ import {
   KICK_AUTH_EXPIRED,
   KICK_INSUFFICIENT_HOLD,
   MOVE_STEP_MS,
+  MSG_COOK_CANCEL,
+  MSG_COOK_PREP,
+  MSG_COOK_PREPARED,
+  MSG_COOK_RESULT,
+  MSG_COOK_START,
+  MSG_COOK_STOP,
   MSG_GATHER,
   MSG_GATHER_RESULT,
   MSG_GATHER_STARTED,
+  MSG_HEAT_BAR,
   MSG_KICK,
   MSG_MOVE,
   MSG_NODES,
@@ -17,8 +24,11 @@ import {
   findSection,
   isAdjacentOrOn,
   isWalkableOn,
+  type CookPreparedPayload,
+  type CookResultPayload,
   type GatherResultPayload,
   type GatherStartedPayload,
+  type HeatBarPayload,
   type MoveIntent,
   type NodesPayload,
   type ProfilePayload,
@@ -32,7 +42,8 @@ import { TEX_MARKER, TEX_PLAYER_BACK, TEX_PLAYER_FRONT } from "../map/textures.j
 import type { HubStateView, KickNotice, PlayerView } from "../net/state.js";
 import { clearSession, type Session } from "../net/session.js";
 import { Hud } from "../ui/hud.js";
-import { showPanel, showProgress, toast, type ProgressHandle } from "../ui/overlay.js";
+import { openKitchen, runHeatBar, runPrep, showCookResult, type KitchenCallbacks } from "../ui/cooking.js";
+import { showPanel, showProgress, toast, type ModalHandle, type ProgressHandle } from "../ui/overlay.js";
 import { SCENE_HUB, SCENE_LOGIN } from "./keys.js";
 
 interface HubSceneData {
@@ -69,7 +80,10 @@ export class HubScene extends Phaser.Scene {
   private departing = false;
   private currentSection = HUB_MAP;
   private pending: PendingAction | null = null;
+  /** A station clicked from across the map, opened once we arrive. */
+  private pendingStation: string | null = null;
   private progress: ProgressHandle | null = null;
+  private cookModal: ModalHandle | null = null;
   private cooldownTimer?: Phaser.Time.TimerEvent;
 
   constructor() {
@@ -81,6 +95,7 @@ export class HubScene extends Phaser.Scene {
     this.session = data.session;
     this.departing = false;
     this.pending = null;
+    this.pendingStation = null;
     this.currentSection = HUB_MAP;
 
     this.cameras.main.setBackgroundColor("#101a14");
@@ -103,6 +118,7 @@ export class HubScene extends Phaser.Scene {
     this.bindState();
     this.bindInput();
     this.bindRoomEvents();
+    this.bindCooking();
 
     // Node cooldowns tick down locally off the server's readyAt timestamps;
     // nothing is decided here, it is only redrawn.
@@ -170,8 +186,11 @@ export class HubScene extends Phaser.Scene {
    */
   private onFeatureClicked(feature: MapFeature) {
     if (feature.kind === "station") {
-      // Stations get their panels in the UI pass; walking to them still works.
-      this.walkAdjacentTo(feature.tile);
+      if (this.isSelfNear(feature.tile)) this.openStation(feature.id);
+      else {
+        this.pendingStation = feature.id;
+        this.walkAdjacentTo(feature.tile);
+      }
       return;
     }
 
@@ -272,6 +291,9 @@ export class HubScene extends Phaser.Scene {
       this.progress?.done();
       this.progress = null;
       this.pending = null;
+      this.pendingStation = null;
+      this.cookModal?.close();
+      this.cookModal = null;
       toast(rejection.message, "bad");
     });
 
@@ -283,6 +305,45 @@ export class HubScene extends Phaser.Scene {
 
     this.room.onError((code, message) => {
       toast(message ?? `Connection error (${code}).`, "bad");
+    });
+  }
+
+  // --- stations ------------------------------------------------------------
+
+  /** The callbacks every stage of the mini-game reports back through. */
+  private kitchenCallbacks(): KitchenCallbacks {
+    return {
+      onCook: (recipeId) => this.room.send(MSG_COOK_START, { recipeId }),
+      onPrepDone: (cookId) => this.room.send(MSG_COOK_PREP, { cookId }),
+      onStop: (cookId, elapsedMs) => this.room.send(MSG_COOK_STOP, { cookId, elapsedMs }),
+      onCancel: () => this.room.send(MSG_COOK_CANCEL, {}),
+    };
+  }
+
+  private openStation(id: string) {
+    if (id === "kitchen") {
+      this.cookModal = openKitchen(this.kitchenCallbacks());
+      return;
+    }
+    // The tavern and outfitter arrive with the economy panels.
+    toast("Nothing to do here yet.");
+  }
+
+  private bindCooking() {
+    this.room.onMessage(MSG_COOK_PREPARED, (payload: CookPreparedPayload) => {
+      this.cookModal?.close();
+      // Auto-prep sends the bar immediately, so there is nothing to hold.
+      this.cookModal = payload.autoPrep ? null : runPrep(payload, this.kitchenCallbacks());
+    });
+
+    this.room.onMessage(MSG_HEAT_BAR, (payload: HeatBarPayload) => {
+      this.cookModal?.close();
+      this.cookModal = runHeatBar(payload, this.kitchenCallbacks());
+    });
+
+    this.room.onMessage(MSG_COOK_RESULT, (result: CookResultPayload) => {
+      this.cookModal?.close();
+      this.cookModal = showCookResult(result, gameStore.profile);
     });
   }
 
@@ -358,6 +419,14 @@ export class HubScene extends Phaser.Scene {
     if (isSelf && this.pending && !player.moving && this.isSelfNear(this.pending.tile)) {
       this.firePending();
     }
+    if (isSelf && this.pendingStation && !player.moving) {
+      const station = this.map.features.find((f) => f.id === this.pendingStation);
+      if (station && this.isSelfNear(station.tile)) {
+        const id = this.pendingStation;
+        this.pendingStation = null;
+        this.openStation(id);
+      }
+    }
     if (isSelf) this.refreshCrowd();
   }
 
@@ -422,6 +491,7 @@ export class HubScene extends Phaser.Scene {
     this.input.removeAllListeners();
     this.cooldownTimer?.remove();
     this.progress?.done();
+    this.cookModal?.close();
     for (const sessionId of [...this.avatars.keys()]) this.removeAvatar(sessionId);
     this.hud.destroy();
     if (!this.departing) {

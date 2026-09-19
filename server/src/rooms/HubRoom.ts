@@ -1,6 +1,7 @@
 import { Room, type Client } from "@colyseus/core";
 import {
   BALANCE_CACHE_TTL_MS,
+  CONFIG,
   HUB_MAP,
   HUB_PORTALS,
   HUB_SPAWN,
@@ -8,9 +9,16 @@ import {
   KICK_INSUFFICIENT_HOLD,
   MAX_PATH_TILES,
   MOVE_STEP_MS,
+  MSG_COOK_CANCEL,
+  MSG_COOK_PREP,
+  MSG_COOK_PREPARED,
+  MSG_COOK_RESULT,
+  MSG_COOK_START,
+  MSG_COOK_STOP,
   MSG_GATHER,
   MSG_GATHER_RESULT,
   MSG_GATHER_STARTED,
+  MSG_HEAT_BAR,
   MSG_KICK,
   MSG_MOVE,
   MSG_NODES,
@@ -24,8 +32,14 @@ import {
   isAdjacentOrOn,
   isWalkableOn,
   spawnFor,
+  type CookPrepIntent,
+  type CookPreparedPayload,
+  type CookResultPayload,
+  type CookStartIntent,
+  type CookStopIntent,
   type GatherIntent,
   type GatherResultPayload,
+  type HeatBarPayload,
   type MoveIntent,
   type NodesPayload,
   type RejectedPayload,
@@ -34,6 +48,7 @@ import {
 } from "@crazycauldron/shared";
 import { config } from "../config.js";
 import { players as playerRepo } from "../db/index.js";
+import { makeHeatBar, planCook, resolveCook, validateClick } from "../game/cooking.js";
 import { completeGather, nodeStates, planGather } from "../game/gathering.js";
 import { loadSession, type Session } from "../game/session.js";
 import { log } from "../logger.js";
@@ -67,6 +82,16 @@ export class HubRoom extends Room<HubState> {
     this.onMessage(MSG_MOVE, (client, message: MoveIntent) => this.onMoveIntent(client, message));
     this.onMessage(MSG_TRAVEL, (client, message: TravelIntent) => this.onTravel(client, message));
     this.onMessage(MSG_GATHER, (client, message: GatherIntent) => this.onGather(client, message));
+    this.onMessage(MSG_COOK_START, (client, message: CookStartIntent) =>
+      this.onCookStart(client, message),
+    );
+    this.onMessage(MSG_COOK_PREP, (client, message: CookPrepIntent) =>
+      this.onCookPrepped(client, message),
+    );
+    this.onMessage(MSG_COOK_STOP, (client, message: CookStopIntent) =>
+      this.onCookStop(client, message),
+    );
+    this.onMessage(MSG_COOK_CANCEL, (client) => this.onCookCancel(client));
 
     // One tick = one tile of progress for everyone currently walking.
     this.setSimulationInterval(() => this.stepMovement(), MOVE_STEP_MS);
@@ -376,6 +401,184 @@ export class HubRoom extends Room<HubState> {
       client.send(MSG_GATHER_RESULT, payload);
       this.sendProfile(session);
     }, plan.durationMs);
+  }
+
+  // --- cooking -------------------------------------------------------------
+
+  /**
+   * Starts a cook. The guard is claimed for the whole sequence - prep, bar and
+   * cook time - so nothing else can interleave with it, and the kitchen is only
+   * open in the hub.
+   */
+  private onCookStart(client: Client, message: CookStartIntent) {
+    const session = this.sessions.get(client.sessionId);
+    const player = this.state.players.get(client.sessionId);
+    if (!session || !player) return;
+
+    if (player.section !== HUB_MAP) {
+      return this.reject(client, MSG_COOK_START, "not_in_hub", "The kitchen is back in the hub.");
+    }
+
+    const now = Date.now();
+    const refusal = session.guard.check(now);
+    if (refusal) return this.reject(client, MSG_COOK_START, refusal.reason, refusal.message);
+
+    const plan = planCook(session.state, String(message?.recipeId ?? ""));
+    if (!plan.ok) return this.reject(client, MSG_COOK_START, plan.reason, plan.message);
+
+    const cookId = `${client.sessionId}:${now}`;
+    const cook = makeHeatBar(session.state, plan.recipe, cookId);
+    session.cook = cook;
+
+    // Claim the guard for prep + bar + cook so no other action interleaves.
+    const total = plan.prepMs + cook.durationMs + CONFIG.cooking.cookMs;
+    session.guard.begin("cooking", total, now);
+    player.activity = "cooking";
+
+    const prepared: CookPreparedPayload = {
+      cookId,
+      recipeId: plan.recipe.id,
+      prepMs: plan.prepMs,
+      autoPrep: plan.autoPrep,
+      serverNow: now,
+    };
+    client.send(MSG_COOK_PREPARED, prepared);
+
+    // Auto-prep skips the hold entirely rather than shortening it.
+    if (plan.autoPrep) {
+      this.sendHeatBar(session, client);
+      return;
+    }
+
+    // A player who wanders off mid-prep should not hold the guard forever.
+    session.clearTimer();
+    session.timer = setTimeout(() => this.abandonCook(session, client), plan.prepMs + 10000);
+  }
+
+  private onCookPrepped(client: Client, message: CookPrepIntent) {
+    const session = this.sessions.get(client.sessionId);
+    if (!session?.cook) return;
+    if (session.cook.cookId !== String(message?.cookId ?? "")) return;
+    if (session.cook.prepared) return;
+    this.sendHeatBar(session, client);
+  }
+
+  private sendHeatBar(session: Session, client: Client) {
+    const cook = session.cook;
+    if (!cook) return;
+
+    cook.prepared = true;
+    cook.barStartedAt = Date.now();
+
+    const payload: HeatBarPayload = {
+      cookId: cook.cookId,
+      recipeId: cook.recipeId,
+      durationMs: cook.durationMs,
+      speed: cook.speed,
+      startOffset: cook.startOffset,
+      direction: cook.direction,
+      windowCentre: cook.windowCentre,
+      windowPct: cook.windowPct,
+      fineWindowPct: cook.fineWindowPct,
+      serverNow: cook.barStartedAt,
+    };
+    client.send(MSG_HEAT_BAR, payload);
+
+    // No click by the time the bar ends means the marker ran off the end; the
+    // dish is settled at that final position rather than left hanging.
+    session.clearTimer();
+    session.timer = setTimeout(
+      () => this.settleCook(session, client, cook.durationMs),
+      cook.durationMs + 400,
+    );
+  }
+
+  private onCookStop(client: Client, message: CookStopIntent) {
+    const session = this.sessions.get(client.sessionId);
+    if (!session?.cook) {
+      return this.reject(client, MSG_COOK_STOP, "no_cook", "Nothing is cooking.");
+    }
+    const cook = session.cook;
+    if (cook.cookId !== String(message?.cookId ?? "")) return;
+    if (!cook.prepared) {
+      return this.reject(client, MSG_COOK_STOP, "not_prepared", "Finish the prep first.");
+    }
+
+    const click = validateClick(cook, message?.elapsedMs, Date.now());
+    if (!click.ok) {
+      this.cancelCook(session, client);
+      return this.reject(client, MSG_COOK_STOP, click.reason, click.message);
+    }
+
+    this.settleCook(session, client, click.elapsedMs);
+  }
+
+  /** Computes the dish and pays out after the cook time has elapsed. */
+  private settleCook(session: Session, client: Client, elapsedMs: number) {
+    const cook = session.cook;
+    if (!cook) return;
+    session.cook = null;
+    session.clearTimer();
+
+    const outcome = resolveCook(session.state, cook, elapsedMs);
+    if (!("quality" in outcome)) {
+      session.guard.finish();
+      const stalled = this.state.players.get(client.sessionId);
+      if (stalled) stalled.activity = "";
+      return this.reject(client, MSG_COOK_STOP, outcome.reason, outcome.message);
+    }
+
+    session.save();
+
+    // The dish is settled the moment the marker stops; the cook time is the
+    // wait before the player is told, which keeps one timer rather than two.
+    session.timer = setTimeout(() => {
+      session.timer = null;
+      session.guard.finish();
+
+      const player = this.state.players.get(client.sessionId);
+      if (player) {
+        player.activity = "";
+        player.chefLevel = session.state.chefLevel;
+      }
+
+      const payload: CookResultPayload = {
+        cookId: cook.cookId,
+        recipeId: cook.recipeId,
+        quality: outcome.quality,
+        markerPos: outcome.markerPos,
+        windowCentre: cook.windowCentre,
+        chefXp: outcome.chefXp,
+        skillXp: outcome.skillXp,
+        downgraded: outcome.downgraded,
+        upgraded: outcome.upgraded,
+        cookMs: outcome.cookMs,
+      };
+      client.send(MSG_COOK_RESULT, payload);
+      this.sendProfile(session);
+    }, outcome.cookMs);
+  }
+
+  private onCookCancel(client: Client) {
+    const session = this.sessions.get(client.sessionId);
+    if (!session) return;
+    this.cancelCook(session, client);
+  }
+
+  /** Drops the cook without spending anything, and without a full-cook penalty. */
+  private cancelCook(session: Session, client: Client) {
+    session.cook = null;
+    session.clearTimer();
+    session.guard.abandon(Date.now());
+    const player = this.state.players.get(client.sessionId);
+    if (player) player.activity = "";
+  }
+
+  private abandonCook(session: Session, client: Client) {
+    if (!session.cook) return;
+    log.warn("cook.abandoned", { wallet: session.state.wallet });
+    this.cancelCook(session, client);
+    this.reject(client, MSG_COOK_START, "abandoned", "The pot went cold.");
   }
 
   // --- outbound ------------------------------------------------------------
