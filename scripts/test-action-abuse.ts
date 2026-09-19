@@ -208,26 +208,6 @@ async function main() {
     check("and pay out nothing", session.payouts.length === 0, session.payouts.join(", "));
   }
 
-  {
-    session.clear();
-    session.room.send(MSG_SELL, { stackKey: "anything", qty: -5 });
-    session.room.send(MSG_SELL, { stackKey: "anything", qty: 1e12 });
-    session.room.send(MSG_SELL, { stackKey: "", qty: 0 });
-    await session.settle();
-    check("selling negative and absurd quantities is refused", session.rejections.length >= 1, session.reasons());
-    check("and sells nothing", !session.payouts.includes(MSG_SOLD));
-  }
-
-  {
-    session.clear();
-    session.room.send(MSG_BUY, { kind: "bag", tier: -1 });
-    session.room.send(MSG_BUY, { kind: "bag", tier: 9999 });
-    session.room.send(MSG_BUY, { kind: "nonsense", tier: 1 });
-    await session.settle();
-    check("buying a tier that does not exist is refused", session.rejections.length >= 1, session.reasons());
-    check("and buys nothing", !session.payouts.includes(MSG_BOUGHT));
-  }
-
   // --- acting from the wrong place -----------------------------------------
   console.log("\n-- acting from the wrong place --");
   {
@@ -316,7 +296,9 @@ async function main() {
     await session.settle();
     check(
       "cooking with an empty bag is refused",
-      session.refused("missing_ingredients"),
+      // The server answers "not cookable" here rather than itemising: it asks
+      // whether the recipe can be cooked at all before it asks what is short.
+      session.refused("not_cookable") || session.refused("missing_ingredients"),
       session.reasons(),
     );
     check("and nothing is cooked", !session.payouts.includes(MSG_COOK_RESULT));
@@ -421,6 +403,26 @@ async function main() {
       (session.profile()?.coins ?? 0) === coinsBefore,
       `${coinsBefore} -> ${session.profile()?.coins ?? 0}`,
     );
+
+    // Standing in the right place, so these reach the quantity guard rather
+    // than being turned away at the door first.
+    session.clear();
+    session.room.send(MSG_SELL, { stackKey: "ingredient:sunwheat", qty: -5 });
+    session.room.send(MSG_SELL, { stackKey: "ingredient:sunwheat", qty: 1e12 });
+    session.room.send(MSG_SELL, { stackKey: "ingredient:sunwheat", qty: 0 });
+    session.room.send(MSG_SELL, { stackKey: "", qty: 1 });
+    await session.settle();
+    check(
+      "negative, zero and absurd quantities are refused",
+      session.rejections.length >= 3,
+      session.reasons(),
+    );
+    check("and none of them sold anything", !session.payouts.includes(MSG_SOLD));
+    check(
+      "the purse is still untouched",
+      (session.profile()?.coins ?? 0) === coinsBefore,
+      `${session.profile()?.coins ?? 0} coins`,
+    );
   }
 
   {
@@ -428,6 +430,44 @@ async function main() {
     session.room.send(MSG_EAT, { stackKey: "dish:nothing:common" });
     await session.settle();
     check("eating something you do not have is refused", session.refused("no_stack"), session.reasons());
+  }
+
+  console.log("\n-- buying what cannot be bought --");
+  {
+    const outfitter = HUB_STATIONS.find((s) => s.id === "outfitter")!;
+    await session.walkTo(beside(HUB_MAP, { tileX: outfitter.tileX, tileY: outfitter.tileY }));
+
+    const coinsBefore = session.profile()?.coins ?? 0;
+
+    session.clear();
+    session.room.send(MSG_BUY, { kind: "nonsense", tier: 1 });
+    await session.settle();
+    check("a kind that does not exist is refused", session.refused("bad_tier"), session.reasons());
+
+    session.clear();
+    session.room.send(MSG_BUY, { kind: "bag", tier: -1 });
+    session.room.send(MSG_BUY, { kind: "bag", tier: 9999 });
+    await session.settle();
+    check(
+      "a negative or absurd tier is refused",
+      session.refused("already_owned") && session.refused("skipped_tier"),
+      session.reasons(),
+    );
+
+    session.clear();
+    session.room.send(MSG_BUY, { kind: "bag", tier: 3 });
+    await session.settle();
+    check(
+      "and a tier cannot be skipped",
+      session.refused("skipped_tier") || session.refused("too_poor"),
+      session.reasons(),
+    );
+    check("nothing was bought", !session.payouts.includes(MSG_BOUGHT));
+    check(
+      "and nothing was paid for it",
+      (session.profile()?.coins ?? 0) === coinsBefore,
+      `${session.profile()?.coins ?? 0} coins`,
+    );
   }
 
   // --- nothing leaked ------------------------------------------------------

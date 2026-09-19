@@ -20,6 +20,9 @@ import nacl from "tweetnacl";
 import {
   AUTH_RATE_LIMIT,
   HUB_MAP,
+  HUB_PORTALS,
+  SECTIONS,
+  MSG_TRAVEL,
   MSG_GATHER,
   MSG_GATHER_RESULT,
   MSG_GATHER_STARTED,
@@ -119,6 +122,20 @@ async function takeSeat(): Promise<Seat> {
   return seat;
 }
 
+/** A tile beside a feature that a player can actually stand on. */
+function beside(mapId: number, tile: TilePos): TilePos {
+  for (const [dx, dy] of [
+    [0, 1],
+    [0, -1],
+    [1, 0],
+    [-1, 0],
+  ] as const) {
+    const candidate = { tileX: tile.tileX + dx, tileY: tile.tileY + dy };
+    if (isWalkableOn(mapId, candidate.tileX, candidate.tileY)) return candidate;
+  }
+  return tile;
+}
+
 /** Sends a destination and waits for the server to walk the player there. */
 async function walkTo(seat: Seat, target: TilePos, timeoutMs = 20000): Promise<boolean> {
   seat.room.send(MSG_MOVE, target);
@@ -135,9 +152,18 @@ async function main() {
   console.log("test-rate-limits\n");
   console.log(`  the server's auth limit is ${CONFIGURED_LIMIT} per window\n`);
 
-  // A player already in the game, who must not notice any of what follows.
+  /*
+   * Every seat is taken before the burst, not after.
+   *
+   * The burst deliberately exhausts the per-IP budget, and this test signs in
+   * from that same IP - so a seat taken afterwards would be refused by the
+   * very limiter the test is proving works, and the failure would look like a
+   * bug rather than the point.
+   */
   const bystander = await takeSeat();
-  check("a bystander is seated before the storm", bystander.self()?.section === HUB_MAP);
+  const hammer = await takeSeat();
+  const quiet = await takeSeat();
+  check("three players are seated before the storm", bystander.self()?.section === HUB_MAP);
 
   // --- per-IP auth burst ---------------------------------------------------
   console.log("\n-- a burst of sign-ins from one IP --");
@@ -199,37 +225,69 @@ async function main() {
   // --- per-session action limit --------------------------------------------
   console.log("\n-- one session hammering its actions --");
   {
-    const hammer = await takeSeat();
-    const quiet = await takeSeat();
+    /*
+     * Both go to the Meadows and stand beside a node first.
+     *
+     * Hammering from the hub is refused too, but for the wrong reason - the
+     * map answers "wrong section" before the action guard is ever consulted,
+     * and a test that passes on the wrong refusal is not testing the guard.
+     */
+    const meadows = SECTIONS[0]!;
+    const gate = HUB_PORTALS.find((p) => p.section === meadows.index)!;
+    const node = meadows.nodes[0]!;
 
-    // Both are in the hub, where there is nothing to gather - so the refusals
-    // are the action guard's, not the map's. Fifty gathers in one burst.
+    for (const seat of [hammer, quiet]) {
+      await walkTo(seat, beside(HUB_MAP, { tileX: gate.tileX, tileY: gate.tileY }));
+      seat.room.send(MSG_TRAVEL, { section: meadows.index });
+      await sleep(1200);
+      await walkTo(seat, beside(meadows.index, { tileX: node.tileX, tileY: node.tileY }));
+    }
+    check(
+      "both are standing at a node in the Meadows",
+      hammer.self()?.section === meadows.index && quiet.self()?.section === meadows.index,
+    );
+
     hammer.rejections.length = 0;
     quiet.rejections.length = 0;
-    for (let i = 0; i < BURST; i += 1) hammer.room.send(MSG_GATHER, { nodeId: "meadows_1" });
+
+    // Fifty gathers in one burst, from a player who could legitimately make
+    // exactly one of them.
+    for (let i = 0; i < BURST; i += 1) hammer.room.send(MSG_GATHER, { nodeId: node.id });
     await sleep(1500);
 
+    const reasons = [...new Set(hammer.rejections.map((r) => r.reason))];
     check(
       "the hammering session is refused",
       hammer.rejections.length > 1,
-      `${hammer.rejections.length} refusals: ${[...new Set(hammer.rejections.map((r) => r.reason))].join(", ")}`,
+      `${hammer.rejections.length} refusals: ${reasons.join(", ")}`,
     );
     check(
-      "it never gathered anything",
-      hammer.gathers === 0,
-      `${hammer.gathers} gathers`,
+      "and refused by the action guard, not by the map",
+      reasons.includes("busy") || reasons.includes("too_fast"),
+      reasons.join(", "),
+    );
+    check(
+      "it gathered at most the one it was entitled to",
+      hammer.gathers <= 1,
+      `${hammer.gathers} gathers from ${BURST} attempts`,
     );
 
-    // The quiet session sends exactly one of the same message.
-    quiet.room.send(MSG_GATHER, { nodeId: "meadows_1" });
-    await sleep(800);
+    // The quiet session sends exactly one of the same message, from a
+    // different node so the first one's cooldown is not what answers.
+    const otherNode = meadows.nodes[1] ?? node;
+    await walkTo(quiet, beside(meadows.index, { tileX: otherNode.tileX, tileY: otherNode.tileY }));
+    quiet.rejections.length = 0;
+    quiet.room.send(MSG_GATHER, { nodeId: otherNode.id });
+    await sleep(4500);
+
     check(
-      "a quiet session's own action is judged on its own merits",
+      "a quiet session is not held back by its neighbour",
       quiet.rejections.every((r) => r.reason !== "too_fast" && r.reason !== "busy"),
       quiet.rejections.map((r) => r.reason).join(", ") || "nothing",
     );
+    check("and its own gather went through", quiet.gathers >= 1, `${quiet.gathers} gathers`);
 
-    const stillMoving = await walkTo(quiet, { tileX: 11, tileY: 18 }, 10000);
+    const stillMoving = await walkTo(quiet, beside(meadows.index, meadows.returnPortal), 12000);
     check("and it still moves", stillMoving);
 
     await hammer.room.leave();

@@ -764,8 +764,17 @@ export class HubRoom extends Room<HubState> {
       return this.reject(client, MSG_BUY, "not_at_outfitter", "The outfitter is in the hub.");
     }
 
-    const kind = message?.kind === "pan" ? "pan" : "bag";
-    const result = buyUpgrade(session.state, kind, message?.tier ?? 0);
+    /*
+     * An unknown kind is refused rather than coerced. Falling back to "bag"
+     * was harmless - the price and tier checks still ran - but it meant a
+     * client sending nonsense got a real purchase attempt instead of an
+     * answer, which is the sort of quiet helpfulness that hides a bug.
+     */
+    if (message?.kind !== "pan" && message?.kind !== "bag") {
+      return this.reject(client, MSG_BUY, "bad_tier", "No such upgrade.");
+    }
+
+    const result = buyUpgrade(session.state, message.kind, message?.tier ?? 0);
     if (!result.ok) return this.reject(client, MSG_BUY, result.reason, result.message);
 
     session.save();

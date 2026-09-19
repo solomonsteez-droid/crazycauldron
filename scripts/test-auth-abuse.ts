@@ -15,12 +15,19 @@
  * the token gate is ever consulted.
  */
 
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { config as loadEnv } from "dotenv";
 import { Keypair } from "@solana/web3.js";
 import { Client } from "colyseus.js";
 import bs58 from "bs58";
 import jwt from "jsonwebtoken";
 import nacl from "tweetnacl";
 import { ROOM_HUB, type NonceResponse } from "@crazycauldron/shared";
+
+// The same .env the server read, so the forged-token cases can sign with the
+// real key and prove that expiry - not the signature - is what refuses them.
+loadEnv({ path: path.join(path.dirname(fileURLToPath(import.meta.url)), "..", ".env") });
 
 const HTTP = process.env.SMOKE_HTTP_URL ?? "http://localhost:2567";
 const WS = process.env.SMOKE_WS_URL ?? "ws://localhost:2567";
