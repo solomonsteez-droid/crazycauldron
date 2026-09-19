@@ -10,3 +10,5 @@ data/
 backups/
 logs/
 *.replaced-*
+scripts/tmp-*
+scripts/preview/
