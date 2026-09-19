@@ -482,13 +482,22 @@ function main() {
     ["portal_caves", "portal"],
   ];
   const props: string[] = [];
+  /*
+   * The building drops landed in assets/buildings/ rather than
+   * assets/sprites/buildings/. Both are accepted: which folder art arrives in
+   * is not worth a manual move, and the report says where each one was found.
+   */
+  const buildingDirs = [path.join(SRC, "buildings"), path.join(ASSETS, "buildings")];
   for (const [id, footprint] of propSpec) {
-    const file = path.join(SRC, "buildings", `${id}.png`);
-    if (!exists(file)) {
-      note("skipped", `sprites/buildings/${id}.png - missing, the game will draw a placeholder`);
+    const file = buildingDirs.map((dir) => path.join(dir, `${id}.png`)).find(exists);
+    if (!file) {
+      note(
+        "skipped",
+        `${id}.png - not in sprites/buildings/ or buildings/, the game will draw a placeholder`,
+      );
       continue;
     }
-    note("found", `sprites/buildings/${id}.png`);
+    note("found", path.relative(ASSETS, file));
     buildProp(file, id, footprint);
     props.push(id);
   }

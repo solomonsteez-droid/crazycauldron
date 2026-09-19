@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>CrazyCauldron - overlay alignment</title>
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        margin: 0;
+        padding: 20px;
+        background: #14101a;
+        color: #f3e9d2;
+        font: 13px/1.6 ui-monospace, Consolas, monospace;
+      }
+      h1 { margin: 0 0 4px; font-size: 15px; letter-spacing: 0.1em; text-transform: uppercase; }
+      p { margin: 0 0 12px; color: #9a8f7a; max-width: 70ch; }
+      .row { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 14px; }
+      label { color: #9a8f7a; }
+      select, button {
+        font: inherit;
+        color: #f3e9d2;
+        background: #1d1728;
+        border: 1px solid #3a3050;
+        border-radius: 4px;
+        padding: 4px 8px;
+      }
+      button { cursor: pointer; margin-top: 12px; }
+      button:hover:not(:disabled) { border-color: #7ce08a; }
+      canvas { border: 1px solid #3a3050; border-radius: 6px; image-rendering: pixelated; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/dev/align.ts"></script>
+  </body>
+</html>

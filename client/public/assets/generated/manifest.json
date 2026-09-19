@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-19T07:18:41.696Z",
+  "generatedAt": "2026-09-19T07:36:18.232Z",
   "bodyFrame": {
     "width": 32,
     "height": 48
@@ -204,10 +204,38 @@
       }
     }
   ],
-  "props": [],
+  "props": [
+    "kitchen",
+    "tavern",
+    "shop",
+    "portal_meadows",
+    "portal_forest",
+    "portal_caves"
+  ],
   "optional": {
     "ingredients": [],
-    "dishes": [],
+    "dishes": [
+      "recipe_01.png",
+      "recipe_02.png",
+      "recipe_03.png",
+      "recipe_04.png",
+      "recipe_05.png",
+      "recipe_06.png",
+      "recipe_07.png",
+      "recipe_08.png",
+      "recipe_09.png",
+      "recipe_10.png",
+      "recipe_11.png",
+      "recipe_12.png",
+      "recipe_13.png",
+      "recipe_14.png",
+      "recipe_15.png",
+      "recipe_16.png",
+      "recipe_17.png",
+      "recipe_18.png",
+      "recipe_19.png",
+      "recipe_20.png"
+    ],
     "nodes": [],
     "ui": [],
     "effects": []
