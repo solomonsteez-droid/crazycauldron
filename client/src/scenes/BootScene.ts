@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { createBodyAnimations, drawPlaceholders, queueArt } from "../art/assets.js";
 import { loadArt } from "../art/manifest.js";
+import { SECTIONS } from "@crazycauldron/shared";
 import { GameMap } from "../map/gameMap.js";
 import { createPlaceholderArt } from "../map/textures.js";
 import { SCENE_BOOT, SCENE_LOGIN } from "./keys.js";
@@ -26,7 +27,13 @@ export class BootScene extends Phaser.Scene {
 
       const finish = () => {
         drawPlaceholders(this);
-        GameMap.useTerrain(manifest.terrain ?? []);
+        // The map file says where each node is; sections.json says what
+        // grows on it, and the sprite needs both.
+        GameMap.useIngredients(
+          SECTIONS.flatMap((section) =>
+            section.nodes.map((node) => [node.id, node.ingredient] as [string, string]),
+          ),
+        );
         createBodyAnimations(this, manifest);
         this.scene.start(SCENE_LOGIN);
       };

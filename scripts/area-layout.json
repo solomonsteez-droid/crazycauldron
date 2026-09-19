@@ -1,0 +1,185 @@
+{
+  "_comment": "Hand placement for the painted maps, in grid cells. The generator reads this, classifies every cell from the painting inside the open regions, applies these corrections, and writes shared/src/content/maps/<id>.json. Open regions say where play happens at all; blocked rectangles are the painted structures no classifier can be trusted to find - a tavern, a cauldron, a stream. Everything else - the shrubs, the puddles, the boulder piles - comes from the pixels. Positions were read off the paintings cell by cell; the thresholds were measured, not guessed.",
+  "grid": {
+    "cols": 42,
+    "rows": 24,
+    "cell": 24,
+    "_comment": "24px cells and a 1008x576 world. A 48px character is exactly a twelfth of the map's height, which is what the brief asked for. The paintings are 2688x1520, so the world is the image at 0.375 across and 0.379 down - a 1% vertical stretch, invisible, and it buys a grid whose cells are square."
+  },
+  "areas": [
+    {
+      "id": "hub",
+      "map": 0,
+      "name": "The Hub",
+      "image": "map_hub.png",
+      "classify": {
+        "_comment": "Measured: dirt and lit grass sit at luma 82-117, the conifer border at 34. So the treeline falls out of a plain darkness test and only the built things need rectangles.",
+        "minLuma": 52,
+        "canopy": { "luma": 86, "greenOver": 1.18 }
+      },
+      "open": [{ "c": 0, "r": 0, "w": 42, "h": 24 }],
+      "blocked": [
+        { "c": 0, "r": 4, "w": 10, "h": 9, "why": "the stone oven and its counter" },
+        { "c": 31, "r": 2, "w": 11, "h": 12, "why": "the tavern" },
+        { "c": 17, "r": 0, "w": 9, "h": 6, "why": "the cottage" },
+        { "c": 15, "r": 3, "w": 2, "h": 3, "why": "the cottage fence" },
+        { "c": 17, "r": 9, "w": 8, "h": 6, "why": "the cauldron on its plinth" },
+        { "c": 16, "r": 18, "w": 8, "h": 5, "why": "the market stall" },
+        { "c": 11, "r": 14, "w": 4, "h": 5, "why": "the well" },
+        { "c": 1, "r": 14, "w": 8, "h": 6, "why": "the cart" },
+        { "c": 26, "r": 18, "w": 3, "h": 4, "why": "the signpost" },
+        { "c": 9, "r": 18, "w": 2, "h": 3, "why": "the lantern post" },
+        { "c": 0, "r": 0, "w": 1, "h": 24, "why": "the treeline, left" },
+        { "c": 41, "r": 0, "w": 1, "h": 24, "why": "the treeline, right" }
+      ],
+      "spawn": { "c": 28, "r": 12 },
+      "zones": [
+        { "kind": "building", "id": "kitchen", "name": "Kitchen", "c": 1, "r": 6, "w": 8, "h": 7, "baseline": 12 },
+        { "kind": "building", "id": "tavern", "name": "Tavern", "c": 32, "r": 4, "w": 9, "h": 10, "baseline": 13 },
+        { "kind": "building", "id": "outfitter", "name": "Outfitter", "c": 16, "r": 18, "w": 8, "h": 5, "baseline": 22 },
+        { "kind": "scenery", "id": "cauldron", "name": "", "c": 17, "r": 9, "w": 8, "h": 6, "baseline": 14 },
+        { "kind": "scenery", "id": "cottage", "name": "", "c": 17, "r": 0, "w": 9, "h": 6, "baseline": 5 },
+        { "kind": "portal", "id": "portal_1", "name": "Meadows", "section": 1, "c": 11, "r": 0, "w": 4, "h": 4, "glow": "#f2b53b" },
+        { "kind": "portal", "id": "portal_2", "name": "Deep Forest", "section": 2, "c": 29, "r": 0, "w": 4, "h": 4, "glow": "#7ce08a" },
+        { "kind": "portal", "id": "portal_3", "name": "Mystical Caves", "section": 3, "c": 10, "r": 21, "w": 5, "h": 3, "glow": "#a6bce4" }
+      ],
+      "nodes": []
+    },
+
+    {
+      "id": "meadows",
+      "map": 1,
+      "name": "Meadows",
+      "image": "map_meadows.png",
+      "classify": {
+        "_comment": "Measured: open grass and the path sit at luma 127-134, the stream at 72 with blue 23 over red, tree shade at 71-80.",
+        "minLuma": 72,
+        "water": { "blueOver": 12 },
+        "canopy": { "luma": 92, "greenOver": 1.1 }
+      },
+      "open": [{ "c": 0, "r": 0, "w": 42, "h": 24 }],
+      "blocked": [
+        { "c": 1, "r": 0, "w": 7, "h": 4, "why": "the oak, top left" },
+        { "c": 2, "r": 3, "w": 10, "h": 7, "why": "the wheat field and its fence" },
+        { "c": 13, "r": 1, "w": 9, "h": 5, "why": "the berry thicket" },
+        { "c": 25, "r": 0, "w": 7, "h": 6, "why": "the rock outcrop" },
+        { "c": 32, "r": 0, "w": 8, "h": 6, "why": "the oak, top right" },
+        { "c": 20, "r": 6, "w": 6, "h": 5, "why": "the lupins" },
+        { "c": 33, "r": 7, "w": 9, "h": 5, "why": "the daisy bank" },
+        { "c": 2, "r": 11, "w": 7, "h": 5, "why": "the boulders" },
+        { "c": 0, "r": 16, "w": 5, "h": 5, "why": "the lower boulders" },
+        { "c": 27, "r": 11, "w": 8, "h": 13, "why": "the stream" },
+        { "c": 24, "r": 19, "w": 6, "h": 5, "why": "the stream, lower bend" },
+        { "c": 37, "r": 13, "w": 5, "h": 11, "why": "the far hedgerow" },
+        { "c": 0, "r": 20, "w": 6, "h": 4, "why": "the bottom hedgerow" }
+      ],
+      "reopen": [
+        { "c": 26, "r": 12, "w": 10, "h": 2, "why": "the footbridge, and a landing at each end" }
+      ],
+      "spawn": { "c": 12, "r": 4 },
+      "zones": [
+        { "kind": "portal", "id": "portal_hub", "name": "Back to the hub", "section": 0, "c": 10, "r": 0, "w": 5, "h": 3, "glow": "#7ce08a" }
+      ],
+      "nodes": [
+        { "id": "meadows_1", "c": 4, "r": 10 },
+        { "id": "meadows_5", "c": 8, "r": 10 },
+        { "id": "meadows_2", "c": 16, "r": 7 },
+        { "id": "meadows_6", "c": 23, "r": 3 },
+        { "id": "meadows_3", "c": 30, "r": 8 },
+        { "id": "meadows_8", "c": 24, "r": 12 },
+        { "id": "meadows_4", "c": 21, "r": 14 },
+        { "id": "meadows_10", "c": 32, "r": 9 },
+        { "id": "meadows_7", "c": 25, "r": 16 },
+        { "id": "meadows_9", "c": 35, "r": 13 },
+        { "id": "meadows_11", "c": 5, "r": 17 },
+        { "id": "meadows_12", "c": 18, "r": 17 }
+      ]
+    },
+
+    {
+      "id": "deep_forest",
+      "map": 2,
+      "name": "Deep Forest",
+      "image": "map_forest.png",
+      "classify": {
+        "_comment": "Measured: the path is luma 96-117, the lit clearing 61, the trunks and the swamp 44-55. Everything is dark here, so the open regions carry the weight and the threshold only removes what is darker than the clearing floor. No water rule: nothing in this painting is blue, and the swamp is a rectangle.",
+        "minLuma": 40
+      },
+      "open": [
+        { "c": 9, "r": 7, "w": 24, "h": 15 },
+        { "c": 13, "r": 20, "w": 7, "h": 4 },
+        { "c": 19, "r": 4, "w": 7, "h": 4 }
+      ],
+      "blocked": [
+        { "c": 10, "r": 8, "w": 5, "h": 4, "why": "the mushroom cluster" },
+        { "c": 19, "r": 10, "w": 5, "h": 4, "why": "the berry bush" },
+        { "c": 26, "r": 8, "w": 6, "h": 4, "why": "the garlic patch" },
+        { "c": 31, "r": 12, "w": 6, "h": 6, "why": "the giant caps" },
+        { "c": 17, "r": 16, "w": 13, "h": 5, "why": "the great root" },
+        { "c": 9, "r": 13, "w": 4, "h": 9, "why": "the swamp" },
+        { "c": 14, "r": 7, "w": 4, "h": 2, "why": "a trunk at the clearing's edge" }
+      ],
+      "spawn": { "c": 16, "r": 20 },
+      "zones": [
+        { "kind": "portal", "id": "portal_hub", "name": "Back to the hub", "section": 0, "c": 14, "r": 21, "w": 5, "h": 3, "glow": "#7ce08a" }
+      ],
+      "nodes": [
+        { "id": "deep_forest_1", "c": 16, "r": 9 },
+        { "id": "deep_forest_5", "c": 29, "r": 14 },
+        { "id": "deep_forest_2", "c": 15, "r": 12 },
+        { "id": "deep_forest_6", "c": 26, "r": 7 },
+        { "id": "deep_forest_3", "c": 13, "r": 18 },
+        { "id": "deep_forest_7", "c": 20, "r": 21 },
+        { "id": "deep_forest_4", "c": 26, "r": 13 },
+        { "id": "deep_forest_8", "c": 22, "r": 14 },
+        { "id": "deep_forest_9", "c": 21, "r": 8 },
+        { "id": "deep_forest_10", "c": 17, "r": 13 },
+        { "id": "deep_forest_11", "c": 16, "r": 16 },
+        { "id": "deep_forest_12", "c": 24, "r": 9 }
+      ]
+    },
+
+    {
+      "id": "mystical_caves",
+      "map": 3,
+      "name": "Mystical Caves",
+      "image": "map_caves.png",
+      "classify": {
+        "_comment": "Measured: the floor is luma 46-59, the walls and the pool 22-25. Deliberately no water rule - every cell of this painting is blue-dominant, the floor included, so a blue test would block the whole cave. The pool is a rectangle instead.",
+        "minLuma": 34
+      },
+      "open": [
+        { "c": 4, "r": 8, "w": 34, "h": 14 },
+        { "c": 13, "r": 20, "w": 6, "h": 4 },
+        { "c": 13, "r": 5, "w": 9, "h": 4 }
+      ],
+      "blocked": [
+        { "c": 22, "r": 0, "w": 12, "h": 9, "why": "the black pool" },
+        { "c": 4, "r": 1, "w": 9, "h": 8, "why": "the crystal spire" },
+        { "c": 29, "r": 12, "w": 7, "h": 7, "why": "the crystal cluster" },
+        { "c": 0, "r": 12, "w": 5, "h": 10, "why": "the mushroom shelf, left" },
+        { "c": 35, "r": 7, "w": 7, "h": 16, "why": "the mushroom shelf, right" },
+        { "c": 5, "r": 19, "w": 8, "h": 5, "why": "the mushroom shelf, bottom" },
+        { "c": 20, "r": 19, "w": 5, "h": 3, "why": "the flower bed" }
+      ],
+      "spawn": { "c": 16, "r": 20 },
+      "zones": [
+        { "kind": "portal", "id": "portal_hub", "name": "Back to the hub", "section": 0, "c": 14, "r": 21, "w": 5, "h": 3, "glow": "#7ce08a" }
+      ],
+      "nodes": [
+        { "id": "mystical_caves_1", "c": 8, "r": 14 },
+        { "id": "mystical_caves_6", "c": 33, "r": 10 },
+        { "id": "mystical_caves_2", "c": 12, "r": 16 },
+        { "id": "mystical_caves_4", "c": 27, "r": 16 },
+        { "id": "mystical_caves_3", "c": 6, "r": 10 },
+        { "id": "mystical_caves_8", "c": 20, "r": 11 },
+        { "id": "mystical_caves_5", "c": 27, "r": 12 },
+        { "id": "mystical_caves_7", "c": 16, "r": 13 },
+        { "id": "mystical_caves_9", "c": 17, "r": 17 },
+        { "id": "mystical_caves_10", "c": 24, "r": 9 },
+        { "id": "mystical_caves_11", "c": 23, "r": 16 },
+        { "id": "mystical_caves_12", "c": 12, "r": 10 }
+      ]
+    }
+  ]
+}

@@ -7,7 +7,7 @@
  * wrong and hard to see in a screenshot.
  */
 
-import { MAP_SIZE, TILE_HEIGHT, TILE_WIDTH } from "@crazycauldron/shared";
+import { HUB_MAP, worldBoundsOf } from "@crazycauldron/shared";
 
 export interface Rect {
   x: number;
@@ -17,19 +17,19 @@ export interface Rect {
 }
 
 /**
- * The world rectangle the isometric floor actually occupies.
+ * The world rectangle a painting occupies.
  *
- * tileToWorld puts tile (x,y) at ((x-y)*HALF_W, (x+y)*HALF_H) and each diamond
- * is drawn from its left vertex, so the grid spans one half-tile either side of
- * the extreme columns. Derived rather than hard-coded so changing MAP_SIZE
- * cannot silently leave the camera clamping to the wrong rectangle.
+ * The painting starts at the origin and is drawn at exactly the world size the
+ * area file states, so the bounds are the image and nothing else - there is no
+ * longer a diamond lattice spilling half a tile past the edge columns.
  */
-export const MAP_WORLD_BOUNDS: Rect = {
-  x: -((MAP_SIZE - 1) * (TILE_WIDTH / 2)) - TILE_WIDTH / 2,
-  y: 0,
-  width: (MAP_SIZE - 1) * TILE_WIDTH + TILE_WIDTH,
-  height: (MAP_SIZE - 1) * TILE_HEIGHT + TILE_HEIGHT,
-};
+export function boundsOf(mapId: number): Rect {
+  const world = worldBoundsOf(mapId);
+  return { x: 0, y: 0, width: world.width, height: world.height };
+}
+
+/** The hub's rectangle, which is what the tests and the defaults want. */
+export const MAP_WORLD_BOUNDS: Rect = boundsOf(HUB_MAP);
 
 /** Viewport widths at which the zoom steps down, narrowest first. */
 export const ZOOM_BREAKPOINTS = [
@@ -43,10 +43,11 @@ export const DESKTOP_ZOOM = 3;
  * Camera zoom for a viewport width.
  *
  * 3x on desktop, 2x under 900px, 1.5x on phone-width screens. Whole numbers
- * keep a 32px tile landing on exact pixel multiples; 1.5 is the one deliberate
- * exception, because at phone width a 3x tile leaves almost no map on screen.
- * Half steps still land tile edges on whole pixels (32 and 16 are both even),
- * and the scroll position is rounded separately by the scene.
+ * keep the painting landing on exact pixel multiples; 1.5 is the one
+ * deliberate exception, because at phone width a 3x view leaves almost no map
+ * on screen. A half step still lands cell edges on whole pixels - a cell is
+ * 24px, and 24 * 1.5 is 36 - and the scroll position is rounded separately by
+ * the scene.
  */
 export function zoomForViewport(viewportWidth: number): number {
   for (const step of ZOOM_BREAKPOINTS) {

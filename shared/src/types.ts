@@ -5,6 +5,11 @@ export interface TilePos {
   tileY: number;
 }
 
+/** "N7pv..c9Pi" - a wallet short enough to sit in a HUD. */
+export function shortenAddress(address: string): string {
+  return address.length <= 9 ? address : `${address.slice(0, 4)}..${address.slice(-4)}`;
+}
+
 /** Client -> server move intent. Only ever a *destination*, never a position. */
 export interface MoveIntent extends TilePos {}
 
@@ -57,9 +62,3 @@ export interface SessionClaims {
   exp: number;
 }
 
-/** Tile ids of the placeholder maps. Index into the generated tileset. */
-export enum TileId {
-  Grass = 0,
-  Path = 1,
-  Rock = 2,
-}

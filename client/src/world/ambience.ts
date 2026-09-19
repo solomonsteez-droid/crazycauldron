@@ -12,7 +12,7 @@
  */
 
 import Phaser from "phaser";
-import { HUB_MAP, TILE_HEIGHT, lifeFor, type LifeKind } from "@crazycauldron/shared";
+import { CELL, HUB_MAP, lifeFor, type LifeKind } from "@crazycauldron/shared";
 import type { GameMap } from "../map/gameMap.js";
 import { Effects, TEX_PUFF } from "./effects.js";
 
@@ -105,9 +105,9 @@ export class Ambience {
     const at = map.tileCentre(kitchen.tile.tileX, kitchen.tile.tileY);
     return this.fx.float({
       x: at.x + Phaser.Math.Between(-2, 2),
-      // Above the roof rather than the doorway: the building art is about two
-      // tiles tall, so the chimney is a long way up from the tile centre.
-      y: at.y - 58,
+      // The chimney, not the doorway. The zone's centre is the middle of the
+      // painted oven, and its stack rises about three cells above that.
+      y: at.y - CELL * 3,
       dx: Phaser.Math.Between(-10, 16),
       dy: -Phaser.Math.Between(26, 44),
       colour,
@@ -180,7 +180,7 @@ export class Ambience {
     const lift = view.height * topBias;
     return {
       x: Phaser.Math.Between(view.left, view.right),
-      y: Phaser.Math.Between(view.top - lift, view.bottom - TILE_HEIGHT),
+      y: Phaser.Math.Between(view.top - lift, view.bottom - CELL),
     };
   }
 }

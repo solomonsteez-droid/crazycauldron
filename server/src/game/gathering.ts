@@ -9,7 +9,9 @@
 import {
   CONFIG,
   doubleDropChance,
+  areaNode,
   findNode,
+  nodeTile,
   gatherBlockReason,
   gatherDurationMs,
   ingredient,
@@ -64,7 +66,15 @@ export function planGather(
   if (section.index !== currentSection) {
     return { ok: false, reason: "wrong_section", message: "That node is in another section." };
   }
-  if (!isAdjacentOrOn(playerTile, { tileX: node.tileX, tileY: node.tileY })) {
+  /*
+   * Where a node stands is a property of the painted map, not of the section.
+   * sections.json says what grows there; the area file says where it is.
+   */
+  const placed = areaNode(section.index, nodeId);
+  if (!placed) {
+    return { ok: false, reason: "unknown_node", message: "No such node." };
+  }
+  if (!isAdjacentOrOn(playerTile, nodeTile(placed))) {
     return { ok: false, reason: "too_far", message: "Step closer to gather." };
   }
 

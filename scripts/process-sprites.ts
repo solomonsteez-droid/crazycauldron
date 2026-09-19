@@ -24,7 +24,17 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { QUANTISE_RAMP, RECIPES, INGREDIENTS, TERRAIN, TILE_WIDTH, decorFor } from "@crazycauldron/shared";
+import { QUANTISE_RAMP, RECIPES, INGREDIENTS, TERRAIN, decorFor } from "@crazycauldron/shared";
+
+/**
+ * Decor is still cut to a "tile" of 32px.
+ *
+ * The game no longer has tiles - the maps are paintings - but the pack
+ * scenery this cuts is 32px art and the sizes in terrain.json are written
+ * in those units. Nothing on a painted map draws it any more; the pipeline
+ * keeps producing it so the assets survive a decision to use them again.
+ */
+const TILE_WIDTH = 32;
 import {
   alphaBounds,
   blank,

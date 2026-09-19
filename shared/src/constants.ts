@@ -3,13 +3,6 @@
 export const ROOM_HUB = "hub";
 export const ROOM_WAITING = "waiting";
 
-/** Isometric diamond tile footprint, in pixels. */
-export const TILE_WIDTH = 32;
-export const TILE_HEIGHT = 16;
-
-/** Placeholder hub map is square. */
-export const MAP_SIZE = 24;
-
 /** State patch rate, ms. */
 export const PATCH_RATE_MS = 100;
 

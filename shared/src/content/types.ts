@@ -67,8 +67,6 @@ export interface Recipe {
 export interface GatherNodeDef {
   id: string;
   ingredient: string;
-  tileX: number;
-  tileY: number;
 }
 
 export interface Rect {
@@ -86,27 +84,10 @@ export interface Section {
   accent: string;
   accentColor: string;
   groundColor: string;
-  spawn: TilePos;
-  returnPortal: TilePos;
-  obstacles: Rect[];
   nodes: GatherNodeDef[];
 }
 
-export interface HubStation {
-  id: "kitchen" | "tavern" | "outfitter";
-  name: string;
-  tileX: number;
-  tileY: number;
-}
-
-export interface HubPortal {
-  section: number;
-  tileX: number;
-  tileY: number;
-}
-
 export interface SectionsFile {
-  hub: { stations: HubStation[]; portals: HubPortal[] };
   sections: Section[];
 }
 
@@ -250,6 +231,61 @@ export interface TerrainFile {
   packs: Record<string, TerrainPack>;
   decor: Record<string, DecorPiece[]>;
   maps: TerrainMap[];
+}
+
+// --- painted areas ---------------------------------------------------------
+
+/**
+ * A zone is a rectangle of cells that means something.
+ *
+ * "building" and "portal" are interactive - the Kitchen, the gates. "scenery"
+ * is not: it exists only so a player walking behind the cauldron is drawn
+ * behind it. All three carry a baseline, the row where the painted thing meets
+ * the ground, which is what decides front from behind.
+ */
+export type ZoneKind = "building" | "portal" | "scenery";
+
+export interface AreaZone {
+  kind: ZoneKind;
+  id: string;
+  /** Shown on the map; empty for scenery, which is already painted in. */
+  name: string;
+  c: number;
+  r: number;
+  w: number;
+  h: number;
+  /** The row the structure stands on. A player above it is behind it. */
+  baseline: number;
+  /** Portals only: the map index this leads to. */
+  section?: number;
+  glow?: string;
+}
+
+/** A gather node, placed on the painting rather than on a tile. */
+export interface AreaNode {
+  id: string;
+  c: number;
+  r: number;
+}
+
+export interface AreaFile {
+  id: string;
+  /** 0 is the hub; 1..3 match Section.index. */
+  map: number;
+  name: string;
+  /** File name under client/public/assets/maps/. */
+  image: string;
+  /** World pixels per cell. Square. */
+  cell: number;
+  cols: number;
+  rows: number;
+  /** One string per row, "." walkable and "#" blocked. */
+  walkable: string[];
+  spawn: { col: number; row: number };
+  zones: AreaZone[];
+  nodes: AreaNode[];
+  /** Written by the generator, for anyone wondering where this came from. */
+  generatedAt?: string;
 }
 
 // --- ambience --------------------------------------------------------------

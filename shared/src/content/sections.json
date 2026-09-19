@@ -1,17 +1,5 @@
 {
-  "hub": {
-    "_layout": "Portals and stations both sit on the walkable border, one feature per stretch of edge, with at least three clear tiles between any two of them and between each and the cauldron block at 10-13. A path spur reaches each one from the central avenues and stops at its doorway, so no building stands on a path. Isometrically +x reads south-east and +y south-west, so high x with mid y is the south-east edge.",
-    "stations": [
-      { "id": "kitchen",  "name": "Kitchen",   "tileX": 14, "tileY": 21 },
-      { "id": "tavern",   "name": "Tavern",    "tileX": 21, "tileY": 5 },
-      { "id": "outfitter","name": "Outfitter", "tileX": 2,  "tileY": 5 }
-    ],
-    "portals": [
-      { "section": 1, "tileX": 21, "tileY": 18 },
-      { "section": 2, "tileX": 9, "tileY": 2 },
-      { "section": 3, "tileX": 2,  "tileY": 18 }
-    ]
-  },
+  "_layout": "Where anything stands now lives in shared/src/content/maps/<area>.json, placed over the painting rather than on a tile grid. What is left here is what a section *is*: its name, what it costs to enter, what grows in it.",
   "sections": [
     {
       "id": "meadows",
@@ -21,22 +9,55 @@
       "accent": "saffron",
       "accentColor": "#f2b53b",
       "groundColor": "#3f6b46",
-      "spawn": { "tileX": 12, "tileY": 20 },
-      "returnPortal": { "tileX": 14, "tileY": 21 },
-      "obstacles": [{ "x": 10, "y": 9, "w": 4, "h": 3 }],
       "nodes": [
-        { "id": "meadows_1",  "ingredient": "sunwheat",       "tileX": 5,  "tileY": 5 },
-        { "id": "meadows_2",  "ingredient": "meadow_berries", "tileX": 9,  "tileY": 4 },
-        { "id": "meadows_3",  "ingredient": "honeycap",       "tileX": 14, "tileY": 4 },
-        { "id": "meadows_4",  "ingredient": "wild_thyme",     "tileX": 18, "tileY": 5 },
-        { "id": "meadows_5",  "ingredient": "sunwheat",       "tileX": 4,  "tileY": 9 },
-        { "id": "meadows_6",  "ingredient": "meadow_berries", "tileX": 19, "tileY": 9 },
-        { "id": "meadows_7",  "ingredient": "brook_cress",    "tileX": 5,  "tileY": 14 },
-        { "id": "meadows_8",  "ingredient": "honeycap",       "tileX": 9,  "tileY": 13 },
-        { "id": "meadows_9",  "ingredient": "brook_cress",    "tileX": 14, "tileY": 13 },
-        { "id": "meadows_10", "ingredient": "clover_honey",   "tileX": 19, "tileY": 14 },
-        { "id": "meadows_11", "ingredient": "rock_salt",      "tileX": 7,  "tileY": 18 },
-        { "id": "meadows_12", "ingredient": "clay",           "tileX": 16, "tileY": 18 }
+        {
+          "id": "meadows_1",
+          "ingredient": "sunwheat"
+        },
+        {
+          "id": "meadows_2",
+          "ingredient": "meadow_berries"
+        },
+        {
+          "id": "meadows_3",
+          "ingredient": "honeycap"
+        },
+        {
+          "id": "meadows_4",
+          "ingredient": "wild_thyme"
+        },
+        {
+          "id": "meadows_5",
+          "ingredient": "sunwheat"
+        },
+        {
+          "id": "meadows_6",
+          "ingredient": "meadow_berries"
+        },
+        {
+          "id": "meadows_7",
+          "ingredient": "brook_cress"
+        },
+        {
+          "id": "meadows_8",
+          "ingredient": "honeycap"
+        },
+        {
+          "id": "meadows_9",
+          "ingredient": "brook_cress"
+        },
+        {
+          "id": "meadows_10",
+          "ingredient": "clover_honey"
+        },
+        {
+          "id": "meadows_11",
+          "ingredient": "rock_salt"
+        },
+        {
+          "id": "meadows_12",
+          "ingredient": "clay"
+        }
       ]
     },
     {
@@ -47,22 +68,55 @@
       "accent": "berry",
       "accentColor": "#b5487e",
       "groundColor": "#2d4a33",
-      "spawn": { "tileX": 12, "tileY": 20 },
-      "returnPortal": { "tileX": 14, "tileY": 21 },
-      "obstacles": [{ "x": 8, "y": 6, "w": 3, "h": 2 }, { "x": 15, "y": 8, "w": 3, "h": 3 }],
       "nodes": [
-        { "id": "deep_forest_1",  "ingredient": "giant_chestnuts",   "tileX": 6,  "tileY": 4 },
-        { "id": "deep_forest_2",  "ingredient": "kingcap",           "tileX": 10, "tileY": 5 },
-        { "id": "deep_forest_3",  "ingredient": "marsh_rice",        "tileX": 16, "tileY": 4 },
-        { "id": "deep_forest_4",  "ingredient": "bog_garlic",        "tileX": 20, "tileY": 7 },
-        { "id": "deep_forest_5",  "ingredient": "giant_chestnuts",   "tileX": 4,  "tileY": 8 },
-        { "id": "deep_forest_6",  "ingredient": "kingcap",           "tileX": 18, "tileY": 10 },
-        { "id": "deep_forest_7",  "ingredient": "marsh_rice",        "tileX": 7,  "tileY": 10 },
-        { "id": "deep_forest_8",  "ingredient": "bog_garlic",        "tileX": 13, "tileY": 9 },
-        { "id": "deep_forest_9",  "ingredient": "nightshade_pepper", "tileX": 15, "tileY": 13 },
-        { "id": "deep_forest_10", "ingredient": "sap_amber",         "tileX": 20, "tileY": 15 },
-        { "id": "deep_forest_11", "ingredient": "smoke_salt",        "tileX": 6,  "tileY": 17 },
-        { "id": "deep_forest_12", "ingredient": "iron_flake",        "tileX": 14, "tileY": 18 }
+        {
+          "id": "deep_forest_1",
+          "ingredient": "giant_chestnuts"
+        },
+        {
+          "id": "deep_forest_2",
+          "ingredient": "kingcap"
+        },
+        {
+          "id": "deep_forest_3",
+          "ingredient": "marsh_rice"
+        },
+        {
+          "id": "deep_forest_4",
+          "ingredient": "bog_garlic"
+        },
+        {
+          "id": "deep_forest_5",
+          "ingredient": "giant_chestnuts"
+        },
+        {
+          "id": "deep_forest_6",
+          "ingredient": "kingcap"
+        },
+        {
+          "id": "deep_forest_7",
+          "ingredient": "marsh_rice"
+        },
+        {
+          "id": "deep_forest_8",
+          "ingredient": "bog_garlic"
+        },
+        {
+          "id": "deep_forest_9",
+          "ingredient": "nightshade_pepper"
+        },
+        {
+          "id": "deep_forest_10",
+          "ingredient": "sap_amber"
+        },
+        {
+          "id": "deep_forest_11",
+          "ingredient": "smoke_salt"
+        },
+        {
+          "id": "deep_forest_12",
+          "ingredient": "iron_flake"
+        }
       ]
     },
     {
@@ -73,22 +127,55 @@
       "accent": "sky glow",
       "accentColor": "#63c7e8",
       "groundColor": "#2b3350",
-      "spawn": { "tileX": 12, "tileY": 20 },
-      "returnPortal": { "tileX": 14, "tileY": 21 },
-      "obstacles": [{ "x": 9, "y": 7, "w": 5, "h": 2 }, { "x": 5, "y": 15, "w": 3, "h": 3 }],
       "nodes": [
-        { "id": "mystical_caves_1",  "ingredient": "glowcap",              "tileX": 4,  "tileY": 6 },
-        { "id": "mystical_caves_2",  "ingredient": "cave_pearls",          "tileX": 8,  "tileY": 4 },
-        { "id": "mystical_caves_3",  "ingredient": "ember_root",           "tileX": 13, "tileY": 3 },
-        { "id": "mystical_caves_4",  "ingredient": "cave_pearls",          "tileX": 18, "tileY": 6 },
-        { "id": "mystical_caves_5",  "ingredient": "crystal_sugar",        "tileX": 3,  "tileY": 10 },
-        { "id": "mystical_caves_6",  "ingredient": "glowcap",              "tileX": 20, "tileY": 10 },
-        { "id": "mystical_caves_7",  "ingredient": "starlight_salt",       "tileX": 6,  "tileY": 13 },
-        { "id": "mystical_caves_8",  "ingredient": "ember_root",           "tileX": 10, "tileY": 10 },
-        { "id": "mystical_caves_9",  "ingredient": "starlight_salt",       "tileX": 16, "tileY": 13 },
-        { "id": "mystical_caves_10", "ingredient": "frost_quartz",         "tileX": 19, "tileY": 16 },
-        { "id": "mystical_caves_11", "ingredient": "moonpetal",            "tileX": 8,  "tileY": 18 },
-        { "id": "mystical_caves_12", "ingredient": "dragons_breath_chili", "tileX": 15, "tileY": 17 }
+        {
+          "id": "mystical_caves_1",
+          "ingredient": "glowcap"
+        },
+        {
+          "id": "mystical_caves_2",
+          "ingredient": "cave_pearls"
+        },
+        {
+          "id": "mystical_caves_3",
+          "ingredient": "ember_root"
+        },
+        {
+          "id": "mystical_caves_4",
+          "ingredient": "cave_pearls"
+        },
+        {
+          "id": "mystical_caves_5",
+          "ingredient": "crystal_sugar"
+        },
+        {
+          "id": "mystical_caves_6",
+          "ingredient": "glowcap"
+        },
+        {
+          "id": "mystical_caves_7",
+          "ingredient": "starlight_salt"
+        },
+        {
+          "id": "mystical_caves_8",
+          "ingredient": "ember_root"
+        },
+        {
+          "id": "mystical_caves_9",
+          "ingredient": "starlight_salt"
+        },
+        {
+          "id": "mystical_caves_10",
+          "ingredient": "frost_quartz"
+        },
+        {
+          "id": "mystical_caves_11",
+          "ingredient": "moonpetal"
+        },
+        {
+          "id": "mystical_caves_12",
+          "ingredient": "dragons_breath_chili"
+        }
       ]
     }
   ]

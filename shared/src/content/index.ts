@@ -34,8 +34,6 @@ export const CONFIG = skillsJson as unknown as SkillsFile;
 
 const sectionsFile = sectionsJson as unknown as SectionsFile;
 export const SECTIONS = sectionsFile.sections;
-export const HUB_STATIONS = sectionsFile.hub.stations;
-export const HUB_PORTALS = sectionsFile.hub.portals;
 
 export const SKILL_IDS = CONFIG.skills.list;
 

@@ -3,9 +3,7 @@ import {
   BALANCE_CACHE_TTL_MS,
   CONFIG,
   HUB_MAP,
-  HUB_PORTALS,
   HUB_SPAWN,
-  HUB_STATIONS,
   KICK_AUTH_EXPIRED,
   KICK_INSUFFICIENT_HOLD,
   MAX_PATH_TILES,
@@ -46,7 +44,11 @@ import {
   SKILL_IDS,
   SKILL_MAX_LEVEL,
   chefXpToReach,
+  areaNode,
   findSection,
+  nodeTile,
+  nearZone,
+  zoneById,
   skillXpToReach,
   tierForBalance,
   wardrobeItem,
@@ -370,23 +372,28 @@ export class HubRoom extends Room<HubState> {
 
     const here: TilePos = { tileX: player.tileX, tileY: player.tileY };
 
+    /*
+     * A gate is a zone on the painting - the mouth of a path leading off the
+     * map - so "are you at the gate" is "are you standing in or beside it",
+     * not "are you on one particular cell".
+     */
     if (target === HUB_MAP) {
-      const from = findSection(player.section);
-      if (!from || !isAdjacentOrOn(here, from.returnPortal)) {
+      const out = zoneById(player.section, "portal_hub");
+      if (!out || !nearZone(out, here.tileX, here.tileY)) {
         return this.reject(client, MSG_TRAVEL, "not_at_portal", "Stand on the way out first.");
       }
       return this.placeOnMap(session, player, HUB_MAP);
     }
 
     const section = findSection(target);
-    const portal = HUB_PORTALS.find((p) => p.section === target);
-    if (!section || !portal) {
+    const gate = zoneById(HUB_MAP, `portal_${target}`);
+    if (!section || !gate) {
       return this.reject(client, MSG_TRAVEL, "unknown_section", "There is no such place.");
     }
     if (player.section !== HUB_MAP) {
       return this.reject(client, MSG_TRAVEL, "not_in_hub", "Return to the hub first.");
     }
-    if (!isAdjacentOrOn(here, { tileX: portal.tileX, tileY: portal.tileY })) {
+    if (!nearZone(gate, here.tileX, here.tileY)) {
       return this.reject(client, MSG_TRAVEL, "not_at_portal", "Walk to the gate first.");
     }
     if (!session.state.canEnterSection(target)) {
@@ -468,10 +475,8 @@ export class HubRoom extends Room<HubState> {
       live.activity = "";
 
       // Walking away cancels the gather - the node has to still be in reach.
-      if (!isAdjacentOrOn(
-        { tileX: live.tileX, tileY: live.tileY },
-        { tileX: plan.node.tileX, tileY: plan.node.tileY },
-      )) {
+      const placed = areaNode(live.section, plan.node.id);
+      if (!placed || !isAdjacentOrOn({ tileX: live.tileX, tileY: live.tileY }, nodeTile(placed))) {
         return this.reject(client, MSG_GATHER, "moved_away", "You wandered off.");
       }
 
@@ -708,12 +713,9 @@ export class HubRoom extends Room<HubState> {
     const player = this.state.players.get(client.sessionId);
     if (!player || player.section !== HUB_MAP) return false;
 
-    const tile = HUB_STATIONS.find((s) => s.id === station);
-    if (!tile) return false;
-    return isAdjacentOrOn(
-      { tileX: player.tileX, tileY: player.tileY },
-      { tileX: tile.tileX, tileY: tile.tileY },
-    );
+    const zone = zoneById(HUB_MAP, station);
+    if (!zone) return false;
+    return nearZone(zone, player.tileX, player.tileY);
   }
 
   private onSell(client: Client, message: SellIntent) {

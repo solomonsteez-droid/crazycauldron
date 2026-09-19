@@ -10,6 +10,7 @@
 import Phaser from "phaser";
 import {
   AMBIENCE,
+  AREAS,
   INGREDIENTS,
   PALETTE,
   RECIPES,
@@ -51,6 +52,8 @@ export const hasProcessedNode = (archetype: string) => PROCESSED_NODES.has(arche
 export const nodeArchetype = (ingredientId: string): string =>
   INGREDIENTS.find((i) => i.id === ingredientId)?.node ?? "herb";
 export const uiKey = (name: string) => `ui:${name}`;
+/** One painting per area, loaded straight from client/public/assets/maps. */
+export const mapKey = (areaId: string) => `map:${areaId}`;
 /** Decor is cut per map, so the key carries the map it was cut for. */
 export const decorKey = (mapId: number, id: string) => `decor:${mapId}:${id}`;
 export const effectKey = (name: string) => `fx:${name}`;
@@ -90,6 +93,18 @@ const recipeFile = (index: number) => `recipe_${String(index + 1).padStart(2, "0
  * the placeholder generated afterwards fills the gap.
  */
 export function queueArt(scene: Phaser.Scene, manifest: Manifest): void {
+  /*
+   * The four paintings, before anything else.
+   *
+   * They are ~6MB each and the game cannot draw a frame without one, so they
+   * are queued first and the boot screen waits on them. Nothing generates a
+   * fallback: an area with no painting has no ground, and a coloured rectangle
+   * would only hide which file is missing.
+   */
+  for (const area of AREAS) {
+    scene.load.image(mapKey(area.id), `/assets/maps/${area.image}`);
+  }
+
   for (const body of Object.keys(manifest.bodies)) {
     scene.load.atlas(
       bodyKey(body),
@@ -245,17 +260,6 @@ export function drawPlaceholders(scene: Phaser.Scene): void {
     effectStrip(scene, effectKey(name), name);
   }
 
-  for (const id of Object.values(STATION_PROP)) {
-    buildingChip(scene, propKey(id), id);
-  }
-  for (const section of SECTIONS) {
-    const id = PORTAL_PROP[section.index];
-    if (id) portalChip(scene, propKey(id), section.accentColor);
-  }
-
-  // Named plaza props. The art may not have been processed - a stand-in keeps
-  // the well, the cart and the signpost on the map either way.
-  for (const item of AMBIENCE.hubProps.items) smallPropChip(scene, propKey(item.prop), item.prop);
 }
 
 /**

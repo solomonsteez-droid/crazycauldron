@@ -11,27 +11,23 @@
 
 import {
   AMBIENCE,
+  AREAS,
+  HUB_MAP,
+  WARDROBE_ITEMS,
+  areaFor,
+  findPath,
+  isWalkableOn,
+  lifeFor,
+  nodesOf,
+  villagerGround,
+  zonesOf,
   CONFIG,
   INGREDIENTS,
   RECIPES,
   SECTIONS,
   SKILL_IDS,
-  HUB_PORTALS,
-  HUB_SPAWN,
-  HUB_STATIONS,
-  MAP_SIZE,
-  decorFor,
-  dressingFor,
   findIngredient,
-  findPath,
-  hubTileId,
-  lifeFor,
-  TERRAIN,
   validateAllLayouts,
-  TileId,
-  WARDROBE_ITEMS,
-  isWalkable,
-  isWalkableInSection,
   ingredientSlots,
   levelsFromXp,
   skillXpToReach,
@@ -142,75 +138,15 @@ for (const r of RECIPES) {
   }
 }
 
-// --- maps ------------------------------------------------------------------
-for (const station of HUB_STATIONS) {
-  if (!isWalkable(station.tileX, station.tileY)) {
-    note(`hub station ${station.id} sits on an unwalkable tile`);
-  }
-}
-for (const portal of HUB_PORTALS) {
-  if (!isWalkable(portal.tileX, portal.tileY)) {
-    note(`hub portal to section ${portal.section} sits on an unwalkable tile`);
-  }
-}
+// --- what each section grows -----------------------------------------------
 
 /*
- * The hub should not feel like three doors in a cupboard: stations must be at
- * least 4 tiles from each other and from the cauldron, and portals belong on
- * the outer edge rather than beside the plaza.
+ * Where anything stands is checked in shared/src/layout.ts against the painted
+ * maps, and again below where nodes have to be walkable to. What is left here
+ * is what a section *is*: twelve nodes, each yielding something that belongs to
+ * it, and no more rare ones than the cap allows.
  */
-const SPACING = 4;
-const chebyshev = (a: { tileX: number; tileY: number }, b: { tileX: number; tileY: number }) =>
-  Math.max(Math.abs(a.tileX - b.tileX), Math.abs(a.tileY - b.tileY));
-
-for (let i = 0; i < HUB_STATIONS.length; i += 1) {
-  const station = HUB_STATIONS[i]!;
-
-  for (let j = i + 1; j < HUB_STATIONS.length; j += 1) {
-    const other = HUB_STATIONS[j]!;
-    const gap = chebyshev(station, other);
-    if (gap < SPACING) note(`${station.id} and ${other.id} are only ${gap} tiles apart`);
-  }
-
-  // Distance to the cauldron block, which spans the middle 4x4 of the grid.
-  const lo = MAP_SIZE / 2 - 2;
-  const hi = MAP_SIZE / 2 + 1;
-  const dx = Math.max(lo - station.tileX, 0, station.tileX - hi);
-  const dy = Math.max(lo - station.tileY, 0, station.tileY - hi);
-  const fromCauldron = Math.max(dx, dy);
-  if (fromCauldron < SPACING) {
-    note(`${station.id} is only ${fromCauldron} tiles from the cauldron`);
-  }
-}
-
-/*
- * Nor should a station sit on the doorstep of the spawn: arriving in the hub
- * should mean walking somewhere, not already being there.
- */
-for (const station of HUB_STATIONS) {
-  const gap = chebyshev(station, HUB_SPAWN);
-  if (gap < 3) note(`${station.id} is only ${gap} tiles from the hub spawn`);
-}
-
-for (const portal of HUB_PORTALS) {
-  const edge = Math.min(
-    portal.tileX,
-    portal.tileY,
-    MAP_SIZE - 1 - portal.tileX,
-    MAP_SIZE - 1 - portal.tileY,
-  );
-  if (edge > 5) {
-    note(`the portal to section ${portal.section} is ${edge} tiles in, not on the outer edge`);
-  }
-}
-
 for (const sec of SECTIONS) {
-  const walkable = (x: number, y: number) => isWalkableInSection(sec.index, x, y);
-
-  if (!walkable(sec.spawn.tileX, sec.spawn.tileY)) note(`${sec.id}: spawn is not walkable`);
-  if (!walkable(sec.returnPortal.tileX, sec.returnPortal.tileY)) {
-    note(`${sec.id}: return portal is not walkable`);
-  }
   if (sec.nodes.length !== 12) note(`${sec.id}: has ${sec.nodes.length} nodes, expected 12`);
 
   const seen = new Set<string>();
@@ -228,16 +164,6 @@ for (const sec of SECTIONS) {
       note(`${sec.id}: node ${node.id} yields ${ing.id}, which belongs to section ${ing.section}`);
     }
     if (ing.rarity === "rare") rare += 1;
-
-    if (!walkable(node.tileX, node.tileY)) {
-      note(`${sec.id}: node ${node.id} is on an unwalkable tile`);
-    } else if (
-      node.tileX !== sec.spawn.tileX ||
-      node.tileY !== sec.spawn.tileY
-    ) {
-      const path = findPath(sec.spawn, { tileX: node.tileX, tileY: node.tileY }, walkable);
-      if (path.length === 0) note(`${sec.id}: node ${node.id} is unreachable from the spawn`);
-    }
   }
 
   if (rare > CONFIG.gathering.maxRareNodesPerSection) {
@@ -301,8 +227,8 @@ for (const skill of ["firecraft", "knifework", "spicecraft"] as const) {
 
 /*
  * The decoration has to hold together too. A villager wearing a hat that was
- * renamed, or a well placed on the kitchen doorstep, is exactly the kind of
- * thing that only shows up when someone loads the game and looks.
+ * renamed is exactly the kind of thing that only shows up when somebody loads
+ * the game and looks.
  */
 const villagerIds = new Set<string>();
 const hatIds = new Set(WARDROBE_ITEMS.filter((i) => i.kind === "hat").map((i) => i.id));
@@ -332,31 +258,13 @@ if (crowd.max > crowd.roster.length) {
 }
 if (crowd.stepMs <= 0) note("villagers step every 0ms, which would never move them");
 
-const stationTiles = new Set(HUB_STATIONS.map((s) => `${s.tileX},${s.tileY}`));
-const portalTiles = new Set(HUB_PORTALS.map((p) => `${p.tileX},${p.tileY}`));
-
-for (const prop of AMBIENCE.hubProps.items) {
-  const at = `${prop.tileX},${prop.tileY}`;
-  if (!isWalkable(prop.tileX, prop.tileY)) {
-    note(`hub prop ${prop.prop} at ${at} is off the walkable map`);
-  }
-  if (hubTileId(prop.tileX, prop.tileY) === TileId.Path) {
-    note(`hub prop ${prop.prop} at ${at} stands on a path`);
-  }
-  if (stationTiles.has(at) || portalTiles.has(at)) {
-    note(`hub prop ${prop.prop} at ${at} stands on a building or a gate`);
-  }
+const ground = villagerGround();
+if (ground.length < crowd.max * 4) {
+  note(`villagers have only ${ground.length} legal cells to walk in the hub`);
 }
 
-for (const map of TERRAIN.maps) {
-  const named = map.decor ?? [];
-  const resolved = decorFor(map.map);
-  if (named.length !== resolved.length) {
-    const missing = named.filter((id) => !resolved.some((piece) => piece.id === id));
-    note(`map ${map.map} lists decor its "${map.pack}" pack does not have: ${missing.join(", ")}`);
-  }
-  if (!dressingFor(map.map)) note(`map ${map.map} has terrain but no dressing settings`);
-  if (!lifeFor(map.map)) note(`map ${map.map} has terrain but no ambient particles`);
+for (const area of AREAS) {
+  if (!lifeFor(area.map)) note(`${area.id} has no ambient particles authored`);
 }
 
 const stops = AMBIENCE.dayNight.stops;
@@ -384,6 +292,48 @@ for (const [channel, level] of Object.entries(AMBIENCE.sound.defaults)) {
   if (level < 0 || level > 1) note(`default ${channel} volume ${level} is outside 0..1`);
 }
 
+// --- the painted areas -----------------------------------------------------
+
+/*
+ * Every node has to be reachable from the spawn, on foot, with the same
+ * pathfinder the server uses. Walkable is not the same as reachable: a node on
+ * an island of grass behind a stream passes every other check and cannot be
+ * gathered.
+ */
+for (const area of AREAS) {
+  const spawn = { tileX: area.spawn.col, tileY: area.spawn.row };
+  const walk = (x: number, y: number) => isWalkableOn(area.map, x, y);
+
+  for (const node of nodesOf(area.map)) {
+    const beside: { tileX: number; tileY: number }[] = [];
+    for (let dy = -1; dy <= 1; dy += 1) {
+      for (let dx = -1; dx <= 1; dx += 1) {
+        if (dx === 0 && dy === 0) continue;
+        if (walk(node.c + dx, node.r + dy)) beside.push({ tileX: node.c + dx, tileY: node.r + dy });
+      }
+    }
+    if (beside.length === 0) {
+      note(`${area.id}: nothing can stand beside node ${node.id}`);
+      continue;
+    }
+    const reachable = beside.some(
+      (tile) =>
+        (tile.tileX === spawn.tileX && tile.tileY === spawn.tileY) ||
+        findPath(spawn, tile, walk).length > 0,
+    );
+    if (!reachable) note(`${area.id}: node ${node.id} cannot be walked to from the spawn`);
+  }
+
+  for (const zone of zonesOf(area.map)) {
+    if (zone.kind === "scenery") continue;
+    if (zone.name === "" && zone.kind === "portal") {
+      note(`${area.id}: portal ${zone.id} has no name to show`);
+    }
+  }
+}
+
+if (areaFor(HUB_MAP).nodes.length > 0) note("the hub has gather nodes, which it should not");
+
 // --- layout ----------------------------------------------------------------
 
 /*
@@ -399,7 +349,11 @@ console.log(
   `content: ${INGREDIENTS.length} ingredients, ${RECIPES.length} recipes, ${SECTIONS.length} sections, ${SECTIONS.reduce((n, s) => n + s.nodes.length, 0)} nodes`,
 );
 console.log(
-  `ambience: ${AMBIENCE.villagers.roster.length} villagers, ${AMBIENCE.hubProps.items.length} hub props, ${TERRAIN.maps.reduce((n, m) => n + decorFor(m.map).length, 0)} decor pieces`,
+  `maps: ${AREAS.length} painted areas, ${AREAS.reduce((n, a) => n + a.zones.length, 0)} zones, ` +
+    `${AREAS.reduce((n, a) => n + a.nodes.length, 0)} placed nodes`,
+);
+console.log(
+  `ambience: ${AMBIENCE.villagers.roster.length} villagers, ${villagerGround().length} cells they may walk`,
 );
 
 if (problems.length === 0) {

@@ -10,7 +10,7 @@
  *   npx tsx scripts/test-camera.ts
  */
 
-import { MAP_SIZE, TILE_HEIGHT, TILE_WIDTH } from "@crazycauldron/shared";
+import { CELL, HUB_MAP, areaFor } from "@crazycauldron/shared";
 import {
   DESKTOP_ZOOM,
   LABEL_SCREEN_PX,
@@ -31,16 +31,21 @@ console.log("test-camera\n");
 
 // --- the map rectangle -----------------------------------------------------
 console.log("-- map bounds --");
+const hub = areaFor(HUB_MAP);
 check(
-  "spans the full isometric diamond",
-  MAP_WORLD_BOUNDS.width === MAP_SIZE * TILE_WIDTH &&
-    MAP_WORLD_BOUNDS.height === MAP_SIZE * TILE_HEIGHT,
-  `${MAP_WORLD_BOUNDS.width}x${MAP_WORLD_BOUNDS.height}`,
+  "is the painting, exactly",
+  MAP_WORLD_BOUNDS.width === hub.cols * CELL && MAP_WORLD_BOUNDS.height === hub.rows * CELL,
+  `${MAP_WORLD_BOUNDS.width}x${MAP_WORLD_BOUNDS.height} for ${hub.cols}x${hub.rows} cells`,
 );
 check(
-  "is centred on x=0, where tileToWorld puts the grid",
-  MAP_WORLD_BOUNDS.x + MAP_WORLD_BOUNDS.width / 2 === 0,
-  `x ${MAP_WORLD_BOUNDS.x}`,
+  "starts at the origin",
+  MAP_WORLD_BOUNDS.x === 0 && MAP_WORLD_BOUNDS.y === 0,
+  `${MAP_WORLD_BOUNDS.x},${MAP_WORLD_BOUNDS.y}`,
+);
+check(
+  "a character is about a twelfth of the map's height",
+  Math.abs(MAP_WORLD_BOUNDS.height / 48 - 12) < 0.5,
+  `${(MAP_WORLD_BOUNDS.height / 48).toFixed(1)} characters tall`,
 );
 
 // --- zoom ------------------------------------------------------------------
@@ -62,16 +67,11 @@ for (const [width, want, note] of zoomCases) {
 }
 check("desktop constant matches the brief", DESKTOP_ZOOM === 3);
 
-// --- tiles land on whole pixels -------------------------------------------
+// --- cells land on whole pixels -------------------------------------------
 console.log("\n-- pixel alignment --");
 for (const zoom of [1.5, 2, 3]) {
-  const w = TILE_WIDTH * zoom;
-  const h = TILE_HEIGHT * zoom;
-  check(
-    `a ${TILE_WIDTH}x${TILE_HEIGHT} tile at ${zoom}x is ${w}x${h}`,
-    Number.isInteger(w) && Number.isInteger(h),
-    "whole pixels",
-  );
+  const size = CELL * zoom;
+  check(`a ${CELL}px cell at ${zoom}x is ${size}px`, Number.isInteger(size), "whole pixels");
 }
 
 // --- filling the window ----------------------------------------------------
@@ -123,8 +123,8 @@ check(
   `map ${MAP_WORLD_BOUNDS.width} vs view ${narrow.view.width.toFixed(0)}`,
 );
 check(
-  "at 2x a 900px-tall window sees the whole map height",
-  narrow.fitsY,
+  "and taller than it too, now the painting is 576 world px",
+  !narrow.fitsY,
   `map ${MAP_WORLD_BOUNDS.height} vs view ${narrow.view.height.toFixed(0)}`,
 );
 
@@ -138,33 +138,45 @@ check(
   `view ${phone.view.width.toFixed(0)} world px`,
 );
 check(
-  "sees at least 8 tiles across",
-  phone.view.width / TILE_WIDTH >= 8,
-  `${(phone.view.width / TILE_WIDTH).toFixed(1)} tiles`,
+  "sees at least 8 cells across",
+  phone.view.width / CELL >= 8,
+  `${(phone.view.width / CELL).toFixed(1)} cells`,
 );
 
-// --- a view larger than the map -------------------------------------------
-console.log("\n-- a view larger than the map --");
+// --- the biggest screen still does not see it all -------------------------
+console.log("\n-- 1440p (2560x1440) --");
 
-// A 1440p monitor at 3x sees 853x480 world px, which swallows the 768x384 map
-// whole. Nothing is left to scroll, so the map should be centred.
+/*
+ * The painted maps are 1008x576 world pixels, where the old tile grid was
+ * 768x384. A 1440p monitor at 3x sees 853x480 - so even the largest common
+ * desktop no longer swallows a map whole, and the camera follows and clamps
+ * everywhere. That is a change worth asserting rather than assuming.
+ */
 const big = planCamera(2560, 1440);
 check(
-  "1440p at 3x fits the entire map",
-  big.fitsEntirely,
+  "even 1440p at 3x does not fit the whole map",
+  !big.fitsEntirely,
   `view ${big.view.width.toFixed(0)}x${big.view.height.toFixed(0)} vs map ${MAP_WORLD_BOUNDS.width}x${MAP_WORLD_BOUNDS.height}`,
 );
 const bigRange = scrollRange(big);
 check(
-  "so there is no scroll range to speak of",
-  bigRange.minX === bigRange.maxX && bigRange.minY === bigRange.maxY,
-  "the camera centres the map instead of following",
+  "so there is room to scroll on both axes",
+  bigRange.maxX > bigRange.minX && bigRange.maxY > bigRange.minY,
+  `x ${bigRange.minX}-${bigRange.maxX.toFixed(0)}, y ${bigRange.minY}-${bigRange.maxY.toFixed(0)}`,
 );
 check(
-  "and the centre is the middle of the map",
-  big.centre.x === 0 && big.centre.y === MAP_WORLD_BOUNDS.height / 2,
+  "and the clamp stops exactly at the painting's edge",
+  bigRange.maxX + big.view.width === MAP_WORLD_BOUNDS.width &&
+    bigRange.maxY + big.view.height === MAP_WORLD_BOUNDS.height,
+  "no empty space past the edge",
+);
+check(
+  "the centre is the middle of the painting",
+  big.centre.x === MAP_WORLD_BOUNDS.width / 2 && big.centre.y === MAP_WORLD_BOUNDS.height / 2,
   `${big.centre.x},${big.centre.y}`,
 );
+
+console.log("\n-- a view larger than the map --");
 
 const forced = planCamera(599, 2000, MAP_WORLD_BOUNDS); // 1.5x, very tall
 check(

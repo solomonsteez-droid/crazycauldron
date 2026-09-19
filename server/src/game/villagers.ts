@@ -19,7 +19,7 @@ import {
   findPath,
   isWalkableOn,
   seededRandom,
-  villagerTiles,
+  villagerGround,
   type TilePos,
   type VillagerDef,
 } from "@crazycauldron/shared";
@@ -36,8 +36,8 @@ const SETTINGS = AMBIENCE.villagers;
  * three tiles clear of the cauldron and of all three shop fronts, and off
  * every doorway and placed object.
  */
-const ALLOWED = villagerTiles();
-const ALLOWED_KEYS = new Set(ALLOWED.map((t) => `${t.tileX},${t.tileY}`));
+const ALLOWED = villagerGround();
+const ALLOWED_KEYS = new Set(ALLOWED.map((t: TilePos) => `${t.tileX},${t.tileY}`));
 const allowed = (tileX: number, tileY: number) => ALLOWED_KEYS.has(`${tileX},${tileY}`);
 
 interface Walk {

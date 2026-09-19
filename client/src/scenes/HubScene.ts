@@ -3,6 +3,9 @@ import type { Room } from "colyseus.js";
 import {
   AMBIENCE,
   HUB_MAP,
+  approachTo,
+  nearZone,
+  zoneById,
   KICK_AUTH_EXPIRED,
   KICK_INSUFFICIENT_HOLD,
   MOVE_STEP_MS,
@@ -113,6 +116,8 @@ interface PendingAction {
   id: string;
   section?: number;
   tile: TilePos;
+  /** Travel only: the gate being walked to, which decides when we have arrived. */
+  zone?: string;
 }
 
 /**
@@ -177,7 +182,7 @@ export class HubScene extends Phaser.Scene {
       this.scale.off(Phaser.Scale.Events.RESIZE, this.onResize, this),
     );
 
-    this.marker = this.add.image(0, 0, TEX_MARKER).setOrigin(0.5, 0).setAlpha(0).setDepth(9999);
+    this.marker = this.add.image(0, 0, TEX_MARKER).setOrigin(0.5).setAlpha(0).setDepth(9999);
 
     this.hud = new Hud({
       displayName: this.session.displayName,
@@ -332,34 +337,46 @@ export class HubScene extends Phaser.Scene {
   }
 
   /**
-   * Nodes and portals are acted on from an adjacent tile. Clicking one walks
-   * there and remembers what to do on arrival, so the player never has to
-   * position themselves by hand.
+   * A click on something means "go there and do it".
+   *
+   * Nodes are gathered from beside them and zones are used from within reach
+   * of their edge, so clicking one walks to the right cell and remembers what
+   * to do on arrival. A painted building is solid, so the cell a player wants
+   * is always outside it - which is why the approach is asked of the area
+   * rather than worked out from the zone's centre.
    */
   private onFeatureClicked(feature: MapFeature) {
-    if (feature.kind === "station") {
-      if (this.isSelfNear(feature.tile)) this.openStation(feature.id);
-      else {
-        this.pendingStation = feature.id;
-        this.walkAdjacentTo(feature.tile);
+    if (feature.kind === "zone") {
+      const zone = zoneById(this.currentSection, feature.id);
+      if (!zone) return;
+
+      const me = this.self();
+      const here = me ? { tileX: me.tileX, tileY: me.tileY } : { tileX: 0, tileY: 0 };
+      const arrived = nearZone(zone, here.tileX, here.tileY);
+
+      if (zone.kind === "portal") {
+        this.pending = {
+          kind: "travel",
+          id: zone.id,
+          ...(zone.section !== undefined ? { section: zone.section } : {}),
+          tile: { tileX: zone.c, tileY: zone.r },
+          zone: zone.id,
+        };
+        if (arrived) return this.firePending();
+      } else {
+        if (arrived) return this.openStation(zone.id);
+        this.pendingStation = zone.id;
       }
-      return;
+
+      const approach = approachTo(this.currentSection, zone, here);
+      if (!approach) return toast("There is no way to reach that.", "bad");
+      return this.sendMove(approach);
     }
 
-    const kind = feature.kind === "node" ? "gather" : "travel";
-    this.pending = {
-      kind,
-      id: feature.id,
-      ...(feature.section !== undefined ? { section: feature.section } : {}),
-      tile: feature.tile,
-    };
+    this.pending = { kind: "gather", id: feature.id, tile: feature.tile };
+    this.map.squashNode(feature.id);
 
-    if (feature.kind === "node") this.map.squashNode(feature.id);
-
-    if (this.isSelfNear(feature.tile)) {
-      this.firePending();
-      return;
-    }
+    if (this.isSelfNear(feature.tile)) return this.firePending();
     this.walkAdjacentTo(feature.tile);
   }
 
@@ -388,7 +405,8 @@ export class HubScene extends Phaser.Scene {
     }
     if (candidates.length === 0) return null;
 
-    const distance = (t: TilePos) => Math.abs(t.tileX - me.tileX) + Math.abs(t.tileY - me.tileY);
+    const distance = (t: TilePos) =>
+      Math.max(Math.abs(t.tileX - me.tileX), Math.abs(t.tileY - me.tileY));
     return candidates.reduce((best, c) => (distance(c) < distance(best) ? c : best));
   }
 
@@ -399,6 +417,17 @@ export class HubScene extends Phaser.Scene {
   private isSelfNear(tile: TilePos): boolean {
     const me = this.self();
     return me ? isAdjacentOrOn({ tileX: me.tileX, tileY: me.tileY }, tile) : false;
+  }
+
+  /** Whether the player is close enough for a queued action to fire. */
+  private hasArrived(action: PendingAction): boolean {
+    const me = this.self();
+    if (!me) return false;
+    if (action.zone) {
+      const zone = zoneById(this.currentSection, action.zone);
+      return zone ? nearZone(zone, me.tileX, me.tileY) : false;
+    }
+    return this.isSelfNear(action.tile);
   }
 
   private firePending() {
@@ -675,7 +704,7 @@ export class HubScene extends Phaser.Scene {
       at.x,
       at.y,
     );
-    avatar.container.setDepth(villager.tileX + villager.tileY);
+    avatar.container.setDepth(this.map.depthForActor(villager.tileY));
     avatar.container.setVisible(this.currentSection === HUB_MAP);
     avatar.setDirection(directionFor(villager.facing), villager.moving);
 
@@ -703,7 +732,7 @@ export class HubScene extends Phaser.Scene {
       // finishes early leaves them standing still between tiles.
       duration: VILLAGER_STEP_MS,
       ease: "Linear",
-      onUpdate: () => entry.avatar.container.setDepth(villager.tileX + villager.tileY),
+      onUpdate: () => entry.avatar.container.setDepth(this.map.depthForActor(villager.tileY)),
     });
   }
 
@@ -753,7 +782,7 @@ export class HubScene extends Phaser.Scene {
       position.x,
       position.y,
     );
-    avatar.container.setDepth(player.tileX + player.tileY);
+    avatar.container.setDepth(this.map.depthForActor(player.tileY));
     avatar.container.setVisible(player.section === this.currentSection);
     avatar.setDirection(directionFor(player.facing), player.moving);
     avatar.setActivity(player.activity ?? "");
@@ -805,17 +834,18 @@ export class HubScene extends Phaser.Scene {
         y: target.y,
         duration: MOVE_STEP_MS,
         ease: "Linear",
-        onUpdate: () => avatar.container.setDepth(player.tileX + player.tileY),
+        onUpdate: () => avatar.container.setDepth(this.map.depthForActor(player.tileY)),
       });
     }
 
-    // Arriving next to whatever was clicked is what triggers the queued action.
-    if (isSelf && this.pending && !player.moving && this.isSelfNear(this.pending.tile)) {
+    // Arriving is what triggers the queued action. A node has to be adjacent;
+    // a gate or a counter only has to be within reach of its edge.
+    if (isSelf && this.pending && !player.moving && this.hasArrived(this.pending)) {
       this.firePending();
     }
     if (isSelf && this.pendingStation && !player.moving) {
-      const station = this.map.features.find((f) => f.id === this.pendingStation);
-      if (station && this.isSelfNear(station.tile)) {
+      const zone = zoneById(this.currentSection, this.pendingStation);
+      if (zone && nearZone(zone, player.tileX, player.tileY)) {
         const id = this.pendingStation;
         this.pendingStation = null;
         this.openStation(id);
@@ -854,7 +884,7 @@ export class HubScene extends Phaser.Scene {
 
   private flashMarker(tileX: number, tileY: number) {
     const world = this.map.tileCentre(tileX, tileY);
-    this.marker.setPosition(world.x, world.y - 8).setAlpha(0.9);
+    this.marker.setPosition(world.x, world.y).setAlpha(0.9);
     this.tweens.add({ targets: this.marker, alpha: 0, duration: 400, ease: "Quad.easeOut" });
   }
 

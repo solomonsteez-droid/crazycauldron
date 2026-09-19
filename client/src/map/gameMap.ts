@@ -1,441 +1,244 @@
 import Phaser from "phaser";
 import {
-  AMBIENCE,
-  HUB_PORTALS,
-  HUB_STATIONS,
-  HUB_MAP,
-  HUB_TILES,
-  MAP_SIZE,
-  TILE_HEIGHT,
-  TILE_WIDTH,
-  findSection,
-  isWalkableOn,
-  sectionTiles,
-  tileToWorld,
-  worldToTile,
-  dayTint,
-  mixTint,
-  planDressing,
+  CELL,
   PALETTE,
-  TileId,
-  type GatherNodeDef,
+  areaFor,
+  cellToWorld,
+  dayTint,
+  interactiveZones,
+  isWalkableOn,
+  mixTint,
+  worldToCell,
+  zoneCentre,
+  type AreaZone,
   type TilePos,
 } from "@crazycauldron/shared";
-import { LABEL_SCREEN_PX, MAP_WORLD_BOUNDS, SMALL_LABEL_SCREEN_PX, labelScale, type Rect } from "./camera.js";
-import { TEX_CAULDRON, TEX_GLOW, TEX_NODE, TEX_NODE_SPENT, TEX_TILE } from "./textures.js";
 import {
-  PORTAL_PROP,
-  STATION_PROP,
-  decorKey,
-  hasProcessedNode,
-  nodeArchetype,
-  nodeKey,
-  propKey,
-  terrainKey,
-} from "../art/assets.js";
-import { type TerrainEntry } from "../art/manifest.js";
+  LABEL_SCREEN_PX,
+  SMALL_LABEL_SCREEN_PX,
+  boundsOf,
+  labelScale,
+  type Rect,
+} from "./camera.js";
+import { TEX_GLOW, TEX_NODE, TEX_NODE_SPENT } from "./textures.js";
+import { hasProcessedNode, mapKey, nodeArchetype, nodeKey } from "../art/assets.js";
 import { Effects } from "../world/effects.js";
 
 /**
- * Headroom above and below the logical grid.
+ * How close the pointer has to be to a thing to mean it.
  *
- * Pack tiles are 32px tall against a 16px slot, and a tile whose diamond sits
- * low in its cell is drawn well above its slot - so the baked floor needs room
- * on both sides that the grid itself does not use.
+ * A node is a single 24px cell and a fingertip is wider than that, so picking
+ * works in cell space with a radius rather than on exact cells. Zones are
+ * rectangles, hit-tested against their own footprint expanded by the same
+ * amount, so a tap near the tavern door counts as the tavern.
  */
-const TERRAIN_PAD = 24;
-
-/** Pick radius in tiles: a feature is about 1.5 tiles wide to the pointer. */
-const PICK_TILES = 0.75;
+const PICK_CELLS = 1.5;
 const HIGHLIGHT_TINT = 0xfff3c4;
 
-
-
-
-/**
- * Renders whichever map the player is standing on.
- *
- * The floor is baked into one RenderTexture exactly as the hub always did - the
- * ground never changes, so ~576 tile sprites would be 576 draw calls for a
- * picture that could be one. What differs per map is only what sits on top:
- * the cauldron and stations in the hub, gather nodes in a section.
- */
+/** Something on the map a click can mean. */
 export interface MapFeature {
-  kind: "station" | "portal" | "node";
+  kind: "zone" | "node";
   id: string;
   name: string;
   tile: TilePos;
-  /** Sections only: which section a portal leads to. */
+  /** Gates only: which map this leads to. */
   section?: number;
+  /** Zones only: the row the painted structure stands on. */
+  baseline?: number;
 }
 
+/**
+ * Renders whichever painted area the player is standing on.
+ *
+ * There is nothing to assemble any more. The ground is one image drawn at a
+ * fixed world size with nearest-neighbour filtering, and the buildings, the
+ * cauldron, the well and the cart are painted into it. What this adds on top
+ * is only what the paint cannot know: where the gates are, where the gather
+ * nodes stand, and which painted structures a player should be drawn behind.
+ */
 export class GameMap {
-  private readonly offsetX = (MAP_SIZE * TILE_WIDTH) / 2;
-  readonly floor: Phaser.GameObjects.RenderTexture;
   readonly features: MapFeature[] = [];
+  private readonly ground: Phaser.GameObjects.Image;
+  private readonly decorations: Phaser.GameObjects.GameObject[] = [];
+  private readonly labels: Phaser.GameObjects.Text[] = [];
   private readonly nodeSprites = new Map<string, Phaser.GameObjects.Image>();
   private readonly nodeLabels = new Map<string, Phaser.GameObjects.Text>();
-  private readonly decorations: Phaser.GameObjects.GameObject[] = [];
-  /** Every world-space label, so all of them can cancel the camera zoom. */
-  private readonly labels: Phaser.GameObjects.Text[] = [];
-  /** Buildings and gates, so the hover highlight can reach them. */
-  private readonly featureSprites = new Map<string, Phaser.GameObjects.Image>();
-  private highlighted: MapFeature | null = null;
-  private accentColour = 0xffffff;
-  /** Cooldown rings, one per node. */
   private readonly nodeRings = new Map<string, Phaser.GameObjects.Graphics>();
-  /** The map's own colour, before the time of day is applied on top. */
-  private readonly baseTint: number;
+  private readonly zoneMarkers = new Map<string, Phaser.GameObjects.GameObject[]>();
+  private highlighted: MapFeature | null = null;
 
   constructor(
     private readonly scene: Phaser.Scene,
     readonly mapId: number,
   ) {
-    const width = MAP_SIZE * TILE_WIDTH;
-    const height = MAP_SIZE * TILE_HEIGHT + TILE_HEIGHT + TERRAIN_PAD * 2;
-    const tiles = mapId === HUB_MAP ? HUB_TILES : sectionTiles(mapId);
+    const area = areaFor(mapId);
+    const bounds = boundsOf(mapId);
 
-    this.floor = scene.add
-      .renderTexture(-this.offsetX, -TERRAIN_PAD, width, height)
+    /*
+     * The painting is 2688x1520 and the world is 1008x576, so it is drawn at
+     * 0.375 across and 0.379 down. setDisplaySize rather than setScale because
+     * those two differ by 1%, which is what buys a grid of square cells over a
+     * 16:9 image - and 1% of vertical stretch on a painting is invisible.
+     */
+    this.ground = scene.add
+      .image(bounds.x, bounds.y, mapKey(area.id))
       .setOrigin(0, 0)
-      .setDepth(-1);
+      .setDepth(-10000);
+    this.ground.setDisplaySize(bounds.width, bounds.height);
+    // Nearest-neighbour: this is pixel art the camera then enlarges, and any
+    // smoothing turns it to mush at 3x.
+    this.ground.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
 
-    // The pack tiles if the pipeline produced them, the generated diamonds if
-    // not. Either way the floor is one baked texture and one draw call.
-    const terrain = this.terrainFor(mapId);
-    const usePack = terrain !== null && scene.textures.exists(terrainKey(mapId));
-
-    this.floor.beginDraw();
-    for (let y = 0; y < MAP_SIZE; y += 1) {
-      for (let x = 0; x < MAP_SIZE; x += 1) {
-        const id = tiles[y]?.[x];
-        if (id === undefined) continue;
-        const world = tileToWorld(x, y);
-        const drawX = world.x + this.offsetX - TILE_WIDTH / 2;
-
-        if (usePack && terrain) {
-          // Seat the tile by its measured diamond centre, not its top edge,
-          // so tall and flat tiles from the same pack sit level.
-          const anchor = terrain.anchors[id] ?? TILE_HEIGHT / 2;
-          const drawY = world.y + TILE_HEIGHT / 2 - anchor + TERRAIN_PAD;
-          this.floor.batchDrawFrame(terrainKey(mapId), id, drawX, drawY);
-        } else {
-          this.floor.batchDrawFrame(TEX_TILE[id], undefined, drawX, world.y + TERRAIN_PAD);
-        }
-      }
-    }
-    this.floor.endDraw();
-
-    // One tint per map: the packs are shared, so the palette is what makes the
-    // Meadows warm, the Deep Forest cool and the Caves cold.
-    const tint = terrain?.tint ?? findSection(mapId)?.groundColor;
-    this.baseTint = tint ? Phaser.Display.Color.HexStringToColor(tint).color : 0xffffff;
-    this.floor.setTint(this.baseTint);
-
-    if (mapId === HUB_MAP) this.buildHub();
-    else this.buildSection(mapId);
-
-    // Scenery last: it needs to know where everything else ended up so it can
-    // keep off the paths and out of the doorways.
-    this.dress(mapId);
+    this.buildZones();
+    this.buildNodes();
   }
+
+  // --- zones ----------------------------------------------------------------
 
   /**
-   * Multiplies the map's own colour by the time of day.
+   * Gates and shop fronts are invisible.
    *
-   * Only the floor is tinted. Characters, labels, nodes and the HUD keep their
-   * authored colours, so midnight makes the ground blue without making the
-   * game unreadable - which is what happens the moment a full-screen overlay
-   * gets involved.
+   * They are already painted, and drawing a building on top of a building is
+   * what made the last version look like two games at once. A gate gets a soft
+   * pulsing pool of light and a name, because a path leading off the edge of a
+   * painting does not otherwise say "you may go this way". A counter gets a
+   * name that appears when the pointer is near it, and nothing else.
    */
-  setDayTint(colour: number) {
-    this.floor.setTint(mixTint(this.baseTint, colour));
-  }
+  private buildZones() {
+    for (const zone of interactiveZones(this.mapId)) {
+      const centre = zoneCentre(zone);
+      const at = cellToWorld(centre.tileX, centre.tileY);
+      const marks: Phaser.GameObjects.GameObject[] = [];
 
-  /** Puts the ground back to the current time of day. */
-  applyDaylight(now = Date.now()) {
-    this.setDayTint(dayTint(now));
-  }
+      if (zone.kind === "portal" && zone.glow) {
+        const tint = Phaser.Display.Color.HexStringToColor(zone.glow).color;
+        const halo = this.scene.add
+          .image(at.x, at.y, TEX_GLOW)
+          .setOrigin(0.5)
+          .setDepth(this.depthFor(zone.baseline) - 1)
+          .setTint(tint)
+          .setAlpha(0.3)
+          .setBlendMode(Phaser.BlendModes.ADD);
+        halo.setDisplaySize(zone.w * CELL, zone.h * CELL);
 
-  /** Terrain settings for this map, if the manifest has been read. */
-  private terrainFor(mapId: number): TerrainEntry | null {
-    return GameMap.terrain.find((t) => t.map === mapId) ?? null;
-  }
-
-  /** Filled once at boot; the constructor is synchronous and cannot await. */
-  private static terrain: TerrainEntry[] = [];
-
-  static useTerrain(entries: TerrainEntry[]) {
-    GameMap.terrain = entries;
-  }
-
-  private buildHub() {
-    const centre = this.tileCentre(MAP_SIZE / 2 - 1, MAP_SIZE / 2 - 1);
-    this.decorations.push(
-      this.scene.add
-        .image(centre.x, centre.y + TILE_HEIGHT, TEX_CAULDRON)
-        .setOrigin(0.5, 1)
-        .setDepth(MAP_SIZE - 1),
-    );
-
-    for (const station of HUB_STATIONS) {
-      const sprite = this.addProp(
-        propKey(STATION_PROP[station.id] ?? "kitchen"),
-        station.tileX,
-        station.tileY,
-        station.name,
-        "#f3e9d2",
-      );
-      this.featureSprites.set(station.id, sprite);
-      this.features.push({
-        kind: "station",
-        id: station.id,
-        name: station.name,
-        tile: { tileX: station.tileX, tileY: station.tileY },
-      });
-    }
-
-    for (const portal of HUB_PORTALS) {
-      const section = findSection(portal.section);
-      if (!section) continue;
-      const sprite = this.addProp(
-        propKey(PORTAL_PROP[portal.section] ?? "portal_meadows"),
-        portal.tileX,
-        portal.tileY,
-        section.name,
-        section.accentColor,
-        section.accentColor,
-      );
-      this.featureSprites.set(`portal_${portal.section}`, sprite);
-      this.features.push({
-        kind: "portal",
-        id: `portal_${portal.section}`,
-        name: section.name,
-        tile: { tileX: portal.tileX, tileY: portal.tileY },
-        section: portal.section,
-      });
-    }
-
-    this.addHubProps();
-  }
-
-  /**
-   * The well, the campfire, the signpost and the rest.
-   *
-   * Authored positions rather than scattered ones, because these are landmarks
-   * - "meet me at the well" only works if the well is always in the same
-   * place. Each is skipped if its tile turns out to be a path or a doorway, and
-   * a missing texture is not possible: the placeholder pass draws a stand-in
-   * for every prop named in ambience.json.
-   */
-  private addHubProps() {
-    for (const item of AMBIENCE.hubProps.items) {
-      const onFeature = this.features.some(
-        (f) => f.tile.tileX === item.tileX && f.tile.tileY === item.tileY,
-      );
-      const onPath = HUB_TILES[item.tileY]?.[item.tileX] === TileId.Path;
-      if (onFeature || onPath || !isWalkableOn(HUB_MAP, item.tileX, item.tileY)) {
-        console.warn(`hub prop ${item.prop} sits on a path or a building; skipped`);
-        continue;
+        this.scene.tweens.add({
+          targets: halo,
+          alpha: 0.55,
+          duration: 1700,
+          yoyo: true,
+          repeat: -1,
+          ease: "Sine.easeInOut",
+        });
+        this.decorations.push(halo);
+        marks.push(halo);
       }
 
-      const texture = propKey(item.prop);
-      if (!this.scene.textures.exists(texture)) continue;
+      if (zone.name) {
+        const text = this.scene.add
+          .text(at.x, at.y - (zone.h * CELL) / 2 - 4, zone.name, {
+            fontFamily: "monospace",
+            fontSize: `${LABEL_SCREEN_PX}px`,
+            color: zone.glow ?? "#f3e9d2",
+            stroke: "#14101a",
+            strokeThickness: 3,
+          })
+          .setOrigin(0.5, 1)
+          .setDepth(9000);
+        // A gate's name is always on - it is the only thing saying the map
+        // continues. A counter's appears under the pointer.
+        text.setAlpha(zone.kind === "portal" ? 0.9 : 0);
+        this.labels.push(text);
+        this.decorations.push(text);
+        marks.push(text);
+      }
 
-      this.addProp(
-        texture,
-        item.tileX,
-        item.tileY,
-        item.label,
-        "#cbbfa6",
-        item.glow,
-      );
+      this.zoneMarkers.set(zone.id, marks);
+      this.features.push({
+        kind: "zone",
+        id: zone.id,
+        name: zone.name,
+        tile: centre,
+        baseline: zone.baseline,
+        ...(zone.section !== undefined ? { section: zone.section } : {}),
+      });
     }
   }
 
-  private buildSection(mapId: number) {
-    const section = findSection(mapId);
-    if (!section) return;
+  // --- nodes ----------------------------------------------------------------
 
-    const back = this.addProp(
-      propKey(PORTAL_PROP[mapId] ?? "portal_meadows"),
-      section.returnPortal.tileX,
-      section.returnPortal.tileY,
-      "Back to the hub",
-      "#7ce08a",
-      "#7ce08a",
-    );
-    this.featureSprites.set("portal_hub", back);
-    this.features.push({
-      kind: "portal",
-      id: "portal_hub",
-      name: "Back to the hub",
-      tile: { ...section.returnPortal },
-      section: HUB_MAP,
-    });
-
-    for (const node of section.nodes) {
-      const sprite = this.addNode(node, section.accentColor);
+  private buildNodes() {
+    for (const node of areaFor(this.mapId).nodes) {
+      const sprite = this.addNode(node.id, node.c, node.r);
       this.nodeSprites.set(node.id, sprite);
-      this.nodeLabels.set(node.id, this.addNodeLabel(node));
-      this.nodeRings.set(node.id, this.addNodeRing(node));
+      this.nodeLabels.set(node.id, this.addNodeLabel(node.c, node.r));
+      this.nodeRings.set(node.id, this.addNodeRing(node.c, node.r));
       this.features.push({
         kind: "node",
         id: node.id,
-        name: node.ingredient,
-        tile: { tileX: node.tileX, tileY: node.tileY },
+        name: node.id,
+        tile: { tileX: node.c, tileY: node.r },
       });
     }
   }
 
-  // --- dressing ------------------------------------------------------------
-
-  /**
-   * Draws the scenery the shared planner chose for this map.
-   *
-   * The *where* is decided in shared/src/dressing.ts, so it can be asserted
-   * without a renderer and so every client agrees. All that happens here is the
-   * drawing - and a piece whose art never made it through the pipeline is
-   * simply skipped, which costs the map one shrub and nothing else.
-   */
-  private dress(mapId: number) {
-    for (const placement of planDressing(mapId)) {
-      const key = decorKey(mapId, placement.decorId);
-      if (!this.scene.textures.exists(key)) continue;
-
-      const at = this.tileCentre(placement.tileX, placement.tileY);
-      const sprite = this.scene.add
-        .image(at.x, at.y + TILE_HEIGHT / 2, key)
-        .setOrigin(0.5, 1)
-        // Behind anything standing on the same tile, so a villager who walks
-        // past a shrub walks in front of it.
-        .setDepth(placement.tileX + placement.tileY - 0.5)
-        .setFlipX(placement.flip);
-
-      this.decorations.push(sprite);
-    }
-  }
-
-  /**
-   * A gather node, drawn from its ingredient's archetype.
-   *
-   * The generated tufts were tinted by section accent to tell them apart; the
-   * processed art carries its own colour, so tinting it would only mute it.
-   */
-  private addNode(node: GatherNodeDef, accent: string): Phaser.GameObjects.Image {
-    const at = this.tileCentre(node.tileX, node.tileY);
-    const archetype = nodeArchetype(node.ingredient);
+  private addNode(id: string, col: number, row: number): Phaser.GameObjects.Image {
+    const at = cellToWorld(col, row);
+    const archetype = nodeArchetype(GameMap.ingredients.get(id) ?? "");
     const key = nodeKey(archetype);
     const processed = hasProcessedNode(archetype);
 
     const sprite = this.scene.add
-      .image(at.x, at.y, this.scene.textures.exists(key) ? key : TEX_NODE)
+      .image(at.x, at.y + CELL / 2, this.scene.textures.exists(key) ? key : TEX_NODE)
       .setOrigin(0.5, 1)
-      .setDepth(node.tileX + node.tileY);
+      .setDepth(this.depthFor(row));
 
-    if (!processed) sprite.setTint(Phaser.Display.Color.HexStringToColor(accent).color);
     sprite.setData("archetype", archetype);
     sprite.setData("processed", processed);
-
     this.decorations.push(sprite);
     return sprite;
   }
 
   /**
-   * An arc above a node that empties as it regrows.
+   * What grows on each node, by id.
    *
-   * A ring rather than a bar: it sits in the node's own footprint without
-   * widening it, which matters when twelve of them share one screen.
+   * Filled once at boot from the section content. The map file says where a
+   * node is; sections.json says what it is, and the sprite needs both.
    */
-  private addNodeRing(node: GatherNodeDef): Phaser.GameObjects.Graphics {
-    const at = this.tileCentre(node.tileX, node.tileY);
+  private static ingredients = new Map<string, string>();
+
+  static useIngredients(pairs: [string, string][]) {
+    GameMap.ingredients = new Map(pairs);
+  }
+
+  private addNodeRing(col: number, row: number): Phaser.GameObjects.Graphics {
+    const at = cellToWorld(col, row);
     const ring = this.scene.add
-      .graphics({ x: at.x, y: at.y - 30 })
-      .setDepth(node.tileX + node.tileY + 2);
+      .graphics({ x: at.x, y: at.y - 22 })
+      .setDepth(this.depthFor(row) + 2);
     this.decorations.push(ring);
     return ring;
   }
 
-  /** Regrowth countdown, drawn above a spent node. */
-  private addNodeLabel(node: GatherNodeDef): Phaser.GameObjects.Text {
-    const at = this.tileCentre(node.tileX, node.tileY);
+  private addNodeLabel(col: number, row: number): Phaser.GameObjects.Text {
+    const at = cellToWorld(col, row);
     const text = this.scene.add
-      .text(at.x, at.y - 22, "", {
+      .text(at.x, at.y - 14, "", {
         fontFamily: "monospace",
         fontSize: `${SMALL_LABEL_SCREEN_PX}px`,
-        color: "#9a8f7a",
+        color: "#d8cfb8",
+        stroke: "#14101a",
+        strokeThickness: 3,
       })
       .setOrigin(0.5, 1)
-      .setDepth(node.tileX + node.tileY + 1);
+      .setDepth(this.depthFor(row) + 1);
     this.labels.push(text);
     this.decorations.push(text);
     return text;
   }
 
   /**
-   * A building or gate on its tile, with a name above it.
-   *
-   * `glow` turns it into a portal: a soft additive pool tinted by the section
-   * accent, pulsing slowly. Drawn beneath the sprite so the arch reads as lit
-   * rather than washed out, and it is the one thing on the map that moves when
-   * nothing else is happening.
-   */
-  private addProp(
-    texture: string,
-    tileX: number,
-    tileY: number,
-    label: string,
-    colour: string,
-    glow?: string,
-  ): Phaser.GameObjects.Image {
-    const at = this.tileCentre(tileX, tileY);
-
-    if (glow) {
-      const tint = Phaser.Display.Color.HexStringToColor(glow).color;
-      const halo = this.scene.add
-        .image(at.x, at.y - 6, TEX_GLOW)
-        .setOrigin(0.5)
-        .setDepth(tileX + tileY - 1)
-        .setTint(tint)
-        .setAlpha(0.35)
-        .setBlendMode(Phaser.BlendModes.ADD);
-
-      this.scene.tweens.add({
-        targets: halo,
-        alpha: 0.6,
-        scale: 1.12,
-        duration: 1600,
-        yoyo: true,
-        repeat: -1,
-        ease: "Sine.easeInOut",
-      });
-      this.decorations.push(halo);
-    }
-
-    // No tint: processed art carries its own colour, and the fallback chips
-    // are already drawn in the right one.
-    const image = this.scene.add
-      .image(at.x, at.y, texture)
-      .setOrigin(0.5, 1)
-      .setDepth(tileX + tileY);
-
-    const text = this.scene.add
-      .text(at.x, at.y - 22, label, {
-        fontFamily: "monospace",
-        fontSize: `${LABEL_SCREEN_PX}px`,
-        color: colour,
-      })
-      .setOrigin(0.5, 1)
-      .setDepth(tileX + tileY);
-
-    this.labels.push(text);
-    this.decorations.push(image, text);
-    return image;
-  }
-
-  /**
-   * Nodes on cooldown are drawn spent and dimmed. The timers themselves live on
-   * the server; this only reflects what it last said.
+   * Nodes on cooldown are drawn spent, with an arc and an mm:ss countdown.
+   * The timers live on the server; this only reflects what it last said.
    */
   setNodeReady(
     nodeId: string,
@@ -447,8 +250,6 @@ export class GameMap {
     const sprite = this.nodeSprites.get(nodeId);
     if (!sprite) return;
 
-    // Regrowing nodes show their depleted art rather than a dimmed copy of the
-    // full one, so the state reads at a glance instead of by brightness.
     const archetype = sprite.getData("archetype") as string | undefined;
     const processed = sprite.getData("processed") === true;
     if (archetype) {
@@ -465,8 +266,8 @@ export class GameMap {
     if (label) {
       if (!available) label.setText("locked");
       else if (cooldownSeconds > 0) {
-        // mm:ss, because a rare node is a 15 minute wait and "900s" is not a
-        // number anyone reads as a quarter of an hour.
+        // mm:ss, because a rare node is a fifteen minute wait and "900s" is
+        // not a number anyone reads as a quarter of an hour.
         const minutes = Math.floor(cooldownSeconds / 60);
         const seconds = cooldownSeconds % 60;
         label.setText(`${minutes}:${String(seconds).padStart(2, "0")}`);
@@ -488,36 +289,58 @@ export class GameMap {
     }
   }
 
-  /** A quick squash on a node that was just clicked, so the click lands. */
   squashNode(nodeId: string) {
     const sprite = this.nodeSprites.get(nodeId);
     if (sprite) Effects.squash(this.scene, sprite);
   }
 
-  /** The feature on a tile, so a click can mean "gather" or "enter" not "walk". */
-  featureAt(tile: TilePos): MapFeature | null {
-    return (
-      this.features.find((f) => f.tile.tileX === tile.tileX && f.tile.tileY === tile.tileY) ?? null
-    );
+  // --- depth ----------------------------------------------------------------
+
+  /**
+   * Draw order, from the grid row a thing stands on.
+   *
+   * This is the whole depth system, and it is deliberately the cheap one. The
+   * paintings are 3/4 oblique, so a structure's front edge sits on one row -
+   * its baseline, recorded in the area file. A player on a lower row is in
+   * front of it and draws over it; a player on a higher row is behind it, and
+   * because the building is painted into the ground layer the player simply
+   * disappears behind it. No cutouts, no masks, no second copy of the
+   * building: the paint is already in the right place.
+   *
+   * What it cannot do is let a player stand *inside* a doorway and be half
+   * occluded, because the ground is one image. Every building's footprint is
+   * blocked, so nobody can be inside one to find out.
+   */
+  depthFor(row: number): number {
+    return row * 10;
   }
 
   /**
-   * The feature nearest a pointer, within a generous radius.
+   * Depth for a character standing on a cell.
    *
-   * A single 32x16 tile is a small target on a phone, and an isometric diamond
-   * is an awkward shape to aim at - so picking works in tile space with a
-   * radius of PICK_TILES, which makes every node, door and gate about one and a
-   * half tiles wide to the pointer regardless of how its art is drawn.
+   * Five above the map's own things on the same row, so a player and a node on
+   * one row never flicker, and a player on a building's baseline is in front
+   * of it rather than tying with it.
    */
+  depthForActor(row: number): number {
+    return row * 10 + 5;
+  }
+
+  // --- picking --------------------------------------------------------------
+
+  /** The feature nearest a pointer, within a forgiving radius. */
   pickFeature(worldX: number, worldY: number): MapFeature | null {
-    const { tileX, tileY } = worldToTile(worldX, worldY);
+    const { tileX, tileY } = worldToCell(worldX, worldY);
 
     let best: MapFeature | null = null;
-    let bestDistance = PICK_TILES;
+    let bestDistance = PICK_CELLS;
+
     for (const feature of this.features) {
-      const dx = feature.tile.tileX - tileX;
-      const dy = feature.tile.tileY - tileY;
-      const distance = Math.hypot(dx, dy);
+      const distance =
+        feature.kind === "zone"
+          ? this.distanceToZone(feature.id, tileX, tileY)
+          : Math.hypot(feature.tile.tileX - tileX, feature.tile.tileY - tileY);
+      if (distance === null) continue;
       if (distance <= bestDistance) {
         bestDistance = distance;
         best = feature;
@@ -526,68 +349,89 @@ export class GameMap {
     return best;
   }
 
+  private distanceToZone(id: string, tileX: number, tileY: number): number | null {
+    const zone = interactiveZones(this.mapId).find((z) => z.id === id);
+    if (!zone) return null;
+    const dx = Math.max(zone.c - tileX, 0, tileX - (zone.c + zone.w - 1));
+    const dy = Math.max(zone.r - tileY, 0, tileY - (zone.r + zone.h - 1));
+    return Math.max(dx, dy);
+  }
+
   /** Lifts and brightens whatever the pointer is over. */
   setHighlight(feature: MapFeature | null) {
     if (feature?.id === this.highlighted?.id) return;
+    if (this.highlighted) this.dim(this.highlighted);
+    this.highlighted = feature;
+    if (feature) this.lift(feature);
+  }
 
-    if (this.highlighted) {
-      const previous = this.spriteFor(this.highlighted);
-      previous?.clearTint();
-      previous?.setScale(1);
-      if (this.highlighted.kind === "node") {
-        // Nodes keep their availability tint, so re-apply what it should be.
-        const sprite = this.nodeSprites.get(this.highlighted.id);
-        const processed = sprite?.getData("processed") === true;
-        if (sprite && !processed) sprite.setTint(this.accentColour);
+  private lift(feature: MapFeature) {
+    if (feature.kind === "node") {
+      const sprite = this.nodeSprites.get(feature.id);
+      sprite?.setTint(HIGHLIGHT_TINT);
+      sprite?.setScale(1.1);
+      return;
+    }
+    for (const mark of this.zoneMarkers.get(feature.id) ?? []) {
+      if (mark instanceof Phaser.GameObjects.Text) mark.setAlpha(1);
+      else if (mark instanceof Phaser.GameObjects.Image) mark.setAlpha(0.7);
+    }
+  }
+
+  private dim(feature: MapFeature) {
+    if (feature.kind === "node") {
+      const sprite = this.nodeSprites.get(feature.id);
+      sprite?.clearTint();
+      sprite?.setScale(1);
+      return;
+    }
+    const zone = interactiveZones(this.mapId).find((z) => z.id === feature.id);
+    for (const mark of this.zoneMarkers.get(feature.id) ?? []) {
+      if (mark instanceof Phaser.GameObjects.Text) {
+        mark.setAlpha(zone?.kind === "portal" ? 0.9 : 0);
+      } else if (mark instanceof Phaser.GameObjects.Image) {
+        mark.setAlpha(0.3);
       }
     }
-
-    this.highlighted = feature;
-    const sprite = feature ? this.spriteFor(feature) : null;
-    if (sprite) {
-      sprite.setTint(HIGHLIGHT_TINT);
-      sprite.setScale(1.08);
-    }
   }
 
-  private spriteFor(feature: MapFeature): Phaser.GameObjects.Image | null {
-    if (feature.kind === "node") return this.nodeSprites.get(feature.id) ?? null;
-    return this.featureSprites.get(feature.id) ?? null;
-  }
+  // --- geometry -------------------------------------------------------------
 
+  /** A cell's centre in world pixels. The callers still say tile. */
   tileCentre(tileX: number, tileY: number): { x: number; y: number } {
-    const world = tileToWorld(tileX, tileY);
-    return { x: world.x, y: world.y + TILE_HEIGHT / 2 };
+    return cellToWorld(tileX, tileY);
   }
 
-  /** Tile under a pointer. Nodes are not walkable, so they resolve separately. */
+  /** The cell under a pointer, or null when it is not somewhere you can stand. */
   tileAt(worldX: number, worldY: number): TilePos | null {
-    const { tileX, tileY } = worldToTile(worldX, worldY);
-    const tile = { tileX: Math.floor(tileX), tileY: Math.floor(tileY) };
-    if (this.featureAt(tile)) return tile;
+    const tile = worldToCell(worldX, worldY);
     return isWalkableOn(this.mapId, tile.tileX, tile.tileY) ? tile : null;
   }
 
   get centreOfMap(): { x: number; y: number } {
-    return this.tileCentre(MAP_SIZE / 2, MAP_SIZE / 2);
+    const bounds = boundsOf(this.mapId);
+    return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
   }
 
-  /**
-   * The world rectangle this map occupies, for the camera to clamp against.
-   * Tight to the floor, so no ground-coloured margin shows past the edges.
-   */
   get worldBounds(): Rect {
-    return MAP_WORLD_BOUNDS;
+    return boundsOf(this.mapId);
   }
 
   /**
-   * Cancels the camera zoom on every world-space label.
+   * Multiplies the painting by the time of day.
    *
-   * Labels are positioned in the world so they track their tile, but their size
-   * should be a screen-space decision - a name at 3x would otherwise be twice
-   * the height it is at 1.5x. Resolution follows the zoom so the glyphs are
-   * rasterised at the size they are actually drawn.
+   * The painting only. Characters, labels, nodes and the HUD keep their own
+   * colours, which is what stops midnight making the game unreadable.
    */
+  setDayTint(colour: number) {
+    this.ground.setTint(mixTint(0xffffff, colour));
+  }
+
+  applyDaylight(now = Date.now()) {
+    this.setDayTint(dayTint(now));
+  }
+
+  /** Cancels the camera zoom on every world-space label. */
   applyLabelScale(zoom: number) {
     const scale = labelScale(zoom);
     const resolution = Math.max(1, Math.ceil(zoom));
@@ -601,9 +445,11 @@ export class GameMap {
     this.nodeSprites.clear();
     this.nodeLabels.clear();
     this.nodeRings.clear();
-    this.featureSprites.clear();
+    this.zoneMarkers.clear();
     this.highlighted = null;
     this.features.length = 0;
-    this.floor.destroy();
+    this.ground.destroy();
   }
 }
+
+export type { AreaZone };
