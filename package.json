@@ -18,7 +18,8 @@
     "typecheck": "npm run typecheck -w shared && npm run typecheck -w server && npm run typecheck -w client",
     "start": "npm run start -w server",
     "loadtest": "tsx scripts/loadtest.ts",
-    "sprites": "tsx scripts/process-sprites.ts"
+    "sprites": "tsx scripts/process-sprites.ts",
+    "areas": "tsx scripts/build-areas.ts"
   },
   "devDependencies": {
     "@crazycauldron/shared": "*",

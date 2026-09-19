@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>CrazyCauldron - map editor</title>
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        margin: 0;
+        padding: 16px 20px 40px;
+        background: #14101a;
+        color: #f3e9d2;
+        font: 13px/1.6 ui-monospace, Consolas, monospace;
+      }
+      h1 { margin: 0 0 4px; font-size: 15px; letter-spacing: 0.1em; text-transform: uppercase; }
+      p { margin: 0 0 10px; color: #9a8f7a; max-width: 96ch; }
+      kbd {
+        padding: 0 4px;
+        color: #14101a;
+        background: #cbbfa6;
+        border-radius: 3px;
+        font: inherit;
+        font-size: 11px;
+      }
+      .row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 10px; }
+      label { color: #9a8f7a; }
+      select, button, input {
+        font: inherit;
+        color: #f3e9d2;
+        background: #1d1728;
+        border: 1px solid #3a3050;
+        border-radius: 4px;
+        padding: 4px 8px;
+      }
+      button { cursor: pointer; }
+      button:hover:not(:disabled) { border-color: #7ce08a; }
+      button:disabled { opacity: 0.5; cursor: progress; }
+      button.on { color: #14101a; background: #7ce08a; border-color: #7ce08a; }
+      canvas {
+        border: 1px solid #3a3050;
+        border-radius: 6px;
+        image-rendering: pixelated;
+        cursor: crosshair;
+        touch-action: none;
+      }
+      .status { margin-top: 10px; color: #cbbfa6; min-height: 3em; }
+      .legend { display: flex; flex-wrap: wrap; gap: 14px; color: #9a8f7a; font-size: 12px; }
+      .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/dev/mapedit.ts"></script>
+  </body>
+</html>

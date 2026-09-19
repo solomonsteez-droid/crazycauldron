@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
 const GENERATED = path.join(here, "public", "assets", "generated");
+const AREA_MAPS = path.join(repoRoot, "shared", "src", "content", "maps");
 const OFFSETS = path.join(GENERATED, "offsets.json");
 
 /** Reads a JSON request body, with a ceiling so a bad client cannot fill memory. */
@@ -29,7 +30,7 @@ function readJson(req: { on: (event: string, cb: (chunk: Buffer) => void) => voi
   });
 }
 
-/** Overlay ids are file names; anything with a path separator is refused. */
+/** Overlay and area ids are file names; anything else is refused. */
 const SAFE_ID = /^[a-z0-9_]+$/;
 
 /**
@@ -47,9 +48,13 @@ function devAlign(): Plugin {
       server.middlewares.use((req, res, next) => {
         const url = (req.url ?? "").split("?")[0];
 
-        // A tidy URL for the workbench; Vite still serves the real file.
+        // Tidy URLs for the workbenches; Vite still serves the real files.
         if (url === "/dev/align" || url === "/dev/align/") {
           req.url = "/dev-align.html";
+          return next();
+        }
+        if (url === "/dev/mapedit" || url === "/dev/mapedit/") {
+          req.url = "/dev-mapedit.html";
           return next();
         }
 
@@ -120,6 +125,71 @@ function devAlign(): Plugin {
               child.on("close", (code) => {
                 res.statusCode = code === 0 ? 200 : 500;
                 res.end(JSON.stringify({ ok: code === 0, output: output.slice(-2000) }));
+              });
+            } catch (err) {
+              res.statusCode = 400;
+              res.end(JSON.stringify({ ok: false, error: (err as Error).message }));
+            }
+          })();
+          return undefined;
+        }
+
+        /*
+         * The map editor's save. It writes the same file the generator writes,
+         * which is the point: a hand correction and a generated pass are the
+         * same artefact, and re-running the generator overwrites the
+         * correction - which the file says at the top of itself.
+         */
+        if (url === "/dev/area" && req.method === "POST") {
+          void (async () => {
+            try {
+              const area = (await readJson(req)) as { id?: unknown; cols?: unknown; rows?: unknown; walkable?: unknown };
+              const id = String(area.id ?? "");
+              if (!SAFE_ID.test(id)) throw new Error("bad area id");
+              if (!Array.isArray(area.walkable) || area.walkable.length !== area.rows) {
+                throw new Error("the walkable mask is the wrong height");
+              }
+              for (const row of area.walkable as unknown[]) {
+                if (typeof row !== "string" || row.length !== area.cols) {
+                  throw new Error("the walkable mask is the wrong width");
+                }
+              }
+
+              const file = path.join(AREA_MAPS, `${id}.json`);
+              if (!fs.existsSync(file)) throw new Error(`no such area: ${id}`);
+              fs.writeFileSync(file, `${JSON.stringify(area, null, 2)}\n`);
+
+              res.statusCode = 200;
+              res.end(JSON.stringify({ ok: true, wrote: path.relative(repoRoot, file) }));
+            } catch (err) {
+              res.statusCode = 400;
+              res.end(JSON.stringify({ ok: false, error: (err as Error).message }));
+            }
+          })();
+          return undefined;
+        }
+
+        // The same checks the server runs at startup, against what is on
+        // screen - so a mistake is caught here rather than by a failed boot.
+        if (url === "/dev/area/check" && req.method === "POST") {
+          void (async () => {
+            try {
+              const area = await readJson(req);
+              const child = spawn(
+                process.platform === "win32" ? "npx.cmd" : "npx",
+                ["tsx", "scripts/check-area.ts"],
+                { cwd: repoRoot, shell: process.platform === "win32" },
+              );
+              child.stdin.write(JSON.stringify(area));
+              child.stdin.end();
+
+              let output = "";
+              child.stdout.on("data", (chunk: Buffer) => (output += chunk.toString()));
+              child.stderr.on("data", (chunk: Buffer) => (output += chunk.toString()));
+              child.on("close", () => {
+                const problems = output.split("\n").map((l) => l.trim()).filter(Boolean);
+                res.statusCode = 200;
+                res.end(JSON.stringify({ ok: true, problems: problems.filter((p) => p !== "OK") }));
               });
             } catch (err) {
               res.statusCode = 400;
