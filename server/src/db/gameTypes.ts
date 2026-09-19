@@ -49,8 +49,36 @@ export interface LeaderboardEntry {
   skillXp: Record<SkillId, number>;
 }
 
+
+/**
+ * One settled $COOK purchase.
+ *
+ * The signature is the primary key, which is the whole point: a transaction
+ * can only be spent once, and the second attempt to claim it collides.
+ */
+export interface PurchaseRecord {
+  signature: string;
+  wallet: string;
+  itemId: string;
+  cook: number;
+  at: string;
+}
+
 export interface GameRepository {
   load(wallet: string): Promise<GameStateRecord>;
   save(state: GameStateRecord): Promise<void>;
   topByChefXp(limit: number): Promise<LeaderboardEntry[]>;
+
+  /**
+   * Records a purchase and grants the item, or reports that this signature
+   * has already been claimed.
+   *
+   * One call rather than a check and then a write: between the two, the same
+   * signature submitted twice would pass the check twice. Recording the
+   * signature is what makes the claim exclusive, so the insert is the check.
+   */
+  claimPurchase(record: PurchaseRecord): Promise<{ granted: boolean }>;
+
+  /** What a wallet has bought, newest first. */
+  purchasesOf(wallet: string): Promise<PurchaseRecord[]>;
 }

@@ -35,6 +35,7 @@ export const TABLES = [
   "player_sections",
   "player_nodes",
   "player_wardrobe",
+  "shop_purchases",
 ] as const;
 
 export interface Dump {

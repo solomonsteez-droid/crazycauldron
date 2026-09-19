@@ -347,3 +347,20 @@ export interface AmbienceFile {
     cues: SoundCue[];
   };
 }
+
+/**
+ * One cosmetic the shop will sell for $COOK.
+ *
+ * A price, and the wardrobe item it unlocks. Buying grants exactly what
+ * earning it would have granted - there is no purchase-only cosmetic, so
+ * nothing is unobtainable by playing.
+ */
+export interface ShopItem {
+  itemId: string;
+  /** Whole $COOK. Half is burned, half goes to the treasury, so keep it even. */
+  cook: number;
+}
+
+export interface ShopFile {
+  items: ShopItem[];
+}

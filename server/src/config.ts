@@ -84,6 +84,14 @@ if (isProduction) {
   if (!process.env.COOK_MINT) {
     refusals.push("COOK_MINT is not set");
   }
+
+  /*
+   * A shop that is on but has nowhere to send the treasury half would build
+   * transactions that burn everything, which is a refund nobody can issue.
+   */
+  if (bool("SHOP_ENABLED", false) && !(process.env.TREASURY_WALLET ?? "").trim()) {
+    refusals.push("SHOP_ENABLED is true but TREASURY_WALLET is not set");
+  }
 }
 
 if (refusals.length > 0) {
@@ -130,6 +138,21 @@ export const config = {
   cookMint: str("COOK_MINT"),
   minHold: num("MIN_HOLD", 2000),
   testBypassHold,
+
+  /*
+   * The shop is off unless somebody turns it on.
+   *
+   * Every endpoint checks this, not just the button that opens the panel: a
+   * flow that moves real tokens should be unreachable by default, including by
+   * anyone who found the URL.
+   */
+  shopEnabled: bool("SHOP_ENABLED", false),
+  /**
+   * Where the half that is not burned goes. Read directly rather than through
+   * str(), which treats an empty value as a missing one - and empty is the
+   * correct, normal state for a shop that is switched off.
+   */
+  treasuryWallet: process.env.TREASURY_WALLET?.trim() ?? "",
 
   databasePath: path.isAbsolute(databasePath) ? databasePath : path.join(REPO_ROOT, databasePath),
   /** Empty means SQLite. Anything else is a Postgres connection string. */

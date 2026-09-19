@@ -19,6 +19,7 @@ import type {
   GameRepository,
   GameStateRecord,
   LeaderboardEntry,
+  PurchaseRecord,
   StackRecord,
 } from "./gameTypes.js";
 import type { PlayerRecord, PlayerRepository } from "./types.js";
@@ -124,6 +125,15 @@ export async function openPostgres(url: string): Promise<pg.Pool> {
       PRIMARY KEY (wallet, item_id)
     );
 
+    CREATE TABLE IF NOT EXISTS shop_purchases (
+      signature TEXT PRIMARY KEY,
+      wallet    TEXT NOT NULL REFERENCES players(wallet) ON DELETE CASCADE,
+      item_id   TEXT NOT NULL,
+      cook      BIGINT NOT NULL,
+      at        TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_shop_purchases_wallet ON shop_purchases (wallet);
     CREATE INDEX IF NOT EXISTS idx_player_game_chef ON player_game (chef_xp DESC);
   `);
 
@@ -411,6 +421,60 @@ export class PostgresGameRepository implements GameRepository {
     } finally {
       client.release();
     }
+  }
+
+  /**
+   * The insert is the check: a signature already in the table conflicts, the
+   * insert reports nothing written, and the transaction grants nothing.
+   */
+  async claimPurchase(record: PurchaseRecord): Promise<{ granted: boolean }> {
+    const db = await this.pool.connect();
+    try {
+      await db.query("BEGIN");
+      const inserted = await db.query(
+        `INSERT INTO shop_purchases (signature, wallet, item_id, cook, at)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (signature) DO NOTHING`,
+        [record.signature, record.wallet, record.itemId, record.cook, record.at],
+      );
+
+      if (inserted.rowCount === 0) {
+        await db.query("COMMIT");
+        return { granted: false };
+      }
+
+      await db.query(
+        `INSERT INTO player_wardrobe (wallet, item_id, unlocked_at) VALUES ($1, $2, $3)
+         ON CONFLICT (wallet, item_id) DO NOTHING`,
+        [record.wallet, record.itemId, record.at],
+      );
+      await db.query("COMMIT");
+      return { granted: true };
+    } catch (err) {
+      await db.query("ROLLBACK");
+      throw err;
+    } finally {
+      db.release();
+    }
+  }
+
+  async purchasesOf(wallet: string): Promise<PurchaseRecord[]> {
+    const { rows } = await this.pool.query<{
+      signature: string;
+      item_id: string;
+      cook: number;
+      at: string;
+    }>(
+      "SELECT signature, item_id, cook, at FROM shop_purchases WHERE wallet = $1 ORDER BY at DESC",
+      [wallet],
+    );
+    return rows.map((r) => ({
+      signature: r.signature,
+      wallet,
+      itemId: r.item_id,
+      cook: Number(r.cook),
+      at: r.at,
+    }));
   }
 
   async topByChefXp(limit: number): Promise<LeaderboardEntry[]> {

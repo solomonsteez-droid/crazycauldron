@@ -13,6 +13,7 @@ import { alert, closeLog, logFile } from "./monitoring.js";
 import { startSchedules } from "./schedule.js";
 import { capacity } from "./matchmaking/index.js";
 import { matchmakeRouter } from "./matchmaking/routes.js";
+import { shopRouter } from "./shop/routes.js";
 import { serveClient } from "./web/static.js";
 import { HubRoom } from "./rooms/HubRoom.js";
 import { WaitingRoom } from "./rooms/WaitingRoom.js";
@@ -111,6 +112,8 @@ function routes(app: express.Application): void {
   // so an Express router mounted there is never reached - /capacity would answer
   // with Colyseus's room list and /enter with a JSON parse error.
   app.use("/play", matchmakeRouter);
+  // Dormant unless SHOP_ENABLED is true; every route inside checks for itself.
+  app.use("/shop", shopRouter);
 
   /*
    * The built client, mounted after the API.

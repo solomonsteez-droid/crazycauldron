@@ -5,6 +5,7 @@ import type {
   GameRepository,
   GameStateRecord,
   LeaderboardEntry,
+  PurchaseRecord,
   StackRecord,
 } from "./gameTypes.js";
 
@@ -77,6 +78,15 @@ export function migrateGameTables(db: Database.Database) {
       PRIMARY KEY (wallet, item_id)
     );
 
+    CREATE TABLE IF NOT EXISTS shop_purchases (
+      signature TEXT PRIMARY KEY,
+      wallet    TEXT NOT NULL REFERENCES players(wallet) ON DELETE CASCADE,
+      item_id   TEXT NOT NULL,
+      cook      INTEGER NOT NULL,
+      at        TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_shop_purchases_wallet ON shop_purchases (wallet);
     CREATE INDEX IF NOT EXISTS idx_player_game_chef ON player_game (chef_xp DESC);
   `);
 }
@@ -328,6 +338,44 @@ export class SqliteGameRepository implements GameRepository {
 
   async save(state: GameStateRecord): Promise<void> {
     this.saveTx(state);
+  }
+
+  /**
+   * The insert is the check: a signature already in the table collides on its
+   * primary key, and the whole thing rolls back without granting anything.
+   */
+  async claimPurchase(record: PurchaseRecord): Promise<{ granted: boolean }> {
+    const claim = this.db.transaction((purchase: PurchaseRecord) => {
+      const inserted = this.db
+        .prepare(
+          `INSERT INTO shop_purchases (signature, wallet, item_id, cook, at)
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(signature) DO NOTHING`,
+        )
+        .run(purchase.signature, purchase.wallet, purchase.itemId, purchase.cook, purchase.at);
+
+      if (inserted.changes === 0) return false;
+
+      this.insertWardrobe.run(purchase.wallet, purchase.itemId, purchase.at);
+      return true;
+    });
+
+    return { granted: claim(record) };
+  }
+
+  async purchasesOf(wallet: string): Promise<PurchaseRecord[]> {
+    const rows = this.db
+      .prepare<[string], { signature: string; item_id: string; cook: number; at: string }>(
+        "SELECT signature, item_id, cook, at FROM shop_purchases WHERE wallet = ? ORDER BY at DESC",
+      )
+      .all(wallet);
+    return rows.map((r) => ({
+      signature: r.signature,
+      wallet,
+      itemId: r.item_id,
+      cook: r.cook,
+      at: r.at,
+    }));
   }
 
   async topByChefXp(limit: number): Promise<LeaderboardEntry[]> {

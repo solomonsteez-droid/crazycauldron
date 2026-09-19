@@ -107,7 +107,24 @@ async function startServer(): Promise<ChildProcess> {
 }
 
 async function stopServer(child: ChildProcess): Promise<void> {
-  child.kill("SIGKILL");
+  /*
+   * On Windows the child is a cmd.exe wrapper around npx, which is in turn a
+   * wrapper around node. Killing the one we have a handle on leaves the node
+   * process holding the port, and the next server silently fails to bind
+   * while the old one keeps answering - which looks exactly like a passing
+   * test of the wrong thing. taskkill /T takes the tree.
+   */
+  if (process.platform === "win32" && child.pid) {
+    await new Promise<void>((resolve) => {
+      const killer = spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
+        stdio: "ignore",
+      });
+      killer.on("exit", () => resolve());
+      killer.on("error", () => resolve());
+    });
+  } else {
+    child.kill("SIGKILL");
+  }
   await sleep(1500);
 }
 

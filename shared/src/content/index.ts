@@ -11,6 +11,7 @@ import ambienceJson from "./ambience.json" with { type: "json" };
 import ingredientsJson from "./ingredients.json" with { type: "json" };
 import recipesJson from "./recipes.json" with { type: "json" };
 import sectionsJson from "./sections.json" with { type: "json" };
+import shopJson from "./shop.json" with { type: "json" };
 import skillsJson from "./skills.json" with { type: "json" };
 import terrainJson from "./terrain.json" with { type: "json" };
 import type {
@@ -22,6 +23,8 @@ import type {
   Recipe,
   Section,
   SectionsFile,
+  ShopFile,
+  ShopItem,
   SkillId,
   SkillsFile,
 } from "./types.js";
@@ -38,6 +41,14 @@ export const SECTIONS = sectionsFile.sections;
 export const SKILL_IDS = CONFIG.skills.list;
 
 export const TERRAIN = terrainJson as unknown as TerrainFile;
+
+/** What the shop sells, when the shop is on. */
+export const SHOP_ITEMS: ShopItem[] = (shopJson as unknown as ShopFile).items;
+
+/** The price of one cosmetic in whole $COOK, or undefined if it is not sold. */
+export function shopPrice(itemId: string): number | undefined {
+  return SHOP_ITEMS.find((item) => item.itemId === itemId)?.cook;
+}
 
 /** Terrain settings for a map id, falling back to the hub's. */
 export function terrainFor(mapId: number) {

@@ -13,6 +13,7 @@ import {
   AMBIENCE,
   AREAS,
   HUB_MAP,
+  SHOP_ITEMS,
   WARDROBE_ITEMS,
   areaFor,
   findPath,
@@ -344,6 +345,35 @@ for (const problem of validateAllLayouts()) {
   note(`map ${problem.map}: ${problem.message}`);
 }
 
+// --- the shop --------------------------------------------------------------
+
+/*
+ * The shop sells shortcuts, not exclusives. Everything in it must be a
+ * cosmetic somebody could also earn, and must not be a tier garment: those are
+ * held rather than owned, and buying one would spend the balance that grants
+ * it - a purchase that revokes itself.
+ */
+const shopSeen = new Set<string>();
+for (const item of SHOP_ITEMS) {
+  const wardrobe = WARDROBE_ITEMS.find((w) => w.id === item.itemId);
+  if (!wardrobe) {
+    note(`the shop sells ${item.itemId}, which is not a wardrobe item`);
+    continue;
+  }
+  if (wardrobe.unlock.type === "tier") {
+    note(`the shop sells ${item.itemId}, a tier garment - buying it would revoke it`);
+  }
+  if (wardrobe.unlock.type === "start") {
+    note(`the shop sells ${item.itemId}, which every player already starts with`);
+  }
+  if (item.cook <= 0) note(`${item.itemId} is priced at ${item.cook} $COOK`);
+  if (item.cook % 2 !== 0) {
+    note(`${item.itemId} costs ${item.cook} $COOK, which cannot be halved into whole tokens`);
+  }
+  if (shopSeen.has(item.itemId)) note(`the shop lists ${item.itemId} twice`);
+  shopSeen.add(item.itemId);
+}
+
 // --- report ----------------------------------------------------------------
 console.log(
   `content: ${INGREDIENTS.length} ingredients, ${RECIPES.length} recipes, ${SECTIONS.length} sections, ${SECTIONS.reduce((n, s) => n + s.nodes.length, 0)} nodes`,
@@ -355,6 +385,7 @@ console.log(
 console.log(
   `ambience: ${AMBIENCE.villagers.roster.length} villagers, ${villagerGround().length} cells they may walk`,
 );
+console.log(`shop: ${SHOP_ITEMS.length} cosmetics for $COOK`);
 
 if (problems.length === 0) {
   console.log("validate-content: OK");
