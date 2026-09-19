@@ -9,7 +9,7 @@
  * process with its own environment, on its own port, against a throwaway
  * database, and made to prove it.
  *
- * Two halves. The refusals: seven configurations that must not boot at all,
+ * Two halves. The refusals: eight configurations that must not boot at all,
  * each for a named reason. And the live check: a correctly configured
  * production server, which must boot, must refuse the cheat command, and must
  * refuse a browser origin it was not told about.
@@ -63,6 +63,10 @@ const GOOD: Record<string, string> = {
   RPC_URL: "https://api.mainnet-beta.solana.com",
   COOK_MINT: "So11111111111111111111111111111111111111112",
   TEST_BYPASS_HOLD: "false",
+  SHOP_ENABLED: "false",
+  DATABASE_URL: "",
+  ADMIN_TOKEN: "",
+  MAINTENANCE: "false",
   AUTH_RATE_LIMIT: "10000",
   LOG_DIR: path.join(ROOT, "data", "production-test-logs"),
   BACKUP_DIR: path.join(ROOT, "data", "production-test-backups"),
@@ -181,6 +185,11 @@ async function main() {
   );
   await mustRefuse("a devnet RPC endpoint is refused", { RPC_URL: "https://api.devnet.solana.com" }, "devnet");
   await mustRefuse("an unset mint is refused", { COOK_MINT: "" }, "COOK_MINT");
+  await mustRefuse(
+    "a shop with nowhere to send the treasury half is refused",
+    { SHOP_ENABLED: "true", TREASURY_WALLET: "" },
+    "TREASURY_WALLET",
+  );
 
   // --- a correct production server ------------------------------------------
   console.log("\n-- a correctly configured production server --");

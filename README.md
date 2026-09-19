@@ -5,15 +5,18 @@ An isometric pixel-art browser game with a Solana token gate: hold at least
 `HUB_MAX_PLAYERS` others.
 
 Gather ingredients across three maps, cook them on a timing mini-game, sell the
-dishes, and level five skills plus a Chef track. All art is still generated at
-runtime — there are no image assets to license or load.
+dishes, and level five skills plus a Chef track.
+
+One process serves all of it: Express for sign-in, matchmaking and the public
+pages, Colyseus on the same server for the rooms, and the built client as
+static files at `/`. One deploy, one origin, no second host to keep in step.
 
 ## Layout
 
 ```
 shared/    content JSON, progression maths, the map grids, pathfinding, SIWS
-server/    Express + Colyseus: auth, token gate, matchmaking, rooms, SQLite
-client/    Vite + Phaser: sign-in, the world scene, the panels
+server/    Express + Colyseus: auth, token gate, matchmaking, rooms, storage
+client/    Vite + Phaser: sign-in, the world scene, the panels, the pages
 scripts/   loadtest, smoke-game, validate-content, simulate-progression
 ```
 
@@ -98,6 +101,7 @@ npx tsx scripts/test-postgres.ts           # the Postgres backend, on a real one
 npx tsx scripts/test-shop.ts               # the $COOK shop, against devnet
 npx tsx scripts/test-pages.ts              # /official, /rules, /roadmap
 npx tsx scripts/test-maintenance.ts        # the rollback switch
+npx tsx scripts/test-config-docs.ts        # every setting is written down
 
 # Operations
 npx tsx scripts/backup.ts                  # take one now; --list shows the rest
@@ -115,6 +119,12 @@ POST /auth/verify            -> signature checked, $COOK checked, 1h JWT issued
 POST /play/enter             -> a Colyseus seat reservation for hub or waiting
      consumeSeatReservation  -> the client redeems it; it never calls joinOrCreate
 ```
+
+And three that are not the game: `/official` publishes the real $COOK contract
+address, `/rules` says in plain language what the token is and is not, and
+`/roadmap` renders `client/public/roadmap.md`. They are the same bundle, so a
+request for one gets `index.html`, the client notices the path, and the game
+never boots.
 
 The server decides which room you belong in, so capacity rules live in one
 place. Past `GLOBAL_MAX_PLAYERS` a joiner is parked in the `waiting` room,
@@ -201,9 +211,14 @@ with no cached balance is refused.
 vars, and `RPC_URL`, `COOK_MINT` and `JWT_SECRET` deliberately lack the prefix.
 Balances are gate input, not game state, and are never replicated.
 
-**Storage is behind one interface.** `PlayerRepository` is the only way the
-server reaches the database; swapping SQLite for Postgres means adding one
-implementation and changing `db/index.ts`.
+**Storage is behind two interfaces, and there are two of everything behind
+them.** `PlayerRepository` and `GameRepository` are the only way the server
+reaches the database. `DATABASE_URL` decides which implementation answers:
+Postgres where the filesystem is not ours - Colyseus Cloud makes no promise
+that a container's disk survives a deploy - and a SQLite file on a developer's
+machine, which needs no server and no credentials. Both are exercised by the
+suite; `scripts/test-postgres.ts` brings its own Postgres, compiled to
+WebAssembly, so nobody has to install one to run the tests.
 
 **The world is checked before it is served.** Every building, gate, prop and
 gather node is authored by hand in JSON, and the ways that goes wrong are
@@ -212,11 +227,11 @@ them throw. `shared/src/layout.ts` states the rules once - no overlaps, nothing
 on a path, nothing crowding a doorway, a clear ring around each building - and
 the server refuses to start if any map breaks them, naming every offender.
 
-**Production refuses to start rather than starting badly.** Seven settings that
+**Production refuses to start rather than starting badly.** Eight settings that
 are right on a laptop and wrong on the internet - the token gate bypass, a
 short or example signing key, missing or localhost or wildcard CORS origins, a
-localhost signing domain, a devnet RPC, an unset mint - each stop the boot with
-the reason. `scripts/test-production.ts` proves every one of them by starting a
+localhost signing domain, a devnet RPC, an unset mint, and a shop switched on
+with nowhere to send the treasury half - each stop the boot with the reason. `scripts/test-production.ts` proves every one of them by starting a
 real server and watching it refuse.
 
 ## Load testing
@@ -241,9 +256,13 @@ AUTH_RATE_LIMIT=1000 npm run dev
   missing is drawn as a lettered placeholder at boot — so no lookup in the game
   ever has to ask whether the art exists.
 - **Spawning.** Everyone still lands on the same hub tile.
-- **Horizontal scale.** Nonces, rate-limit buckets and the balance cache are
-  in-process, and capacity is counted per node. A second node needs Redis
-  (`@colyseus/redis-driver` plus shared stores for those three).
+- **Horizontal scale, the last third of it.** Rooms across processes are
+  handled - `server/src/cloud.ts` wires the Redis driver and presence on
+  Colyseus Cloud - and the database is shared. Still per-process: sign-in
+  nonces, rate-limit buckets and the cached $COOK balances. None is wrong,
+  each is weaker than it looks: a nonce issued by one process cannot be
+  redeemed at another, the effective rate limit is the configured one times
+  the number of processes, and the RPC bill scales with cores.
 - **Reconnection.** A dropped socket returns to sign-in; there is no
   `allowReconnection` grace window.
 - **Tests.** No unit-test runner, and no assertion library. What exists are the
