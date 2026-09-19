@@ -1,24 +1,44 @@
 # CrazyCauldron
 
-Skeleton for an isometric pixel-art browser game with a Solana token gate: hold
-at least `MIN_HOLD` $COOK, sign in with your wallet, and walk around a shared
-hub with up to `HUB_MAX_PLAYERS` others.
+An isometric pixel-art browser game with a Solana token gate: hold at least
+`MIN_HOLD` $COOK, sign in with your wallet, and cook in a shared hub with up to
+`HUB_MAX_PLAYERS` others.
 
-This is a **skeleton** — the plumbing is real and complete, the game is not.
-There is one placeholder map, one placeholder avatar, no gameplay beyond
-walking, and all art is generated at runtime.
+Gather ingredients across three maps, cook them on a timing mini-game, sell the
+dishes, and level five skills plus a Chef track. All art is still generated at
+runtime — there are no image assets to license or load.
 
 ## Layout
 
 ```
-shared/    types, constants, the hub grid, pathfinding, the SIWS message format
+shared/    content JSON, progression maths, the map grids, pathfinding, SIWS
 server/    Express + Colyseus: auth, token gate, matchmaking, rooms, SQLite
-client/    Vite + Phaser: wallet sign-in, the hub scene, the overflow queue
-scripts/   loadtest.ts
+client/    Vite + Phaser: sign-in, the world scene, the panels
+scripts/   loadtest, smoke-game, validate-content, simulate-progression
 ```
 
-`shared` exists so the two sides cannot disagree. The walkability grid, the
-tile geometry and the exact bytes of the sign-in message all live there.
+`shared` exists so the two sides cannot disagree. The walkability grids, the
+tile geometry, every XP curve and unlock, and the exact bytes of the sign-in
+message all live there.
+
+## Content
+
+Everything tunable is JSON under `shared/src/content/`, loaded by both runtimes
+— Vite inlines it, Node parses it through an import attribute.
+
+```
+ingredients.json   24 ingredients, 8 per section
+recipes.json       20 recipes: ingredients, technique, requirements, XP, price
+sections.json      the three maps, their gates, and 12 gather nodes each
+skills.json        both XP curves, every unlock, and the tuning constants
+```
+
+Change a number there and the server, the client and the simulation all agree
+about it without a code change. `npx tsx scripts/validate-content.ts` checks the
+files hang together: unknown ingredients, nodes inside rocks or unreachable from
+spawn, techniques nothing unlocks, the rare-node cap, recipes needing more
+ingredient slots than Knifework 20 grants, and that a brand new player can
+actually cook something and level every skill.
 
 ## Running it
 
@@ -36,7 +56,15 @@ To exercise the real gate, set `TEST_BYPASS_HOLD=false` and point `COOK_MINT`
 at a mint your wallet actually holds. `COOK_MINT` in `.env.example` is a
 placeholder (wrapped SOL) — replace it at launch.
 
-Other useful scripts: `npm run typecheck`, `npm run build`, `npm start`.
+Other useful scripts:
+
+```bash
+npm run typecheck
+npx tsx scripts/validate-content.ts        # content sanity
+npx tsx scripts/smoke-game.ts              # end-to-end, needs a running server
+npx tsx scripts/simulate-progression.ts    # hours-to-level report
+npx tsx scripts/simulate-progression.ts --tune
+```
 
 ## How a player gets in
 
@@ -51,6 +79,58 @@ The server decides which room you belong in, so capacity rules live in one
 place. Past `GLOBAL_MAX_PLAYERS` a joiner is parked in the `waiting` room,
 which pushes a ready-made hub reservation over the socket when a seat frees up
 — the client never polls.
+
+## The cooking loop
+
+```
+walk to a gate -> gather nodes -> back to the kitchen -> heat bar -> tavern
+```
+
+**Gathering** is validated, timed and paid out by the server. Nodes are
+per-player, so thirty people can work the same sunwheat without contending for
+it, and each keeps their own cooldown — persisted, so relogging cannot reset it.
+Yield, double-drop rolls and XP are all rolled server-side.
+
+**The heat bar** is generated server-side: marker speed, start offset, direction
+and window position. The client draws that and replies with how long after the
+bar arrived it clicked; the server recomputes the marker from the same triangle
+wave and decides the quality. It never receives a result, only a time — and a
+time that disagrees with its own measurement by more than
+`MAX_CLICK_LATENCY_MS` is thrown away.
+
+**Quality** stacks in one order: where the marker stopped, capped by knifework
+prep, pulled down by an unsafe spice, then lifted by spicecraft. At Knifework 1
+the cap is Common, so a perfect stop still plates a Common dish — that cap is
+the reason to level the skill.
+
+**Anti-abuse**: one action in flight per session, and a new action refused if it
+arrives sooner than the previous animation minus `ACTION_GRACE_MS`. Every
+refusal is logged with wallet and reason. A cancelled action, which pays out
+nothing, recharges only the time actually spent.
+
+## Progression
+
+Five skills (1–20) and a separate Chef track (1–30). Every skill XP award adds
+the same amount of Chef XP, so the Chef level is the sum of everything a player
+has done. `scripts/simulate-progression.ts` models the loop using the same
+shared code the server runs, and reports hours-to-level:
+
+```
+  level   hours   target   delta
+     10    2.83      2.5   +13.3%
+     20    8.67       10   -13.3%
+     30   27.70       25   +10.8%
+```
+
+Two content rules exist because the simulation found the game unplayable
+without them, both documented where they are implemented:
+
+- A recipe stating **no requirements** is a starter recipe and teaches its own
+  technique. Otherwise nothing at all is cookable on a new account: `bake` needs
+  Firecraft 3, and Firecraft XP comes only from cooking.
+- Every cook pays a **quarter share** to knifework and spicecraft even when the
+  recipe does not require them. Otherwise neither skill can ever leave level 1,
+  because every recipe granting their XP also requires level 2+ of it.
 
 ## The parts worth knowing about
 
