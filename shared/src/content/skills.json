@@ -3,14 +3,14 @@
 
   "chef": {
     "maxLevel": 30,
-    "baseXp": 320,
-    "growth": 1.204,
+    "baseXp": 500,
+    "growth": 1.184,
     "targetHours": { "10": 2.5, "20": 10, "30": 25 }
   },
 
   "skills": {
     "maxLevel": 20,
-    "baseXp": 195,
+    "baseXp": 250,
     "growth": 1.1,
     "list": ["foraging", "prospecting", "knifework", "firecraft", "spicecraft"],
     "names": {
@@ -54,7 +54,8 @@
     "cookMs": 3000,
     "windowPctAtLevel1": 12,
     "windowPctAtLevel20": 40,
-    "fineWindowMultiplier": 1.5,
+    "fineWindowMultiplier": 2.5,
+    "markerSpeedMultiplier": 1.15,
     "nightshadeDowngradeChance": 0.3,
     "qualitySteps": ["common", "fine", "superb"],
     "quality": {

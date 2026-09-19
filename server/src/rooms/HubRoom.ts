@@ -548,6 +548,26 @@ export class HubRoom extends Room<HubState> {
       return this.reject(client, MSG_COOK_STOP, outcome.reason, outcome.message);
     }
 
+    /*
+     * One line per cook, so a "the bar never gives me Superb" report can be
+     * checked against what the server actually computed rather than guessed at.
+     */
+    const d = outcome.diagnostics;
+    log.info("cook.resolved", {
+      wallet: session.state.wallet,
+      recipe: cook.recipeId,
+      elapsedMs: Math.round(d.elapsedMs),
+      serverElapsedMs: Math.round(Date.now() - cook.barStartedAt),
+      marker: Number(d.markerPos.toFixed(4)),
+      superb: `${d.superbFrom.toFixed(3)}..${d.superbTo.toFixed(3)}`,
+      fine: `${d.fineFrom.toFixed(3)}..${d.fineTo.toFixed(3)}`,
+      windowPct: Number(cook.windowPct.toFixed(1)),
+      fromBar: d.fromBar,
+      result: d.final,
+      firecraft: session.state.levels.firecraft,
+      knifework: session.state.levels.knifework,
+    });
+
     session.save();
 
     // The dish is settled the moment the marker stops; the cook time is the

@@ -182,8 +182,16 @@ const CSS = `
   bottom: 0;
   display: block;
 }
-.cc-heat-fine { background: rgba(242, 181, 59, 0.28); }
-.cc-heat-superb { background: rgba(124, 224, 138, 0.55); }
+/* Fine is the wide, dim saffron band; Superb the narrow bright green core. */
+.cc-heat-fine {
+  background: rgba(242, 181, 59, 0.30);
+  border-left: 1px solid rgba(242, 181, 59, 0.75);
+  border-right: 1px solid rgba(242, 181, 59, 0.75);
+}
+.cc-heat-superb {
+  background: rgba(124, 224, 138, 0.70);
+  box-shadow: 0 0 6px rgba(124, 224, 138, 0.55);
+}
 .cc-heat-marker {
   position: absolute;
   top: -2px;

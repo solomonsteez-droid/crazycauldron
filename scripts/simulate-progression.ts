@@ -21,13 +21,13 @@ import {
   MOVE_STEP_MS,
   SKILL_IDS,
   chefLevelForXp,
+  chefXpToReach,
   cookDurationMs,
   cookXpAwards,
   gatherDurationMs,
   ingredient,
   ingredientSlots,
   levelsFromXp,
-  prepQualityCap,
   autoPrepSections,
   techniquesUnlocked,
   timingWindowPct,
@@ -44,11 +44,11 @@ import {
 
 const PLAYER = {
   /**
-   * How accurately a normal player stops the marker, as a standard deviation in
-   * bar widths. 4% means most stops land within a tenth of the bar of the
-   * centre: competent, not frame-perfect.
+   * How accurately a normal player stops the marker, as a standard deviation
+   * in milliseconds. The marker speed turns that into a distance along the
+   * bar, which is why the +15% speed retune makes the same reaction worth less.
    */
-  timingSigma: 0.04,
+  timingSigmaMs: 70,
 
   /** Tiles walked between two nodes in a section, on average. */
   tilesBetweenNodes: 8,
@@ -85,9 +85,13 @@ function normalCdf(x: number): number {
   return x >= 0 ? 0.5 + y / 2 : 0.5 - y / 2;
 }
 
+/** The player's timing error expressed as a fraction of the bar. */
+const POSITION_SIGMA =
+  (PLAYER.timingSigmaMs * 3 * CONFIG.cooking.markerSpeedMultiplier) / CONFIG.cooking.barMs;
+
 /** Chance the stop lands within `halfWidth` bar-widths of the centre. */
 function hitChance(halfWidth: number): number {
-  return 2 * normalCdf(halfWidth / PLAYER.timingSigma) - 1;
+  return 2 * normalCdf(halfWidth / POSITION_SIGMA) - 1;
 }
 
 /**
@@ -100,13 +104,8 @@ function qualityMix(levels: SkillLevels, panTier: number): Record<Quality, numbe
   const fine = Math.max(hitChance((windowPct * CONFIG.cooking.fineWindowMultiplier) / 200) - superb, 0);
   const common = Math.max(1 - superb - fine, 0);
 
-  const mix: Record<Quality, number> = { common, fine, superb };
-  const cap = prepQualityCap(levels);
-
-  // Anything above the prep cap is plated one or two steps lower instead.
-  if (cap === "common") return { common: 1, fine: 0, superb: 0 };
-  if (cap === "fine") return { common, fine: fine + superb, superb: 0 };
-  return mix;
+  // Knifework no longer caps the outcome; the bar alone decides it.
+  return { common, fine, superb };
 }
 
 // --------------------------------------------------------------------------
@@ -364,6 +363,8 @@ function simulate(verbose = false): SimResult {
 
     const best = chooseRecipe(options, levels, panTier);
 
+    const beforeSeconds = seconds;
+    const beforeXp = chefXp;
     seconds += best.seconds;
     chefXp += best.chefXp;
 
@@ -400,17 +401,27 @@ function simulate(verbose = false): SimResult {
     const nowLevel = chefLevelForXp(chefXp);
     if (nowLevel > lastLevel) {
       for (let level = lastLevel + 1; level <= nowLevel; level += 1) {
-        hoursToChef.set(level, seconds / SECONDS_PER_HOUR);
+        /*
+         * Interpolate the crossing inside the batch rather than reporting the
+         * batch end. A batch can run for minutes once respawn waits are in it,
+         * and rounding up to its end is what made this disagree with the
+         * tuner, which interpolates the same crossing.
+         */
+        const needed = chefXpToReach(level);
+        const span = Math.max(chefXp - beforeXp, 1);
+        const at = beforeSeconds + ((needed - beforeXp) / span) * (seconds - beforeSeconds);
+        const hours = Math.max(beforeSeconds, Math.min(at, seconds)) / SECONDS_PER_HOUR;
+
+        hoursToChef.set(level, hours);
         timeline.push({
           chefLevel: level,
-          hours: seconds / SECONDS_PER_HOUR,
+          hours,
           recipe: best.recipe.name,
         });
         if (verbose) {
           console.log(
-            `  Chef ${String(level).padStart(2)} at ${(seconds / SECONDS_PER_HOUR)
-              .toFixed(2)
-              .padStart(6)}h  cooking ${best.recipe.name}`,
+            `  Chef ${String(level).padStart(2)} at ${hours.toFixed(2).padStart(6)}h  ` +
+              `cooking ${best.recipe.name}`,
           );
         }
       }
@@ -470,20 +481,57 @@ function tune() {
   console.log("searching chef.baseXp / chef.growth / skills.baseXp...\n");
 
   let best: { base: number; growth: number; skillBase: number; worst: number } | null = null;
+  let gatingChef = makeLevelTable(CONFIG.chef.baseXp, CONFIG.chef.growth, CONFIG.chef.maxLevel);
+  let round = 0;
 
-  // The skill base decides how fast content unlocks, which is what shapes the
-  // XP rate over time - the chef curve alone cannot fix a badly shaped rate.
-  for (let skillBase = 20; skillBase <= 200; skillBase += 5) {
-    const skillTable = makeLevelTable(skillBase, CONFIG.skills.growth, CONFIG.skills.maxLevel);
-    const key = `s${skillBase}`;
+  /*
+   * The skill base shapes the XP rate over time, so it is worth searching - but
+   * only within a range that keeps skills a progression rather than a formality.
+   * Left unbounded the search drives it to 20, which maxes every skill inside
+   * an hour and makes the unlock ladder meaningless.
+   */
+  const keepSkills = process.argv.includes("--keep-skills");
+  const skillLow = keepSkills ? CONFIG.skills.baseXp : 120;
+  const skillHigh = keepSkills ? CONFIG.skills.baseXp : 260;
 
-    for (let growth = 1.02; growth <= 1.45; growth += 0.002) {
-      for (let base = 40; base <= 4000; base += 10) {
-        const worst = evaluate(base, growth, skillTable, key);
-        if (worst === null) continue;
-        if (!best || worst < best.worst) best = { base, growth, skillBase, worst };
+  /*
+   * Fixed point: each round searches against a gating curve, then adopts the
+   * winner as the gating curve for the next round. Three or four rounds is
+   * plenty - the section thresholds only move when the curve moves a lot.
+   */
+  for (round = 1; round <= 4; round += 1) {
+    curveCache.clear();
+    let roundBest: typeof best = null;
+
+    for (let skillBase = skillLow; skillBase <= skillHigh; skillBase += 5) {
+      const skillTable = makeLevelTable(skillBase, CONFIG.skills.growth, CONFIG.skills.maxLevel);
+      const key = `r${round}s${skillBase}`;
+
+      for (let growth = 1.02; growth <= 1.45; growth += 0.002) {
+        for (let base = 40; base <= 4000; base += 10) {
+          const worst = evaluate(base, growth, skillTable, gatingChef, key);
+          if (worst === null) continue;
+          if (!roundBest || worst < roundBest.worst) {
+            roundBest = { base, growth, skillBase, worst };
+          }
+        }
       }
     }
+
+    if (!roundBest) break;
+    console.log(
+      `  round ${round}: base ${roundBest.base}, growth ${roundBest.growth.toFixed(3)}, ` +
+        `skills ${roundBest.skillBase} (worst ${(roundBest.worst * 100).toFixed(1)}%)`,
+    );
+
+    const settled =
+      best !== null &&
+      best.base === roundBest.base &&
+      Math.abs(best.growth - roundBest.growth) < 1e-9 &&
+      best.skillBase === roundBest.skillBase;
+    best = roundBest;
+    gatingChef = makeLevelTable(best.base, best.growth, CONFIG.chef.maxLevel);
+    if (settled) break;
   }
 
   if (!best) {
@@ -507,7 +555,20 @@ function tune() {
  */
 const curveCache = new Map<string, { seconds: number; chefXp: number }[]>();
 
-function earnCurve(skillTable: number[], key: string): { seconds: number; chefXp: number }[] {
+/**
+ * The earned-XP trace for a given skill curve.
+ *
+ * `chefTable` matters even though this measures XP rather than levels: the
+ * sections unlock on Chef Level, so which recipes are reachable - and therefore
+ * how fast XP comes in - depends on the very curve being evaluated. Passing the
+ * compiled-in curve here instead made the tuner optimise against a fiction, and
+ * it reported deviations that the real run did not reproduce.
+ */
+function earnCurve(
+  skillTable: number[],
+  chefTable: number[],
+  key: string,
+): { seconds: number; chefXp: number }[] {
   const cached = curveCache.get(key);
   if (cached) return cached;
 
@@ -523,7 +584,7 @@ function earnCurve(skillTable: number[], key: string): { seconds: number; chefXp
     if (levels.firecraft >= 8) panTier = 2;
     else if (levels.firecraft >= 4) panTier = 1;
 
-    const options = cookableRecipes(levels, chefLevelForXp(chefXp));
+    const options = cookableRecipes(levels, levelFor(chefTable, CONFIG.chef.maxLevel, chefXp));
     if (options.length === 0) break;
 
     const best = chooseRecipe(options, levels, panTier);
@@ -582,10 +643,11 @@ function evaluate(
   base: number,
   growth: number,
   skillTable: number[],
+  gatingChef: number[],
   key: string,
 ): number | null {
   const cumulative = makeLevelTable(base, growth, CONFIG.chef.maxLevel);
-  const points = earnCurve(skillTable, key);
+  const points = earnCurve(skillTable, gatingChef, key);
   let worst = 0;
 
   for (const target of TARGETS) {
@@ -603,7 +665,8 @@ const args = process.argv.slice(2);
 
 if (args.includes("--curve")) {
   const table = makeLevelTable(CONFIG.skills.baseXp, CONFIG.skills.growth, CONFIG.skills.maxLevel);
-  const points = earnCurve(table, "diag");
+  const chefTable = makeLevelTable(CONFIG.chef.baseXp, CONFIG.chef.growth, CONFIG.chef.maxLevel);
+  const points = earnCurve(table, chefTable, "diag");
   const at = (hours: number) => xpAt(points, hours * SECONDS_PER_HOUR) ?? 0;
   const x1 = at(2.5), x2 = at(10), x3 = at(25);
   console.log(`chef XP earned by 2.5h: ${Math.round(x1)}`);
@@ -621,7 +684,7 @@ A geometric chef curve needs those two ratios to be similar.`);
       `(max level ${CONFIG.chef.maxLevel})`,
   );
   console.log(
-    `  assumptions: timing sigma ${PLAYER.timingSigma}, batch ${PLAYER.batchSize} dishes, ` +
+    `  assumptions: timing sigma ${PLAYER.timingSigmaMs}ms, batch ${PLAYER.batchSize} dishes, ` +
       `${PLAYER.reactionSeconds}s per action\n`,
   );
 

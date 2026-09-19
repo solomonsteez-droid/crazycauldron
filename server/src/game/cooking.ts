@@ -19,7 +19,6 @@ import {
   cookXpAwards,
   findIngredient,
   ingredientSlots,
-  prepQualityCap,
   recipe as recipeOrThrow,
   recipeUsesHoney,
   recipeUsesSpice,
@@ -126,9 +125,10 @@ export function makeHeatBar(state: PlayerState, recipe: Recipe, cookId: string):
   const windowPct = timingWindowPct(state.levels, state.panTier);
   const durationMs = CONFIG.cooking.barMs;
 
-  // Between 2.5 and 3.5 full passes of the bar: fast enough to need timing,
-  // slow enough that the window is always reachable at least twice.
-  const sweeps = 2.5 + Math.random();
+  // Between 2.5 and 3.5 full passes of the bar, times the retune multiplier:
+  // fast enough to need timing, slow enough that the window is always
+  // reachable at least twice.
+  const sweeps = (2.5 + Math.random()) * CONFIG.cooking.markerSpeedMultiplier;
 
   return {
     cookId,
@@ -198,9 +198,23 @@ export function validateClick(
   return { ok: true, elapsedMs };
 }
 
+/** Everything the room needs to log about one cook, for diagnosing feel. */
+export interface CookDiagnostics {
+  elapsedMs: number;
+  markerPos: number;
+  windowCentre: number;
+  superbFrom: number;
+  superbTo: number;
+  fineFrom: number;
+  fineTo: number;
+  fromBar: Quality;
+  final: Quality;
+}
+
 export interface CookOutcome {
   quality: Quality;
   markerPos: number;
+  diagnostics: CookDiagnostics;
   chefXp: number;
   skillXp: { skill: SkillId; xp: number }[];
   downgraded: boolean;
@@ -216,8 +230,6 @@ function qualityFromPosition(cook: PendingCook, markerPos: number): Quality {
   if (distance <= cook.fineWindowPct / 200) return "fine";
   return "common";
 }
-
-const STEPS = CONFIG.cooking.qualitySteps;
 
 /**
  * Settles the dish: quality, ingredients spent, XP paid, codex updated.
@@ -239,12 +251,24 @@ export function resolveCook(
   }
 
   const markerPos = markerPosition(cook, elapsedMs);
-  let quality = qualityFromPosition(cook, markerPos);
+  const fromBar = qualityFromPosition(cook, markerPos);
+  let quality = fromBar;
 
-  // Knifework caps how good the prep can be, so a perfect stop at knifework 1
-  // still only produces a Common dish.
-  const cap = prepQualityCap(levels);
-  if (STEPS.indexOf(quality) > STEPS.indexOf(cap)) quality = cap;
+  /*
+   * Knifework no longer caps the result.
+   *
+   * It used to: prepQualityCap returned "common" below Knifework 4, and that
+   * was applied as a ceiling, so at Knifework 1 a pixel-perfect stop still
+   * plated a Common dish and the heat bar had no effect at all. Since
+   * Knifework XP only arrives from cooking, a new player could not see a Fine
+   * result no matter how well they played - which is exactly the bug reported
+   * from play-testing.
+   *
+   * The Superb window is already skill-scaled (12% of the bar at Firecraft 1
+   * rising to 40% at 20), so difficulty is expressed there rather than by
+   * overriding the outcome after the fact. Knifework keeps its ingredient
+   * slots, its auto-prep and its contribution to the timing window.
+   */
 
   // An unsafe spice can pull the dish down a step.
   const ingredientIds = recipe.ingredients.map((i) => i.id);
@@ -278,9 +302,23 @@ export function resolveCook(
   const paid = cookXpAwards(recipe, levels, quality);
   for (const award of paid) state.awardSkillXp(award.skill, award.xp);
 
+  const superbHalf = cook.windowPct / 200;
+  const fineHalf = cook.fineWindowPct / 200;
+
   return {
     quality,
     markerPos,
+    diagnostics: {
+      elapsedMs,
+      markerPos,
+      windowCentre: cook.windowCentre,
+      superbFrom: cook.windowCentre - superbHalf,
+      superbTo: cook.windowCentre + superbHalf,
+      fineFrom: cook.windowCentre - fineHalf,
+      fineTo: cook.windowCentre + fineHalf,
+      fromBar,
+      final: quality,
+    },
     chefXp: paid.reduce((total, a) => total + a.xp, 0),
     skillXp: paid,
     downgraded,

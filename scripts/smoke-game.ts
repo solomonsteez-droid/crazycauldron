@@ -485,13 +485,16 @@ async function main() {
     `marker ${cooked.markerPos.toFixed(3)} vs centre ${cooked.windowCentre.toFixed(3)}`,
   );
 
-  // Knifework 1 caps prep at Common, so a perfect stop still plates a Common
-  // dish. That cap is the whole reason to level knifework.
-  check("knifework 1 caps the dish at Common", cooked.quality === "common", cooked.quality);
+  // Knifework no longer caps the result: a perfect stop at Firecraft 1 plates
+  // a Superb dish. This is the play-test bug from Block 3 - the cap used to
+  // force Common here no matter how well the bar was played.
+  check("a perfect stop at Firecraft 1 is Superb", cooked.quality === "superb", cooked.quality);
   check("firecraft was paid", cooked.skillXp.some((x) => x.skill === "firecraft" && x.xp > 0));
   // 10 to firecraft, plus the quarter-share base to knifework and spicecraft
   // that keeps those two skills from being pinned at level 1 forever.
-  check("meadow flatbread pays 16 chef XP at Common", cooked.chefXp === 16, `${cooked.chefXp}`);
+  // Superb doubles each award before rounding: firecraft 10x1x2 = 20, and the
+  // two quarter-shares 10x0.25x2 = 5 each.
+  check("a Superb flatbread pays 30 chef XP", cooked.chefXp === 30, `${cooked.chefXp}`);
   check(
     "knifework and spicecraft both earn from every cook",
     cooked.skillXp.some((x) => x.skill === "knifework" && x.xp > 0) &&
@@ -517,8 +520,9 @@ async function main() {
   await walkTo(room, station("tavern"));
   room.send(MSG_SELL, { stackKey: dish.key, qty: 1 });
   const sold = await mail.next<SoldPayload>(MSG_SOLD);
-  check("a Common flatbread sells for 5", sold.coins === 5, `${sold.coins} coins`);
-  check("coins went up", sold.totalCoins === 5, `${sold.totalCoins}`);
+  // 5 base x 1.6 for Superb.
+  check("a Superb flatbread sells for 8", sold.coins === 8, `${sold.coins} coins`);
+  check("coins went up", sold.totalCoins === 8, `${sold.totalCoins}`);
   await takeProfile();
 
   mail.drain(MSG_REJECTED);

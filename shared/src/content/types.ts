@@ -196,7 +196,10 @@ export interface SkillsFile {
     cookMs: number;
     windowPctAtLevel1: number;
     windowPctAtLevel20: number;
+    /** Fine band width as a multiple of the Superb window. */
     fineWindowMultiplier: number;
+    /** Applied to the marker sweep rate; 1.15 is the Block 3 retune. */
+    markerSpeedMultiplier: number;
     nightshadeDowngradeChance: number;
     qualitySteps: Quality[];
     quality: Record<Quality, QualityMultiplier>;
