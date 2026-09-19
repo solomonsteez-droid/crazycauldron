@@ -26,7 +26,29 @@ export const apronKey = (id: string) => `apron:${id}`;
 export const propKey = (id: string) => `prop:${id}`;
 export const ingredientKey = (id: string) => `ingredient:${id}`;
 export const dishKey = (recipeId: string) => `dish:${recipeId}`;
-export const nodeKey = (id: string, empty = false) => `node:${id}${empty ? ":empty" : ""}`;
+/**
+ * Node art is keyed by archetype, not by ingredient.
+ *
+ * Eight drops cover twenty-four ingredients - every salt looks like salt - so
+ * the ingredient names which archetype it grows on and the art is shared.
+ */
+export const nodeKey = (archetype: string, empty = false) =>
+  `node:${archetype}${empty ? ":empty" : ""}`;
+
+/**
+ * Archetypes the pipeline actually produced art for.
+ *
+ * A generated stand-in is tinted by section accent so two nodes can be told
+ * apart; processed art carries its own colour, and tinting it would only mute
+ * it - so the two cases have to be distinguishable at draw time.
+ */
+const PROCESSED_NODES = new Set<string>();
+
+export const hasProcessedNode = (archetype: string) => PROCESSED_NODES.has(archetype);
+
+/** The archetype an ingredient grows on. */
+export const nodeArchetype = (ingredientId: string): string =>
+  INGREDIENTS.find((i) => i.id === ingredientId)?.node ?? "herb";
 export const uiKey = (name: string) => `ui:${name}`;
 export const effectKey = (name: string) => `fx:${name}`;
 export const terrainKey = (mapId: number) => `terrain:${mapId}`;
@@ -90,15 +112,17 @@ export function queueArt(scene: Phaser.Scene, manifest: Manifest): void {
     scene.load.image(dishKey(recipeId), `${GENERATED}/dishes/${recipeId}.png`);
   }
 
+  for (const id of manifest.ingredients ?? []) {
+    scene.load.image(ingredientKey(id), `${GENERATED}/ingredients/${id}.png`);
+  }
+
+  for (const node of manifest.nodes ?? []) {
+    PROCESSED_NODES.add(node.id);
+    scene.load.image(nodeKey(node.id), `${GENERATED}/nodes/node_${node.id}.png`);
+    scene.load.image(nodeKey(node.id, true), `${GENERATED}/nodes/node_${node.id}_empty.png`);
+  }
+
   const optional = manifest.optional ?? {};
-  for (const file of optional.ingredients ?? []) {
-    scene.load.image(ingredientKey(file.replace(/\.png$/, "")), `/assets/sprites/ingredients/${file}`);
-  }
-  for (const file of optional.nodes ?? []) {
-    const stem = file.replace(/^node_/, "").replace(/\.png$/, "");
-    const empty = stem.endsWith("_empty");
-    scene.load.image(nodeKey(empty ? stem.slice(0, -6) : stem, empty), `/assets/sprites/nodes/${file}`);
-  }
   for (const file of optional.ui ?? []) {
     scene.load.image(uiKey(file.replace(/\.png$/, "")), `/assets/sprites/ui/${file}`);
   }
@@ -192,12 +216,13 @@ export function drawPlaceholders(scene: Phaser.Scene): void {
     chip(scene, dishKey(recipe.id), 20, PALETTE.parchment, recipe.name[0] ?? "?", "square");
   }
 
-  // Nodes: a full tuft and a spent one, per ingredient, tinted by section.
+  // Nodes: a full tuft and a spent one per archetype, so the fallback keys
+  // line up with the processed art.
   for (const ing of INGREDIENTS) {
     const accent = SECTIONS.find((s) => s.index === ing.section)?.accentColor ?? "#9a8f7a";
     const colour = Phaser.Display.Color.HexStringToColor(accent).color;
-    nodeChip(scene, nodeKey(ing.id), colour, true);
-    nodeChip(scene, nodeKey(ing.id, true), colour, false);
+    nodeChip(scene, nodeKey(ing.node), colour, true);
+    nodeChip(scene, nodeKey(ing.node, true), colour, false);
   }
 
   for (const name of ["scroll_card", "ribbon", "button", "slot", "xp_bar", "heat_bar"]) {

@@ -32,6 +32,8 @@ export interface Ingredient {
   section: number;
   skill: GatherSkillId;
   rarity: Rarity;
+  /** Which node archetype this grows on; art is shared between ingredients. */
+  node: string;
   edible: boolean;
   /** Tags the spicecraft and prospecting unlocks key off. */
   honey?: boolean;

@@ -531,24 +531,12 @@ function buildDishes(): string[] {
 
     note("found", `sprites/dishes/${recipeFileName(i)}`);
     const cleaned = denoise(removeChroma(load(file)));
-    const bounds = alphaBounds(cleaned);
-    if (!bounds) {
+
+    const flat = toIcon(cleaned, DISH_SIZE, true);
+    if (!flat) {
       note("skipped", `${recipeFileName(i)} - nothing left after keying`);
       continue;
     }
-
-    // Square the crop first so a wide dish is not squashed into the icon.
-    const side = Math.max(bounds.width, bounds.height);
-    const square = crop(cleaned, {
-      x: bounds.x + Math.round((bounds.width - side) / 2),
-      y: bounds.y + Math.round((bounds.height - side) / 2),
-      width: side,
-      height: side,
-    });
-
-    const small = downscaleAveraged(square, DISH_SIZE, DISH_SIZE);
-    const flat = quantise(small, [...QUANTISE_RAMP, ...dominantColours(small, 10)]);
-
     save(path.join(OUT, "dishes", `${recipe.id}.png`), flat);
     made.push(recipe.id);
   }
@@ -563,6 +551,132 @@ function buildDishes(): string[] {
 
 const recipeFileName = (index: number) => `recipe_${String(index + 1).padStart(2, "0")}.png`;
 
+
+// --------------------------------------------------------------------------
+// Nodes and ingredients
+// --------------------------------------------------------------------------
+
+/** Gather nodes occupy a single tile. */
+const NODE_W = 32;
+/** Inventory and codex icons. */
+const ITEM_SIZE = 32;
+
+/** Shrinks a cleaned drawing to a target width and puts it on the palette. */
+function toIcon(img: Img, width: number, square: boolean): Img | null {
+  const bounds = alphaBounds(img);
+  if (!bounds) return null;
+
+  const region = square
+    ? (() => {
+        const side = Math.max(bounds.width, bounds.height);
+        return {
+          x: bounds.x + Math.round((bounds.width - side) / 2),
+          y: bounds.y + Math.round((bounds.height - side) / 2),
+          width: side,
+          height: side,
+        };
+      })()
+    : bounds;
+
+  const cut = crop(img, region);
+  const height = Math.max(1, Math.round((cut.height / cut.width) * width));
+  const small = downscaleAveraged(cut, width, height);
+  return quantise(small, [...QUANTISE_RAMP, ...dominantColours(small, 10)]);
+}
+
+/**
+ * Splits each node drop into its full and depleted states.
+ *
+ * Each drop holds both states in one image. Which way round they sit is not
+ * assumed: the two largest blobs decide the axis, and the whole image is then
+ * cut on that axis - so the loose sparkles several of these have travel with
+ * the state they belong to instead of being dropped or landing on the wrong
+ * half. The first state along that axis is the full one.
+ */
+function buildNodes(): { id: string; layout: string }[] {
+  const dir = path.join(SRC, "nodes");
+  const made: { id: string; layout: string }[] = [];
+
+  for (const file of listPngs(dir)) {
+    const id = file.replace(/\.png$/i, "").replace(/^node_/, "");
+    note("found", `sprites/nodes/${file}`);
+
+    const clean = denoise(removeChroma(load(path.join(dir, file))));
+    const bounds = alphaBounds(clean);
+    const blobs = findBlobs(clean, 3000).slice(0, 2);
+    if (!bounds || blobs.length < 2) {
+      note("skipped", `${file} - expected two states, found ${blobs.length}`);
+      continue;
+    }
+
+    const [a, b] = blobs as [Rect, Rect];
+    const centre = (r: Rect) => ({ x: r.x + r.width / 2, y: r.y + r.height / 2 });
+    const ca = centre(a);
+    const cb = centre(b);
+    const horizontal = Math.abs(ca.x - cb.x) >= Math.abs(ca.y - cb.y);
+    const mid = Math.round(horizontal ? (ca.x + cb.x) / 2 : (ca.y + cb.y) / 2);
+
+    const halves: Rect[] = horizontal
+      ? [
+          { x: bounds.x, y: bounds.y, width: mid - bounds.x, height: bounds.height },
+          { x: mid, y: bounds.y, width: bounds.x + bounds.width - mid, height: bounds.height },
+        ]
+      : [
+          { x: bounds.x, y: bounds.y, width: bounds.width, height: mid - bounds.y },
+          { x: bounds.x, y: mid, width: bounds.width, height: bounds.y + bounds.height - mid },
+        ];
+
+    const names = [`node_${id}`, `node_${id}_empty`];
+    let ok = true;
+    for (let i = 0; i < 2; i += 1) {
+      const icon = toIcon(crop(clean, halves[i]!), NODE_W, false);
+      if (!icon) {
+        note("skipped", `${file} - ${i === 0 ? "full" : "depleted"} half is empty`);
+        ok = false;
+        break;
+      }
+      save(path.join(OUT, "nodes", `${names[i]}.png`), icon);
+    }
+    if (!ok) continue;
+
+    const layout = horizontal ? "left/right" : "top/bottom";
+    made.push({ id, layout });
+    note("made", `generated/nodes/node_${id}{,_empty}.png (${layout})`);
+  }
+
+  if (made.length === 0) {
+    note("skipped", "sprites/nodes/ - empty, the game will draw placeholders");
+  }
+  return made;
+}
+
+/** Ingredient icons, same treatment as dishes. */
+function buildIngredients(): string[] {
+  const dir = path.join(SRC, "ingredients");
+  const made: string[] = [];
+
+  for (const ing of INGREDIENTS) {
+    const file = path.join(dir, `${ing.id}.png`);
+    if (!exists(file)) continue;
+
+    note("found", `sprites/ingredients/${ing.id}.png`);
+    const icon = toIcon(denoise(removeChroma(load(file))), ITEM_SIZE, true);
+    if (!icon) {
+      note("skipped", `${ing.id}.png - nothing left after keying`);
+      continue;
+    }
+    save(path.join(OUT, "ingredients", `${ing.id}.png`), icon);
+    made.push(ing.id);
+  }
+
+  if (made.length === 0) {
+    note("skipped", "sprites/ingredients/ - empty, the game will draw placeholders");
+  } else {
+    note("made", `generated/ingredients/ - ${made.length} icons at ${ITEM_SIZE}px`);
+  }
+  return made;
+}
+
 // --------------------------------------------------------------------------
 // Optional art
 // --------------------------------------------------------------------------
@@ -575,8 +689,6 @@ const recipeFileName = (index: number) => `recipe_${String(index + 1).padStart(2
  */
 function surveyOptional(): Record<string, string[]> {
   const wanted: Record<string, string[]> = {
-    ingredients: INGREDIENTS.map((i) => `${i.id}.png`),
-    nodes: INGREDIENTS.flatMap((i) => [`node_${i.id}.png`, `node_${i.id}_empty.png`]),
     ui: ["scroll_card", "ribbon", "button", "slot", "xp_bar", "heat_bar"].map((n) => `${n}.png`),
     effects: ["steam", "sizzle", "sparkle", "levelup"].map((n) => `${n}.png`),
   };
@@ -687,8 +799,10 @@ function main() {
     props.push(id);
   }
 
-  // --- dishes -------------------------------------------------------------
+  // --- dishes, ingredients and nodes ---------------------------------------
   const dishes = buildDishes();
+  const ingredientIcons = buildIngredients();
+  const nodes = buildNodes();
 
   // --- terrain ------------------------------------------------------------
   const terrain = buildTerrain();
@@ -703,6 +817,8 @@ function main() {
     aprons: overlays.aprons,
     props,
     dishes,
+    ingredients: ingredientIcons,
+    nodes,
     terrain,
     optional,
   };

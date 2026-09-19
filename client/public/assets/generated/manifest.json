@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-19T08:21:21.377Z",
+  "generatedAt": "2026-09-19T08:37:13.730Z",
   "bodyFrame": {
     "width": 32,
     "height": 48
@@ -234,6 +234,66 @@
     "moonpetal_saffron_rice",
     "dragons_breath_feast_pot"
   ],
+  "ingredients": [
+    "sunwheat",
+    "meadow_berries",
+    "honeycap",
+    "wild_thyme",
+    "clover_honey",
+    "brook_cress",
+    "rock_salt",
+    "clay",
+    "giant_chestnuts",
+    "kingcap",
+    "marsh_rice",
+    "bog_garlic",
+    "nightshade_pepper",
+    "sap_amber",
+    "smoke_salt",
+    "iron_flake",
+    "glowcap",
+    "moonpetal",
+    "cave_pearls",
+    "ember_root",
+    "crystal_sugar",
+    "starlight_salt",
+    "frost_quartz",
+    "dragons_breath_chili"
+  ],
+  "nodes": [
+    {
+      "id": "berry",
+      "layout": "left/right"
+    },
+    {
+      "id": "clay",
+      "layout": "left/right"
+    },
+    {
+      "id": "crystal",
+      "layout": "left/right"
+    },
+    {
+      "id": "glowcap",
+      "layout": "left/right"
+    },
+    {
+      "id": "herb",
+      "layout": "left/right"
+    },
+    {
+      "id": "mushroom",
+      "layout": "left/right"
+    },
+    {
+      "id": "salt",
+      "layout": "top/bottom"
+    },
+    {
+      "id": "wheat",
+      "layout": "top/bottom"
+    }
+  ],
   "terrain": [
     {
       "map": 0,
@@ -277,33 +337,6 @@
     }
   ],
   "optional": {
-    "ingredients": [
-      "sunwheat.png",
-      "meadow_berries.png",
-      "honeycap.png",
-      "wild_thyme.png",
-      "clover_honey.png",
-      "brook_cress.png",
-      "rock_salt.png",
-      "clay.png",
-      "giant_chestnuts.png",
-      "kingcap.png",
-      "marsh_rice.png",
-      "bog_garlic.png",
-      "nightshade_pepper.png",
-      "sap_amber.png",
-      "smoke_salt.png",
-      "iron_flake.png",
-      "glowcap.png",
-      "moonpetal.png",
-      "cave_pearls.png",
-      "ember_root.png",
-      "crystal_sugar.png",
-      "starlight_salt.png",
-      "frost_quartz.png",
-      "dragons_breath_chili.png"
-    ],
-    "nodes": [],
     "ui": [],
     "effects": []
   }

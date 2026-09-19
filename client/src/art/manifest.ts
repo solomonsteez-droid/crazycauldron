@@ -38,6 +38,10 @@ export interface Manifest {
   props: string[];
   /** Recipe ids that have a processed dish icon. */
   dishes: string[];
+  /** Ingredient ids that have a processed icon. */
+  ingredients: string[];
+  /** Node archetypes, with the layout each drop turned out to use. */
+  nodes: { id: string; layout: string }[];
   terrain: TerrainEntry[];
   optional: Record<string, string[]>;
 }
@@ -70,6 +74,8 @@ const EMPTY_MANIFEST: Manifest = {
   aprons: [],
   props: [],
   dishes: [],
+  ingredients: [],
+  nodes: [],
   terrain: [],
   optional: {},
 };

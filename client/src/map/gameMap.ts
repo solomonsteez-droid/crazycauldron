@@ -17,7 +17,15 @@ import {
 } from "@crazycauldron/shared";
 import { LABEL_SCREEN_PX, MAP_WORLD_BOUNDS, SMALL_LABEL_SCREEN_PX, labelScale, type Rect } from "./camera.js";
 import { TEX_CAULDRON, TEX_GLOW, TEX_NODE, TEX_NODE_SPENT, TEX_TILE } from "./textures.js";
-import { PORTAL_PROP, STATION_PROP, propKey, terrainKey } from "../art/assets.js";
+import {
+  PORTAL_PROP,
+  STATION_PROP,
+  hasProcessedNode,
+  nodeArchetype,
+  nodeKey,
+  propKey,
+  terrainKey,
+} from "../art/assets.js";
 import { type TerrainEntry } from "../art/manifest.js";
 import { Effects } from "../world/effects.js";
 
@@ -197,13 +205,27 @@ export class GameMap {
     }
   }
 
+  /**
+   * A gather node, drawn from its ingredient's archetype.
+   *
+   * The generated tufts were tinted by section accent to tell them apart; the
+   * processed art carries its own colour, so tinting it would only mute it.
+   */
   private addNode(node: GatherNodeDef, accent: string): Phaser.GameObjects.Image {
     const at = this.tileCentre(node.tileX, node.tileY);
+    const archetype = nodeArchetype(node.ingredient);
+    const key = nodeKey(archetype);
+    const processed = hasProcessedNode(archetype);
+
     const sprite = this.scene.add
-      .image(at.x, at.y, TEX_NODE)
+      .image(at.x, at.y, this.scene.textures.exists(key) ? key : TEX_NODE)
       .setOrigin(0.5, 1)
-      .setDepth(node.tileX + node.tileY)
-      .setTint(Phaser.Display.Color.HexStringToColor(accent).color);
+      .setDepth(node.tileX + node.tileY);
+
+    if (!processed) sprite.setTint(Phaser.Display.Color.HexStringToColor(accent).color);
+    sprite.setData("archetype", archetype);
+    sprite.setData("processed", processed);
+
     this.decorations.push(sprite);
     return sprite;
   }
@@ -291,8 +313,18 @@ export class GameMap {
   setNodeReady(nodeId: string, ready: boolean, available: boolean, cooldownSeconds = 0) {
     const sprite = this.nodeSprites.get(nodeId);
     if (!sprite) return;
-    sprite.setTexture(ready ? TEX_NODE : TEX_NODE_SPENT);
-    sprite.setAlpha(available ? (ready ? 1 : 0.45) : 0.15);
+
+    // Regrowing nodes show their depleted art rather than a dimmed copy of the
+    // full one, so the state reads at a glance instead of by brightness.
+    const archetype = sprite.getData("archetype") as string | undefined;
+    const processed = sprite.getData("processed") === true;
+    if (archetype) {
+      const key = nodeKey(archetype, !ready);
+      if (this.scene.textures.exists(key)) sprite.setTexture(key);
+    } else {
+      sprite.setTexture(ready ? TEX_NODE : TEX_NODE_SPENT);
+    }
+    sprite.setAlpha(available ? (processed ? 1 : ready ? 1 : 0.65) : 0.2);
 
     const label = this.nodeLabels.get(nodeId);
     if (!label) return;
