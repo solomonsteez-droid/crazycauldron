@@ -42,7 +42,7 @@ export interface ApiError {
   minHold?: number;
 }
 
-/** POST /matchmake/enter -> a Colyseus seat reservation to consume. */
+/** POST /play/enter -> a Colyseus seat reservation to consume. */
 export interface EnterResponse {
   room: "hub" | "waiting";
   reservation: unknown;

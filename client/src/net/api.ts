@@ -1,3 +1,4 @@
+import { ROOM_HUB, ROOM_WAITING } from "@crazycauldron/shared";
 import type {
   ApiError as ApiErrorBody,
   EnterResponse,
@@ -23,7 +24,17 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+/** Narrows a 2xx body to the shape the caller is about to destructure. */
+type Validator<T> = (body: unknown) => body is T;
+
+/** A short, safe excerpt of a body for an error a human has to diagnose. */
+function preview(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return "(empty response)";
+  return trimmed.length > 200 ? `${trimmed.slice(0, 200)}…` : trimmed;
+}
+
+async function request<T>(path: string, init?: RequestInit, isValid?: Validator<T>): Promise<T> {
   let response: Response;
   try {
     response = await fetch(`${env.httpUrl}${path}`, {
@@ -59,26 +70,78 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       minHold: body.minHold,
     });
   }
+
+  // A 2xx with the wrong shape is still a failure. Without this the mismatch
+  // surfaces much later as "Cannot read properties of undefined" somewhere deep
+  // in a scene, naming neither the endpoint nor what actually came back.
+  if (isValid && !isValid(parsed)) {
+    throw new ApiError(response.status, {
+      error: "bad_response",
+      message: `${path} answered ${response.status} with an unexpected body: ${preview(text)}`,
+    });
+  }
   return parsed as T;
 }
 
+function isRecord(body: unknown): body is Record<string, unknown> {
+  return typeof body === "object" && body !== null && !Array.isArray(body);
+}
+
+function isNonceResponse(body: unknown): body is NonceResponse {
+  return isRecord(body) && typeof body.nonce === "string" && typeof body.message === "string";
+}
+
+function isVerifyResponse(body: unknown): body is VerifyResponse {
+  return isRecord(body) && typeof body.token === "string" && typeof body.wallet === "string";
+}
+
+function isEnterResponse(body: unknown): body is EnterResponse {
+  return (
+    isRecord(body) &&
+    (body.room === ROOM_HUB || body.room === ROOM_WAITING) &&
+    // colyseus.js reads .room off the reservation, so an absent one crashes
+    // inside the library rather than here.
+    isRecord(body.reservation)
+  );
+}
+
+function isCapacityResponse(body: unknown): body is CapacityResponse {
+  return (
+    isRecord(body) &&
+    typeof body.hubPlayers === "number" &&
+    typeof body.globalMax === "number" &&
+    typeof body.full === "boolean"
+  );
+}
+
 export function fetchNonce(address: string): Promise<NonceResponse> {
-  return request<NonceResponse>(`/auth/nonce?address=${encodeURIComponent(address)}`);
+  return request<NonceResponse>(
+    `/auth/nonce?address=${encodeURIComponent(address)}`,
+    undefined,
+    isNonceResponse,
+  );
 }
 
 export function verifySignature(body: VerifyRequest): Promise<VerifyResponse> {
-  return request<VerifyResponse>("/auth/verify", {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
+  return request<VerifyResponse>(
+    "/auth/verify",
+    { method: "POST", body: JSON.stringify(body) },
+    isVerifyResponse,
+  );
 }
 
-/** Asks the server which room to join and for a seat in it. */
+/**
+ * Asks the server which room to join and for a seat in it.
+ *
+ * Mounted under /play, not /matchmake: Colyseus claims every URL containing
+ * that substring on the same http server.
+ */
 export function enterWorld(token: string): Promise<EnterResponse> {
-  return request<EnterResponse>("/matchmake/enter", {
-    method: "POST",
-    headers: { authorization: `Bearer ${token}` },
-  });
+  return request<EnterResponse>(
+    "/play/enter",
+    { method: "POST", headers: { authorization: `Bearer ${token}` } },
+    isEnterResponse,
+  );
 }
 
 export interface CapacityResponse {
@@ -90,5 +153,5 @@ export interface CapacityResponse {
 }
 
 export function fetchCapacity(): Promise<CapacityResponse> {
-  return request<CapacityResponse>("/matchmake/capacity");
+  return request<CapacityResponse>("/play/capacity", undefined, isCapacityResponse);
 }

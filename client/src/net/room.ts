@@ -7,7 +7,7 @@ export const gameClient = new Client(env.wsUrl);
 /**
  * Turns a server-issued seat reservation into a live room.
  *
- * The client never calls joinOrCreate: /matchmake/enter decides between hub and
+ * The client never calls joinOrCreate: /play/enter decides between hub and
  * waiting room, and this only redeems what it was handed. That is also what
  * lets the waiting room promote a player by pushing a reservation down the
  * socket - the same call consumes it.

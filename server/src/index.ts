@@ -33,7 +33,11 @@ app.get("/health", async (_req, res) => {
 });
 
 app.use("/auth", authRouter);
-app.use("/matchmake", matchmakeRouter);
+// NOT "/matchmake": Colyseus hooks the raw http server's "request" event and
+// swallows every URL *containing* that substring (Server.attachMatchMakingRoutes),
+// so an Express router mounted there is never reached - /capacity would answer
+// with Colyseus's room list and /enter with a JSON parse error.
+app.use("/play", matchmakeRouter);
 
 // Last-resort handler: log the detail, tell the client nothing useful.
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

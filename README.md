@@ -43,7 +43,7 @@ Other useful scripts: `npm run typecheck`, `npm run build`, `npm start`.
 ```
 GET  /auth/nonce?address=…   -> single-use nonce + the exact message to sign
 POST /auth/verify            -> signature checked, $COOK checked, 1h JWT issued
-POST /matchmake/enter        -> a Colyseus seat reservation for hub or waiting
+POST /play/enter             -> a Colyseus seat reservation for hub or waiting
      consumeSeatReservation  -> the client redeems it; it never calls joinOrCreate
 ```
 

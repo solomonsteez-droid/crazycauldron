@@ -35,7 +35,7 @@ export function describeEnterFailure(err: unknown): string {
     return err.message;
   }
 
-  // A room can refuse the seat after /matchmake said yes - the gate is
+  // A room can refuse the seat after /play/enter said yes - the gate is
   // re-checked on join - and it rejects with the bare KICK_* code.
   const message = (err as Error)?.message ?? "";
   if (message === KICK_INSUFFICIENT_HOLD) {

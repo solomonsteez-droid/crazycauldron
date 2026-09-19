@@ -111,8 +111,11 @@ export class LoginScene extends Phaser.Scene {
           ? `The hub is full (${capacity.hubPlayers}/${capacity.globalMax}) - you will join the queue.`
           : `${capacity.hubPlayers} of ${capacity.globalMax} wizards are in the cauldron.`,
       );
-    } catch {
-      // A missing player count is not worth mentioning to the player.
+    } catch (err) {
+      // A missing player count is not worth mentioning to the player, but a
+      // malformed one means the endpoint moved - say so somewhere findable
+      // rather than rendering "undefined of undefined".
+      console.warn("Could not read hub capacity:", (err as Error).message);
     }
   }
 }

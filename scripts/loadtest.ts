@@ -131,7 +131,7 @@ async function runClient(options: Options, stopAt: number) {
 
   const enterStart = Date.now();
   const entered = await postJson<EnterResponse>(
-    `${options.httpUrl}/matchmake/enter`,
+    `${options.httpUrl}/play/enter`,
     {},
     verified.token,
   );

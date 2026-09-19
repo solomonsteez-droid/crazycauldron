@@ -20,7 +20,7 @@ const PROMOTE_INTERVAL_MS = 2_000;
  * are promoted first-come-first-served as hub seats free up.
  *
  * Promotion is a fresh seat reservation pushed over the socket, so the client
- * never has to poll /matchmake again - it just consumes what it is handed.
+ * never has to poll /play/enter again - it just consumes what it is handed.
  */
 export class WaitingRoom extends Room<WaitingState> {
   /** Everyone waiting, oldest first. */
