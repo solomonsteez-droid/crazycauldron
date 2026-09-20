@@ -106,6 +106,33 @@ async function main(): Promise<void> {
     raw.slice(0, 120),
   );
 
+  // --- what /health says -----------------------------------------------------
+  console.log("\n-- what /health gives away --");
+  const healthRes = await fetch(`${HTTP}/health`);
+  const healthRaw = await healthRes.text();
+  const health = JSON.parse(healthRaw) as { database: Record<string, unknown> };
+
+  check("it answers", healthRes.ok, String(healthRes.status));
+  check(
+    "the database block is exactly four fields",
+    ["backend", "ok", "players", "sizeBytes"].every((k) => k in health.database) &&
+      Object.keys(health.database).length === 4,
+    Object.keys(health.database).join(", "),
+  );
+
+  /*
+   * /health is unauthenticated - it has to be, a load balancer polls it - so
+   * everything in it is public. It used to carry the connection string with
+   * the password taken out, which still names the host and the user.
+   */
+  for (const forbidden of ["postgres://", "postgresql://", "@", "://", ".db", "password"]) {
+    check(`no "${forbidden}" anywhere in it`, !JSON.stringify(health).includes(forbidden));
+  }
+  for (const secret of [process.env.DATABASE_URL, process.env.DATABASE_PATH]) {
+    if (!secret || secret.length < 6) continue;
+    check(`and nothing of ${secret.slice(0, 8)}...`, !healthRaw.includes(secret));
+  }
+
   // --- the bundle ----------------------------------------------------------
   console.log("\n-- the built client carries them --");
   const built = bundle();
@@ -125,6 +152,32 @@ async function main(): Promise<void> {
       /community token/i.test(built) && /not an investment/i.test(built),
     );
     check("and promise nothing about price or rewards", /no promise about its price/i.test(built));
+
+    /*
+     * The fee model, said the right way round.
+     *
+     * $COOK takes standard pump.fun creator fees to the treasury, and they pay
+     * for servers and development. What they are not is a payout: any wording
+     * that implies holding the token earns you something would be a claim
+     * about income, which is the one claim this project must never make.
+     */
+    check(
+      "the fees are described as funding servers and development",
+      /creator fees/i.test(built) && /fund the servers and the development/i.test(built),
+    );
+    check(
+      "and as not shared out to holders",
+      /not shared out to holders/i.test(built),
+    );
+    for (const forbidden of [
+      /holder rewards?/i,
+      /rewards? (?:are |is )?(?:paid|shared|distributed) to holders/i,
+      /fee distribution/i,
+      /passive (?:income|rewards?|payouts?)/i,
+      /earn(?:ing)?s? (?:just )?(?:by|from) holding/i,
+    ]) {
+      check(`the bundle never says ${forbidden.source}`, !forbidden.test(built));
+    }
     check("and that there are no cash prizes", /no cash prizes/i.test(built));
     check(
       "and that items are tied to the wallet",

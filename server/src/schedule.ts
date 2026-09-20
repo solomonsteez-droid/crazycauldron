@@ -69,7 +69,8 @@ export function startSchedules(): Scheduled {
         await alert({
           kind: "health_failed",
           message: "The health check failed: the database is not answering.",
-          detail: { error: db.error, file: db.file },
+          // The backend, not where it lives: an alert goes to a third party.
+          detail: { backend: db.backend, error: db.error },
         });
         lastHealthy = false;
         return;

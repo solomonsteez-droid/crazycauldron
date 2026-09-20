@@ -94,7 +94,21 @@ function routes(app: express.Application): void {
       ok: db.ok,
       uptimeSeconds: metrics.uptimeSeconds,
       rooms,
-      database: db,
+      /*
+       * Named fields rather than the whole object.
+       *
+       * This used to be `database: db`, which published the connection string
+       * - host and user included - to anybody who could reach /health. Listing
+       * what goes out means a field added to DatabaseHealth later cannot leak
+       * by being spread into a public response, which is exactly how the first
+       * one got out.
+       */
+      database: {
+        backend: db.backend,
+        ok: db.ok,
+        players: db.players,
+        sizeBytes: db.sizeBytes,
+      },
       process: {
         cpuPercentOfCore: metrics.cpuPercentOfCore,
         peakCpuPercentOfCore: metrics.peakCpuPercentOfCore,

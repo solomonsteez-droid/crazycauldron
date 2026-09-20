@@ -209,10 +209,23 @@ async function main(): Promise<void> {
     server = await startServer();
 
     const health = (await (await fetch(`${HTTP}/health`)).json()) as {
-      database: { backend: string; ok: boolean };
+      database: Record<string, unknown> & { backend: string; ok: boolean };
     };
     check("the server is on Postgres", health.database.backend === "postgres", health.database.backend);
     check("and the database answers", health.database.ok);
+
+    /*
+     * The case that matters for this: /health is public, and on Postgres the
+     * database is reached by a URL with a host and a user in it. None of that
+     * may come back out.
+     */
+    const healthText = JSON.stringify(health);
+    check(
+      "and says nothing about where it is",
+      !healthText.includes("postgres://") && !healthText.includes("@") &&
+        !healthText.includes(String(PG_PORT)),
+      Object.keys(health.database).join(", "),
+    );
 
     const { token, wallet } = await signIn();
     const first = await play(token);

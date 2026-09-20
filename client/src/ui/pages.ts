@@ -235,6 +235,27 @@ async function official(root: HTMLElement): Promise<void> {
     );
   }
 
+  /*
+   * Stated plainly because the alternative is somebody assuming. A token with
+   * a fee on it invites the question "do I get some of that", and the honest
+   * answer needs to be on the page rather than in a reply to whoever asks.
+   */
+  const fees = document.createElement("h2");
+  fees.textContent = "Where the fees go";
+  root.append(
+    fees,
+    paragraph(
+      "$COOK uses the standard pump.fun creator fees. They are paid to the project treasury wallet and they fund the servers and the development of the game.",
+    ),
+    paragraph(
+      "They are not shared out to holders. Holding $COOK does not pay you anything, and there is no mechanism here by which it could.",
+    ),
+    paragraph(
+      "The same is true of anything spent in the game: half of a purchase is burned and half goes to that treasury, for the same two things.",
+      "cc-note",
+    ),
+  );
+
   const social = document.createElement("h2");
   social.textContent = "Where we post";
   root.append(social);
@@ -297,6 +318,9 @@ function rules(root: HTMLElement): void {
   disclaimer.append(
     paragraph(
       "$COOK is a community token. It is not a share, not an investment, and not a claim on anything we own or earn.",
+    ),
+    paragraph(
+      "$COOK uses the standard pump.fun creator fees, paid to the project treasury wallet. They fund the servers and the development of the game. They are not shared out to holders, and holding $COOK pays you nothing.",
     ),
     paragraph(
       "We make no promise about its price, and no promise of rewards, income, airdrops or returns of any kind. Nothing on this site is financial advice.",

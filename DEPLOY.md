@@ -408,6 +408,14 @@ use and whether it still answers a read, uptime, process CPU and memory,
 simulation tick timings, and message counts by type. It returns **503** when
 the database is not answering, so it works as a load balancer probe as-is.
 
+It is unauthenticated, because a load balancer has to be able to poll it -
+which means everything in it is public. The `database` block is therefore
+exactly four fields: `backend`, `ok`, `players` and `sizeBytes`. It never
+carries the connection string, not even with the password removed, because
+that still names the host and the user; where the database lives appears once,
+in this process's own boot log. `scripts/test-pages.ts` checks the shape and
+greps the response for any trace of a URL.
+
 ```bash
 curl -s localhost:2567/health | jq '{ok, rooms, database, tick}'
 ```
@@ -422,7 +430,7 @@ is set, a failure POSTs:
   "at": "2026-09-19T04:00:00.000Z",
   "kind": "health_failed",
   "message": "The health check failed: the database is not answering.",
-  "detail": { "error": "...", "file": "postgres://user:***@host:5432/crazycauldron" }
+  "detail": { "backend": "postgres", "error": "..." }
 }
 ```
 

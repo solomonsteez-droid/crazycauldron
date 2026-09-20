@@ -30,12 +30,19 @@ export type Backend = "sqlite" | "postgres";
 /** Which one is in use. Reported by /health, so an operator never has to guess. */
 export const backend: Backend = config.databaseUrl ? "postgres" : "sqlite";
 
-/** Where the data is, in whichever terms this backend understands. */
-export const databaseLocation: string = config.databaseUrl
+/**
+ * Where the data is, for the boot log and nowhere else.
+ *
+ * Deliberately not exported. A connection string names a host and a user even
+ * with its password taken out, and the only place that is reasonable is this
+ * process's own stdout - never an HTTP response, never a webhook. /health says
+ * which backend and whether it answers, which is what a health check is for.
+ */
+const databaseLocation: string = config.databaseUrl
   ? redact(config.databaseUrl)
   : config.databasePath;
 
-/** A connection string with its password removed, safe to log and to serve. */
+/** A connection string with its password removed. Safe to log; not to serve. */
 function redact(url: string): string {
   try {
     const parsed = new URL(url);
@@ -96,10 +103,15 @@ export function rawPool(): pg.Pool | null {
 export interface DatabaseHealth {
   ok: boolean;
   backend: Backend;
-  /** The file path, or the connection string with its password removed. */
-  file: string;
   players: number;
+  /** Zero on Postgres, where the size is the server's business and not ours. */
   sizeBytes: number;
+  /**
+   * Why it is not answering. For logs only.
+   *
+   * A driver error frequently quotes the host it failed to reach, so this must
+   * not be published - see the note where /health builds its response.
+   */
   error?: string;
 }
 
@@ -111,7 +123,7 @@ export interface DatabaseHealth {
  * to use it, which on a health check is the whole point.
  */
 export async function databaseHealth(): Promise<DatabaseHealth> {
-  const base = { backend, file: databaseLocation };
+  const base = { backend };
   try {
     if (pool) {
       const { rows } = await pool.query<{ n: number }>("SELECT count(*)::int AS n FROM players");
