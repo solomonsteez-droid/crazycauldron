@@ -4,8 +4,8 @@
  *   npx tsx scripts/test-prebuilt.ts
  *
  * client/dist is committed because bundling it needs about 1 GB and the deploy
- * host has that in total. Two things therefore have to be true, and neither is
- * obvious enough to leave to memory:
+ * host has that in total. Three things therefore have to be true, and not one
+ * of them is obvious enough to leave to memory:
  *
  * 1. The host must never bundle. A deploy of 789ac74 did, and died. The guard
  *    switched on NODE_ENV, which pm2 sets on the server process it starts and
@@ -13,6 +13,9 @@
  *    fallback was to build.
  * 2. The stamp must be the same number on Windows and on Linux, or the check
  *    fails every deploy for a reason nobody can see.
+ * 3. The bundle must not name a server. Building it on a developer's machine
+ *    puts their .env in scope, and localhost:2567 shipped to production once
+ *    already.
  *
  * So this asserts the shape of the scripts rather than only their output: that
  * the root build passes --verify, that --verify has no path that builds, and
@@ -174,6 +177,57 @@ function main(): void {
     "and it matches the source in this working tree",
     committed === first,
     `committed ${committed}, source ${first}`,
+  );
+
+  // --- and it does not carry a server address ------------------------------
+  /*
+   * The third thing that has to be true about a committed build, and the one
+   * that actually took production down.
+   *
+   * envDir is the repo root, so the .env sitting beside it is read while the
+   * bundle is made. On the host that file did not exist and the client fell
+   * back to the origin that served it; on a developer's machine it says
+   * localhost:2567, and once the build moved there that is what shipped. The
+   * deployed client asked a laptop for /auth/nonce and nobody could sign in.
+   * The bundle is the only place it is visible, so it is read here.
+   */
+  console.log("\n-- the bundle asks its own origin --");
+  const bundles = fs
+    .readdirSync(path.join(ROOT, "client", "dist", "assets"))
+    .filter((name) => name.endsWith(".js"));
+  check("there are bundles to look at", bundles.length > 0, `${bundles.length} js files`);
+
+  /*
+   * "localhost:2567" and nothing looser. The Colyseus SDK carries its own
+   * `ws://127.0.0.1:2567` as the default for a client constructed with no
+   * endpoint at all - we always pass one, so that literal is unreachable, and
+   * a check that flagged it would be a check somebody turns off.
+   */
+  const offenders: string[] = [];
+  for (const name of bundles) {
+    const code = fs.readFileSync(path.join(ROOT, "client", "dist", "assets", name), "utf8");
+    for (const bad of ["localhost:2567", "0.0.0.0:2567"]) {
+      if (code.includes(bad)) offenders.push(`${name} contains ${bad}`);
+    }
+  }
+  check("no built file names a development server", offenders.length === 0, offenders.join("; "));
+
+  /*
+   * And the two reasons it cannot come back: the build pins the variables to
+   * empty, and in production the client does not consult them at all.
+   */
+  const viteConfig = fs.readFileSync(path.join(ROOT, "client", "vite.config.ts"), "utf8");
+  check(
+    "the build pins VITE_SERVER_* to empty",
+    viteConfig.includes('"import.meta.env.VITE_SERVER_HTTP_URL"') &&
+      viteConfig.includes('"import.meta.env.VITE_SERVER_WS_URL"'),
+  );
+
+  const clientEnv = fs.readFileSync(path.join(ROOT, "client", "src", "net", "env.ts"), "utf8");
+  check(
+    "and production takes the origin unconditionally",
+    /httpUrl:\s*import\.meta\.env\.PROD\s*\?\s*sameOriginHttp/.test(clientEnv) &&
+      /wsUrl:\s*import\.meta\.env\.PROD\s*\?\s*sameOriginWs/.test(clientEnv),
   );
 
   console.log(`\ntest-prebuilt: ${failures === 0 ? "OK" : `${failures} FAILED`}`);

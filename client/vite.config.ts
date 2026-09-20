@@ -225,6 +225,31 @@ export default defineConfig(({ command }) => ({
   define: {
     "import.meta.env.DEV": JSON.stringify(command === "serve"),
     "import.meta.env.PROD": JSON.stringify(command === "build"),
+
+    /*
+     * A production build never carries a server address.
+     *
+     * This is not belt and braces; it is a bug that shipped. The client build
+     * is made on a developer's machine now and committed, and `envDir` points
+     * at the repo root, where every developer's .env says
+     * VITE_SERVER_HTTP_URL=http://localhost:2567 - correct for them, and
+     * catastrophic once it is baked into the bundle the world loads. The
+     * deployed client called localhost for /auth and /play and could not sign
+     * anybody in.
+     *
+     * While the host did the building there was no .env there and the
+     * same-origin fallback applied. Moving the build is what exposed it, so
+     * the fix belongs at the build: in production these are empty, whatever
+     * any .env says, and net/env.ts falls through to the origin that served
+     * the page. Under `serve` they are left alone, because the dev client on
+     * :5173 genuinely does need to be told where :2567 is.
+     */
+    ...(command === "build"
+      ? {
+          "import.meta.env.VITE_SERVER_HTTP_URL": '""',
+          "import.meta.env.VITE_SERVER_WS_URL": '""',
+        }
+      : {}),
   },
 
   plugins: [devAlign()],

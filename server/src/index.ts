@@ -41,6 +41,52 @@ if (layoutProblems.length > 0) {
 log.info("layout.ok", { maps: 4 });
 
 /**
+ * Whether an origin is on the allowlist, compared exactly but forgivingly.
+ *
+ * "Exactly" in the sense that matters - scheme, host and port all have to
+ * agree, and nothing is matched by prefix. Forgiving only about the two ways
+ * the same origin gets written down: a trailing slash, which browsers never
+ * send but people always put in a config, and letter case in the host.
+ */
+function allowedOrigin(origin: string): boolean {
+  const tidy = (value: string) => value.trim().replace(/\/+$/, "").toLowerCase();
+  const wanted = tidy(origin);
+  return config.corsOrigins.some((allowed) => tidy(allowed) === wanted);
+}
+
+/**
+ * The host this request believes it reached, as the browser wrote it.
+ *
+ * Behind Colyseus Cloud's edge proxy `Host` is whatever the proxy used to
+ * reach this process internally, not the name in the address bar, so the
+ * forwarded header is preferred where there is one. It is a list when several
+ * proxies are chained; the first entry is the original.
+ */
+function requestHost(req: express.Request): string {
+  const forwarded = String(req.headers["x-forwarded-host"] ?? "").split(",")[0]?.trim();
+  return forwarded || req.headers.host || "";
+}
+
+/**
+ * Whether this request may be answered: no Origin at all, the page this
+ * server itself served, or an origin on the allowlist.
+ *
+ * The same-origin exemption matters because the client is hosted here. Without
+ * it a deployment refuses its own front end whenever nobody remembered to put
+ * its domain in CORS_ORIGIN - which is every new deployment, and the symptom
+ * is a login screen that loads and then cannot sign anybody in.
+ */
+function originPermitted(req: express.Request): boolean {
+  const origin = req.headers.origin;
+  if (!origin) return true;
+
+  const host = requestHost(req);
+  if (host !== "" && origin.toLowerCase().endsWith(`//${host.toLowerCase()}`)) return true;
+
+  return allowedOrigin(origin);
+}
+
+/**
  * Everything this server answers over plain HTTP.
  *
  * Colyseus owns the app now - `defineServer` builds it, attaches the
@@ -59,16 +105,14 @@ function routes(app: express.Application): void {
    * wrong origin is a configuration mistake, not an incident.
    */
   app.use((req, res, next) => {
-    const origin = req.headers.origin;
-    /*
-     * A request from the page this server itself served is always allowed,
-     * whatever the allowlist says. Since the client is hosted here, the
-     * alternative is a deployment that refuses its own front end because
-     * somebody forgot to add its domain to CORS_ORIGIN.
-     */
-    const ownOrigin = origin !== undefined && origin.endsWith(`//${req.headers.host}`);
-    if (origin && !ownOrigin && !config.corsOrigins.includes(origin)) {
-      log.warn("cors.refused", { origin, path: req.path });
+    if (!originPermitted(req)) {
+      log.warn("cors.refused", { origin: req.headers.origin, path: req.path });
+      /*
+       * And take the permission back off. Colyseus installs its own permissive
+       * CORS ahead of this hook, which reflects the caller's origin, so
+       * without this line a refused page could still read the refusal.
+       */
+      res.removeHeader("Access-Control-Allow-Origin");
       return res.status(403).json({
         error: "origin_not_allowed",
         message: "This server does not serve that origin.",
@@ -77,7 +121,19 @@ function routes(app: express.Application): void {
     return next();
   });
 
-  app.use(cors({ origin: config.corsOrigins, credentials: false }));
+  /*
+   * The headers, decided by the same rule that decided the 403 above. Giving
+   * the `cors` package the raw list instead would have it disagree with the
+   * middleware about a trailing slash or a capital letter - the request passes
+   * and then the browser discards the answer for want of a header, which looks
+   * like the server being down rather than a config being mistyped.
+   */
+  app.use(
+    cors((req, done) => {
+      const origin = originPermitted(req) ? req.headers.origin ?? false : false;
+      done(null, { origin, credentials: false });
+    }),
+  );
   app.use(express.json({ limit: "8kb" }));
 
   /**

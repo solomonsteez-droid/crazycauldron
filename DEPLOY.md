@@ -37,7 +37,7 @@ internet, and each fails quietly rather than loudly.
 |---|---|---|
 | `TEST_BYPASS_HOLD` | unset or `false` | `true` disables the token gate entirely |
 | `JWT_SECRET` | 32+ random characters, not the example | anyone with it can mint sessions |
-| `CORS_ORIGIN` | your real origins, comma separated | no `localhost`, no `*` |
+| `CORS_ORIGIN` | your real origins, comma separated | no `localhost`, no `*`; see below |
 | `SIWS_DOMAIN` | the domain wallets should display | wallets sign for whatever this says |
 | `RPC_URL` | a mainnet endpoint | devnet balances are not real balances |
 | `COOK_MINT` | the real mint | the gate has nothing to check, and `/official` publishes it |
@@ -72,11 +72,26 @@ The rest:
 | `ALERT_COOLDOWN_MS` | `300000` | one alert per kind per this long |
 | `HEALTH_CHECK_MS` | `60000` | how often the server probes itself |
 
-`VITE_SERVER_HTTP_URL` and `VITE_SERVER_WS_URL` should be **left unset in
-production**. The server hosts the client, so the client asks the origin that
-served it; setting them bakes a host into the bundle, which is how a
-deployment ends up pointing at the wrong one. Set them only for a split
-deployment, or to point a local client at a staging server.
+`VITE_SERVER_HTTP_URL` and `VITE_SERVER_WS_URL` are **dev-server settings
+only**. A production build ignores them: `vite.config.ts` pins both to empty
+for `build`, and `client/src/net/env.ts` takes `window.location.origin`
+unconditionally when `PROD`. So the deployed client always asks whatever origin
+served the page — for `/auth`, for `/play`, and for the WebSocket, which is
+`https://…` rewritten to `wss://…`.
+
+That is belt *and* braces on purpose, and it is the fix for an outage. The
+client build moved onto a developer's machine when `client/dist` started being
+committed, `envDir` is the repo root, and the repo-root `.env` says
+`VITE_SERVER_HTTP_URL=http://localhost:2567` — right for a laptop, and shipped
+to the world. The deployed client asked `localhost:2567` for `/auth/nonce` and
+nobody could sign in. While the host still did the building there was no `.env`
+there, which is why it had never happened before.
+
+`scripts/test-prebuilt.ts` greps the committed bundle for `localhost:2567` so
+it cannot come back quietly. A split deployment — client and server on
+different hosts — is a code change in `net/env.ts`, deliberately, because a
+switch that can point production at a laptop is worth more than the rarity of
+wanting one.
 
 ## Colyseus Cloud
 
@@ -229,11 +244,31 @@ ALERT_WEBHOOK_URL=<where failures should page you>
 Leave `PORT`, `TEST_BYPASS_HOLD` and both `VITE_SERVER_*` unset. Redeploy after
 changing any of them — they are read once at startup.
 
+**`CORS_ORIGIN` does not have to list the deployment's own address.** The
+server hosts the client, so a request from its own page is allowed whatever the
+allowlist says, and the check reads `X-Forwarded-Host` before `Host` — behind
+Cloud's edge proxy, `Host` is an internal name and comparing against it would
+have the deployment call its own front end foreign. That is what makes the
+generated `https://<region>-<id>.colyseus.cloud` URL work before you have a
+custom domain. Matching for everything else is exact on scheme, host and port,
+forgiving only a trailing slash and letter case.
+
 Cloud sets `COLYSEUS_CLOUD`, `REDIS_URI`, `SUBDOMAIN`, `SERVER_NAME` and
 `NODE_APP_INSTANCE` itself. `server/src/cloud.ts` reads those and wires the
 Redis driver and presence, which is what lets processes see each other's
 rooms; without it, `/health`'s player count, the decision to queue somebody
 and a reservation redeemed on a different process would each be wrong.
+
+It also decides `publicAddress` — the address the client is told to open its
+WebSocket on once a seat is reserved, which is the step immediately after
+sign-in. It is set **only when `SUBDOMAIN` and `SERVER_NAME` are both actually
+present**: a template literal does not fail on a missing variable, it writes
+the word `undefined`, so the unconditional version produced
+`undefined.undefined/2567` anywhere Cloud had not exported them, and every
+player reached "Could not reach the cauldron" one step past signing in. Unset,
+Colyseus advertises the host the request arrived on — behind the proxy, the
+address in the browser's bar — and the startup log carries a warning saying
+so.
 
 ### 4. Point the domain at it
 
@@ -245,6 +280,10 @@ domain and redeploy — wallets sign for whatever `SIWS_DOMAIN` says, so a stale
 value asks players to sign for the wrong site.
 
 ### 5. Verify, in this order
+
+`DOMAIN` is whatever address a player will type — the generated
+`https://<region>-<id>.colyseus.cloud` one before the custom domain exists,
+and the custom domain after.
 
 ```bash
 DOMAIN=https://crazycauldron.art
@@ -264,9 +303,26 @@ curl -s $DOMAIN/public/config | jq
 - `cookMint` is the real mint, and `domain` is the real domain.
 - Nothing else is in there. It is a public endpoint.
 
+```bash
+# The client must ask this origin, not a laptop. Both should print nothing.
+curl -s $DOMAIN/ | grep -o 'assets/index-[^"]*\.js'
+curl -s $DOMAIN/assets/index-*.js | grep -c 'localhost:2567'
+```
+
+That second number being anything but `0` is the failure that looks like the
+server being down: `/health` answers, the login page renders, and then sign-in
+reports "Could not reach the cauldron" because the bundle is calling
+`localhost`. Rebuild with `npm run build:client`, commit `client/dist` and
+redeploy. `npx tsx scripts/test-prebuilt.ts` checks the same thing locally,
+before it can ship.
+
 Then, in a browser:
 
 - `/` loads the game and the login panel offers a wallet.
+- With the network tab open, `/play/capacity` and `/auth/nonce` go to this
+  origin, and the WebSocket upgrade is `wss://<this origin>/…` returning
+  `101 Switching Protocols`. Anything pointing elsewhere is the bundle above,
+  or `SUBDOMAIN`/`SERVER_NAME` leaking into `publicAddress`.
 - `/official`, `/rules` and `/roadmap` all render, and the address on
   `/official` matches `cookMint` above.
 - Sign in with a wallet that holds enough $COOK, and walk around. Then sign in
