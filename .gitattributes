@@ -9,3 +9,9 @@
 # PNG and stops any chance of a checkout mangling one.
 /art/** -text -diff
 *.png binary
+
+# The one authored text file under art/: the alignment tool's overrides. It is
+# read, reviewed and diffed like source, so the blanket rule above is undone
+# for it. Pinned to LF so the file is the same bytes on Windows and on Linux -
+# the sprite pipeline hashes it into the build stamp.
+/art/offsets.overrides.json text eol=lf diff
