@@ -15,9 +15,17 @@ import {
   DESKTOP_ZOOM,
   LABEL_SCREEN_PX,
   MAP_WORLD_BOUNDS,
+  ZOOM_MAX,
+  ZOOM_MIN,
+  ZOOM_STEPS,
+  clampZoom,
   labelScale,
+  parseStoredZoom,
   planCamera,
   scrollRange,
+  scrollToHold,
+  snapZoom,
+  stepZoom,
   zoomForViewport,
 } from "../client/src/map/camera.js";
 
@@ -51,13 +59,13 @@ check(
 // --- zoom ------------------------------------------------------------------
 console.log("\n-- zoom by viewport width --");
 const zoomCases: [number, number, string][] = [
-  [1920, 3, "desktop"],
-  [1440, 3, "laptop"],
-  [900, 3, "exactly 900 is not under 900"],
-  [899, 2, "just under 900"],
-  [768, 2, "tablet"],
-  [601, 2, "just above the phone step"],
-  [600, 2, "exactly 600 is not under 600"],
+  [1920, 2, "desktop"],
+  [1440, 2, "laptop"],
+  [900, 2, "exactly 900 is not under 900"],
+  [899, 1.75, "just under 900"],
+  [768, 1.75, "tablet"],
+  [601, 1.75, "just above the phone step"],
+  [600, 1.75, "exactly 600 is not under 600"],
   [599, 1.5, "just under 600"],
   [390, 1.5, "phone"],
 ];
@@ -65,19 +73,87 @@ for (const [width, want, note] of zoomCases) {
   const got = zoomForViewport(width);
   check(`${String(width).padStart(4)}px -> ${want}x`, got === want, `${note}, got ${got}x`);
 }
-check("desktop constant matches the brief", DESKTOP_ZOOM === 3);
+check("desktop starts at 2x", DESKTOP_ZOOM === 2);
 
 // --- cells land on whole pixels -------------------------------------------
 console.log("\n-- pixel alignment --");
-for (const zoom of [1.5, 2, 3]) {
+for (const zoom of ZOOM_STEPS) {
   const size = CELL * zoom;
   check(`a ${CELL}px cell at ${zoom}x is ${size}px`, Number.isInteger(size), "whole pixels");
 }
 
+// --- the zoom control -----------------------------------------------------
+console.log("\n-- zooming --");
+check(`the range is ${ZOOM_MIN}x to ${ZOOM_MAX}x`, ZOOM_MIN === 1.25 && ZOOM_MAX === 4);
+check("and nothing escapes it", clampZoom(0.2) === ZOOM_MIN && clampZoom(99) === ZOOM_MAX);
+
+check("a pinch settles on the nearest step", snapZoom(2.6) === 2.5, String(snapZoom(2.6)));
+check("and cannot settle off the ends", snapZoom(0.1) === ZOOM_MIN && snapZoom(50) === ZOOM_MAX);
+check(
+  "every step snaps to itself",
+  ZOOM_STEPS.every((step) => snapZoom(step) === step),
+);
+
+check("a wheel click in moves one step", stepZoom(2, 1) === 2.5, String(stepZoom(2, 1)));
+check("and out moves one back", stepZoom(2, -1) === 1.75, String(stepZoom(2, -1)));
+check("the ends hold", stepZoom(ZOOM_MAX, 1) === ZOOM_MAX && stepZoom(ZOOM_MIN, -1) === ZOOM_MIN);
+check(
+  "a click after a pinch moves a whole step rather than settling it",
+  stepZoom(2.61, 1) === 3,
+  String(stepZoom(2.61, 1)),
+);
+
+/*
+ * The point under the cursor is the one that must not move. Solved rather
+ * than approximated: the scroll that holds it is exact at any zoom, and this
+ * checks it by converting back.
+ */
+for (const zoom of [1.25, 2, 3, 4]) {
+  const world = { x: 400, y: 300 };
+  const screen = { x: 320, y: 180 };
+  const scroll = scrollToHold(world, screen, zoom);
+  const back = { x: scroll.x + screen.x / zoom, y: scroll.y + screen.y / zoom };
+  check(
+    `at ${zoom}x the cursor's point stays put`,
+    Math.abs(back.x - world.x) < 1e-9 && Math.abs(back.y - world.y) < 1e-9,
+    `${back.x.toFixed(2)}, ${back.y.toFixed(2)}`,
+  );
+}
+
+console.log("\n-- what a browser remembered --");
+check("a stored zoom comes back", parseStoredZoom("2.5") === 2.5);
+check("an odd one is snapped", parseStoredZoom("2.61") === 2.5, String(parseStoredZoom("2.61")));
+check("one out of range is pulled in", parseStoredZoom("9") === ZOOM_MAX);
+for (const junk of [null, undefined, "", "banana", "NaN"]) {
+  check(`${JSON.stringify(junk)} is no choice at all`, parseStoredZoom(junk) === null);
+}
+
+console.log("\n-- a chosen zoom overrides the viewport --");
+for (const zoom of ZOOM_STEPS) {
+  const plan = planCamera(1920, 1080, MAP_WORLD_BOUNDS, zoom);
+  check(`${zoom}x is honoured on a desktop`, plan.zoom === zoom, `${plan.zoom}x`);
+  const range = scrollRange(plan);
+  check(
+    `  and the camera still cannot scroll past the map at ${zoom}x`,
+    range.minX >= MAP_WORLD_BOUNDS.x &&
+      range.maxX <= MAP_WORLD_BOUNDS.x + MAP_WORLD_BOUNDS.width &&
+      range.maxY <= MAP_WORLD_BOUNDS.y + MAP_WORLD_BOUNDS.height,
+    `x ${range.minX}..${Math.round(range.maxX)}, y ${range.minY}..${Math.round(range.maxY)}`,
+  );
+}
+check(
+  "a phone that chose 4x gets 4x",
+  planCamera(390, 844, MAP_WORLD_BOUNDS, 4).zoom === 4,
+);
+check(
+  "and one that has chosen nothing still gets the phone default",
+  planCamera(390, 844, MAP_WORLD_BOUNDS, null).zoom === 1.5,
+);
+
 // --- filling the window ----------------------------------------------------
 console.log("\n-- full-width window (1920x1080) --");
 const wide = planCamera(1920, 1080);
-check("uses 3x", wide.zoom === 3);
+check("uses 2x", wide.zoom === 2);
 check(
   "map is wider than the view, so it scrolls horizontally",
   !wide.fitsX,
@@ -116,7 +192,7 @@ check(
 // --- narrow window ---------------------------------------------------------
 console.log("\n-- narrow window (800x900) --");
 const narrow = planCamera(800, 900);
-check("steps down to 2x", narrow.zoom === 2);
+check("steps down to 1.75x", narrow.zoom === 1.75);
 check(
   "map still wider than the view",
   !narrow.fitsX,
@@ -147,18 +223,27 @@ check(
 console.log("\n-- 1440p (2560x1440) --");
 
 /*
- * The painted maps are 1008x576 world pixels, where the old tile grid was
- * 768x384. A 1440p monitor at 3x sees 853x480 - so even the largest common
- * desktop no longer swallows a map whole, and the camera follows and clamps
- * everywhere. That is a change worth asserting rather than assuming.
+ * The painted maps are 1008x576 world pixels. A 1440p monitor at the new 2x
+ * default sees 1280x720, which is larger - so the whole hub fits and the
+ * camera sits centred rather than following. That is a real consequence of
+ * dropping the default from 3x and is asserted rather than discovered: at 2x
+ * a big desktop sees the whole painting, and one click in it is back to
+ * following and clamping.
  */
 const big = planCamera(2560, 1440);
 check(
-  "even 1440p at 3x does not fit the whole map",
-  !big.fitsEntirely,
+  "1440p at the 2x default sees the whole map",
+  big.fitsEntirely,
   `view ${big.view.width.toFixed(0)}x${big.view.height.toFixed(0)} vs map ${MAP_WORLD_BOUNDS.width}x${MAP_WORLD_BOUNDS.height}`,
 );
-const bigRange = scrollRange(big);
+
+const bigIn = planCamera(2560, 1440, MAP_WORLD_BOUNDS, 3);
+check(
+  "one step in and it does not",
+  !bigIn.fitsEntirely,
+  `view ${bigIn.view.width.toFixed(0)}x${bigIn.view.height.toFixed(0)}`,
+);
+const bigRange = scrollRange(bigIn);
 check(
   "so there is room to scroll on both axes",
   bigRange.maxX > bigRange.minX && bigRange.maxY > bigRange.minY,
@@ -166,8 +251,8 @@ check(
 );
 check(
   "and the clamp stops exactly at the painting's edge",
-  bigRange.maxX + big.view.width === MAP_WORLD_BOUNDS.width &&
-    bigRange.maxY + big.view.height === MAP_WORLD_BOUNDS.height,
+  bigRange.maxX + bigIn.view.width === MAP_WORLD_BOUNDS.width &&
+    bigRange.maxY + bigIn.view.height === MAP_WORLD_BOUNDS.height,
   "no empty space past the edge",
 );
 check(

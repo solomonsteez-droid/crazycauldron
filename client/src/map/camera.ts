@@ -31,29 +31,106 @@ export function boundsOf(mapId: number): Rect {
 /** The hub's rectangle, which is what the tests and the defaults want. */
 export const MAP_WORLD_BOUNDS: Rect = boundsOf(HUB_MAP);
 
-/** Viewport widths at which the zoom steps down, narrowest first. */
+/** Viewport widths at which the starting zoom steps down, narrowest first. */
 export const ZOOM_BREAKPOINTS = [
   { maxWidth: 600, zoom: 1.5 },
-  { maxWidth: 900, zoom: 2 },
+  { maxWidth: 900, zoom: 1.75 },
 ] as const;
 
-export const DESKTOP_ZOOM = 3;
+export const DESKTOP_ZOOM = 2;
 
 /**
- * Camera zoom for a viewport width.
+ * The zoom a player lands on, before they touch anything.
  *
- * 3x on desktop, 2x under 900px, 1.5x on phone-width screens. Whole numbers
- * keep the painting landing on exact pixel multiples; 1.5 is the one
- * deliberate exception, because at phone width a 3x view leaves almost no map
- * on screen. A half step still lands cell edges on whole pixels - a cell is
- * 24px, and 24 * 1.5 is 36 - and the scroll position is rounded separately by
- * the scene.
+ * 2x on desktop and 1.5x on a phone. It was 3x, which framed a character
+ * beautifully and showed almost none of the map around them - and the map is a
+ * painting, so a view that crops it to a courtyard is throwing away the thing
+ * the game is made of. The player can still go back to 3x, and where they put
+ * it is remembered.
  */
 export function zoomForViewport(viewportWidth: number): number {
   for (const step of ZOOM_BREAKPOINTS) {
     if (viewportWidth < step.maxWidth) return step.zoom;
   }
   return DESKTOP_ZOOM;
+}
+
+/**
+ * The zooms a player may stop at.
+ *
+ * Steps rather than a continuum, and these steps rather than any others: a
+ * cell is 24 world pixels, and every value here multiplies it to a whole
+ * number - 30, 36, 48, 60, 72, 84, 96. A zoom that does not lands the cell
+ * grid on fractions of a device pixel, and the whole map shimmers as the
+ * camera follows a walking character.
+ *
+ * Pinching is continuous while the fingers are down and settles onto the
+ * nearest of these when they lift.
+ */
+export const ZOOM_STEPS = [1.25, 1.5, 1.75, 2, 2.5, 3, 3.5, 4] as const;
+
+export const ZOOM_MIN: number = ZOOM_STEPS[0];
+export const ZOOM_MAX: number = ZOOM_STEPS[ZOOM_STEPS.length - 1] ?? 4;
+
+export function clampZoom(zoom: number): number {
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom));
+}
+
+/** The nearest zoom a player may stop at. */
+export function snapZoom(zoom: number): number {
+  const wanted = clampZoom(zoom);
+  return ZOOM_STEPS.reduce((best, step) =>
+    Math.abs(step - wanted) < Math.abs(best - wanted) ? step : best,
+  );
+}
+
+/**
+ * One step in or out from wherever the camera is now.
+ *
+ * From the *snapped* position rather than the exact one, so a wheel click
+ * after a pinch moves a whole step instead of settling the pinch.
+ */
+export function stepZoom(zoom: number, direction: 1 | -1): number {
+  const from = snapZoom(zoom);
+  const index = ZOOM_STEPS.indexOf(from as (typeof ZOOM_STEPS)[number]);
+  const next = ZOOM_STEPS[Math.min(ZOOM_STEPS.length - 1, Math.max(0, index + direction))];
+  return next ?? from;
+}
+
+/**
+ * Where the camera has to scroll so that a point stays under the cursor.
+ *
+ * Zooming about the centre of the screen is the easy version and the wrong
+ * one: a player points at the thing they want a closer look at, and the
+ * thing they are pointing at is what should not move. The world point under
+ * the cursor is held fixed and the scroll is solved for.
+ *
+ * Returns the unclamped scroll; the caller hands it to a camera that is
+ * already bounded, which is what keeps the edge of the map off the screen.
+ */
+export function scrollToHold(
+  worldPoint: { x: number; y: number },
+  screenPoint: { x: number; y: number },
+  zoom: number,
+): { x: number; y: number } {
+  return {
+    x: worldPoint.x - screenPoint.x / zoom,
+    y: worldPoint.y - screenPoint.y / zoom,
+  };
+}
+
+/**
+ * A remembered zoom, or null if there is nothing usable stored.
+ *
+ * Split from the storage itself so it can be tested: localStorage is a
+ * browser, and this is arithmetic. Anything unparseable, out of range or
+ * simply absent comes back as null and the viewport decides instead.
+ */
+export function parseStoredZoom(raw: string | null | undefined): number | null {
+  if (!raw) return null;
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return null;
+  return snapZoom(value);
 }
 
 export interface CameraPlan {
@@ -81,8 +158,10 @@ export function planCamera(
   viewportWidth: number,
   viewportHeight: number,
   bounds: Rect = MAP_WORLD_BOUNDS,
+  /** What the player chose, if they have chosen. Otherwise the viewport decides. */
+  chosenZoom: number | null = null,
 ): CameraPlan {
-  const zoom = zoomForViewport(viewportWidth);
+  const zoom = chosenZoom === null ? zoomForViewport(viewportWidth) : clampZoom(chosenZoom);
   const view = { width: viewportWidth / zoom, height: viewportHeight / zoom };
 
   const fitsX = bounds.width <= view.width;

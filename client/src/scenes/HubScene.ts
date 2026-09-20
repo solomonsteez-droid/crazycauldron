@@ -69,7 +69,18 @@ import { sound } from "../world/sound.js";
 import { directionFor, directionForVector, loadArt, type Manifest, type OffsetsFile } from "../art/manifest.js";
 import { WalkDebug, type VectorSource } from "../dev/walkDebug.js";
 import { Companion } from "../world/companion.js";
-import { LABEL_SCREEN_PX, labelScale, planCamera } from "../map/camera.js";
+import {
+  LABEL_SCREEN_PX,
+  ZOOM_MAX,
+  ZOOM_MIN,
+  clampZoom,
+  labelScale,
+  parseStoredZoom,
+  planCamera,
+  scrollToHold,
+  snapZoom,
+  stepZoom,
+} from "../map/camera.js";
 import { TEX_MARKER } from "../map/textures.js";
 import type { HubStateView, KickNotice, PlayerView, VillagerView } from "../net/state.js";
 import { clearSession, type Session } from "../net/session.js";
@@ -189,6 +200,20 @@ export class HubScene extends Phaser.Scene {
   private cooldownTimer?: Phaser.Time.TimerEvent;
   /** Current camera zoom, so labels can cancel it out as it changes. */
   private zoom = 1;
+
+  /**
+   * The zoom the player chose, or null while the viewport is deciding.
+   *
+   * Null rather than "the default", so that a player who has never touched
+   * the controls follows the breakpoints when they move to another screen,
+   * and one who has keeps what they set.
+   */
+  private chosenZoom: number | null = null;
+  private zoomTween: Phaser.Tweens.Tween | null = null;
+  /** True while the camera is following a player rather than sitting centred. */
+  private following = false;
+  /** The distance between two fingers when the current pinch started. */
+  private pinchFrom: { gap: number; zoom: number } | null = null;
 
   constructor() {
     super(SCENE_HUB);
@@ -424,6 +449,8 @@ export class HubScene extends Phaser.Scene {
   }
 
   private bindInput() {
+    this.installZoomControls();
+
     this.input.on(Phaser.Input.Events.POINTER_DOWN, (pointer: Phaser.Input.Pointer) => {
       // Features win over bare ground within the pick radius, so a slightly
       // missed click on a node still gathers rather than walking past it.
@@ -791,10 +818,20 @@ export class HubScene extends Phaser.Scene {
    * that do scroll.
    */
   private layoutCamera() {
+    // The first layout is also where a remembered choice is picked up.
+    if (this.chosenZoom === null) this.chosenZoom = this.rememberedZoom();
+
     const camera = this.cameras.main;
-    const plan = planCamera(this.scale.width, this.scale.height, this.map.worldBounds);
+    const plan = planCamera(
+      this.scale.width,
+      this.scale.height,
+      this.map.worldBounds,
+      this.chosenZoom,
+    );
 
     this.zoom = plan.zoom;
+    this.zoomTween?.stop();
+    this.zoomTween = null;
     camera.setSize(this.scale.width, this.scale.height);
     camera.setZoom(plan.zoom);
     camera.setBounds(
@@ -807,7 +844,8 @@ export class HubScene extends Phaser.Scene {
     );
 
     const self = this.avatars.get(this.room.sessionId)?.avatar;
-    if (plan.fitsEntirely || !self) {
+    this.following = !plan.fitsEntirely && Boolean(self);
+    if (!this.following || !self) {
       camera.stopFollow();
       camera.centerOn(plan.centre.x, plan.centre.y);
     } else {
@@ -822,6 +860,171 @@ export class HubScene extends Phaser.Scene {
 
   private onResize() {
     this.layoutCamera();
+  }
+
+  /** Where a remembered zoom is kept. Per browser, not per wallet. */
+  private static readonly ZOOM_KEY = "cc:zoom";
+
+  /**
+   * Reads the zoom this browser last settled on.
+   *
+   * Wrapped, because localStorage throws rather than returning null in a
+   * private window and behind some corporate policies - and a camera that
+   * cannot start because a preference could not be read is a worse bug than
+   * a camera that forgot one.
+   */
+  private rememberedZoom(): number | null {
+    try {
+      return parseStoredZoom(window.localStorage.getItem(HubScene.ZOOM_KEY));
+    } catch {
+      return null;
+    }
+  }
+
+  private rememberZoom(zoom: number) {
+    try {
+      window.localStorage.setItem(HubScene.ZOOM_KEY, String(zoom));
+    } catch {
+      // Not being able to remember is not a reason to stop working.
+    }
+  }
+
+  /**
+   * The wheel, a pinch and the - and + keys.
+   *
+   * All three end in the same place: a target zoom and, for the wheel and the
+   * pinch, a world point that must not move while the view changes around it.
+   * A player points at the thing they want a closer look at, and that thing
+   * staying put is most of what makes zooming feel like leaning in rather
+   * than like the map jumping.
+   */
+  private installZoomControls() {
+    this.input.on(
+      "wheel",
+      (pointer: Phaser.Input.Pointer, _over: unknown, _dx: number, dy: number) => {
+        if (dy === 0) return;
+        this.zoomTo(stepZoom(this.zoom, dy < 0 ? 1 : -1), { x: pointer.x, y: pointer.y });
+      },
+    );
+
+    /*
+     * Pinch: two pointers down, and the gap between them against the gap it
+     * started at. Continuous while the fingers are moving and snapped to a
+     * step when they lift, so a pinch can land anywhere and still settle on
+     * a zoom where the pixel grid is whole.
+     */
+    this.input.addPointer(1);
+    this.input.on("pointermove", () => {
+      const [a, b] = [this.input.pointer1, this.input.pointer2];
+      if (!a.isDown || !b.isDown) {
+        this.pinchFrom = null;
+        return;
+      }
+
+      const gap = Phaser.Math.Distance.Between(a.x, a.y, b.x, b.y);
+      if (!this.pinchFrom) {
+        this.pinchFrom = { gap, zoom: this.zoom };
+        return;
+      }
+      if (this.pinchFrom.gap < 1) return;
+
+      const wanted = clampZoom(this.pinchFrom.zoom * (gap / this.pinchFrom.gap));
+      this.applyZoom(wanted, { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+    });
+
+    this.input.on("pointerup", () => {
+      if (!this.pinchFrom) return;
+      this.pinchFrom = null;
+      // Settle on a step, about the middle of the screen - both fingers have
+      // left, so there is no point left to hold.
+      this.zoomTo(snapZoom(this.zoom), null);
+    });
+
+    const keys = this.input.keyboard;
+    keys?.on("keydown-PLUS", () => this.zoomTo(stepZoom(this.zoom, 1), null));
+    keys?.on("keydown-ADD", () => this.zoomTo(stepZoom(this.zoom, 1), null));
+    keys?.on("keydown-EQUALS", () => this.zoomTo(stepZoom(this.zoom, 1), null));
+    keys?.on("keydown-MINUS", () => this.zoomTo(stepZoom(this.zoom, -1), null));
+    keys?.on("keydown-SUBTRACT", () => this.zoomTo(stepZoom(this.zoom, -1), null));
+  }
+
+  /**
+   * Tweens to a zoom, holding a screen point still if one was given.
+   *
+   * The tween is what stops a wheel click from being a jump cut. It is short -
+   * a quarter of a second - because anything longer and a second click
+   * arrives mid-flight, which is exactly what a player does when they want
+   * two steps.
+   */
+  private zoomTo(zoom: number, hold: { x: number; y: number } | null) {
+    const wanted = clampZoom(zoom);
+    if (Math.abs(wanted - this.zoom) < 0.001) return;
+
+    this.zoomTween?.stop();
+    const from = this.zoom;
+    const anchor = hold ?? { x: this.scale.width / 2, y: this.scale.height / 2 };
+    const world = this.cameras.main.getWorldPoint(anchor.x, anchor.y);
+
+    this.zoomTween = this.tweens.addCounter({
+      from,
+      to: wanted,
+      duration: 240,
+      ease: "Cubic.easeOut",
+      onUpdate: (tween) => this.applyZoom(tween.getValue() ?? wanted, anchor, world),
+      onComplete: () => {
+        this.chosenZoom = wanted;
+        this.rememberZoom(wanted);
+        /*
+         * Re-plan rather than just settle. Zooming far enough out can make the
+         * whole map fit, which changes the camera from following a player to
+         * sitting centred - and that decision lives in layoutCamera, which now
+         * reads the chosen zoom.
+         */
+        this.layoutCamera();
+      },
+    });
+  }
+
+  /**
+   * Puts a zoom on the camera and keeps the world where it was.
+   *
+   * The follow is stopped for the moment the scroll is set by hand and
+   * started again straight after, because Phaser's follow overwrites the
+   * scroll every frame and would undo the hold before it was visible. The
+   * bounds are untouched throughout, so the clamp that keeps the edge of the
+   * map off screen is still the camera's own.
+   */
+  private applyZoom(
+    zoom: number,
+    anchor: { x: number; y: number },
+    world?: { x: number; y: number },
+  ) {
+    const camera = this.cameras.main;
+    const point = world ?? camera.getWorldPoint(anchor.x, anchor.y);
+
+    this.zoom = clampZoom(zoom);
+    camera.setZoom(this.zoom);
+
+    /*
+     * Whose point stays put, and why it is not always the cursor's.
+     *
+     * While the camera is following a player it owns the scroll and rewrites
+     * it every frame, so a scroll set here would be undone before it was
+     * drawn - and the brief asks, correctly, for the camera to keep following
+     * at every zoom. Following is exactly the promise that the player stays
+     * in the middle, so that is the point that holds: the view leans in on
+     * the character rather than on the mouse.
+     *
+     * When the whole map fits on screen there is nobody to follow, the camera
+     * is centred by hand, and the cursor's point is held as asked.
+     */
+    if (!this.following) {
+      const scroll = scrollToHold(point, anchor, this.zoom);
+      camera.setScroll(scroll.x, scroll.y);
+    }
+
+    this.map.applyLabelScale(this.zoom);
+    this.applyAvatarLabelScale();
   }
 
   /** Name labels live in the world, so they have to cancel the zoom out. */
