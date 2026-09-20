@@ -339,8 +339,47 @@ export interface SoundCue {
   ms: number;
 }
 
+/** A cell, as it is written in the content files. */
+export type CellRef = [column: number, row: number];
+
+/**
+ * Where one map's world motion is anchored.
+ *
+ * Every field is optional because no map has all of them: the hub has chimneys
+ * and lanterns, the Meadows has a stream and flowers, the Caves have crystals.
+ * A map that lists nothing still gets grass and weather.
+ */
+export interface MapAnchors {
+  map: number;
+  /** Smoke rises from these. */
+  chimneys?: CellRef[];
+  /** Warm flickering light, stronger after dark. */
+  lanterns?: CellRef[];
+  windows?: CellRef[];
+  /** Shimmer, and the odd ripple. */
+  water?: CellRef[];
+  /** Butterflies work this beat; petals drift from it. */
+  flowers?: CellRef[];
+  /** Motes rise from these. */
+  crystals?: CellRef[];
+  /** A single shaft of light through the canopy. */
+  shaft?: CellRef;
+  /** The pot that bubbles. */
+  cauldron?: CellRef;
+  birdsEveryMs?: number;
+  /** The rows a bird may cross between. */
+  birdRows?: [number, number];
+}
+
+export interface AnchorFile {
+  windPeriodMsMin: number;
+  windPeriodMsMax: number;
+  maps: MapAnchors[];
+}
+
 export interface AmbienceFile {
   villagers: VillagerSettings;
+  anchors: AnchorFile;
   life: { maps: LifeMap[] };
   dayNight: { cycleMinutes: number; stops: DayNightStop[] };
   sound: {

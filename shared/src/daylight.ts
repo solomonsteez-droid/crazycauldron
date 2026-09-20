@@ -89,3 +89,35 @@ export function darkestStop(): number {
   }
   return darkest;
 }
+
+/**
+ * How dark it is, 0 in full daylight and 1 at the deepest part of the night.
+ *
+ * Derived from the same stops the tint is, by luminance, so it cannot drift
+ * out of step with what the ground is actually doing. A lantern that brightens
+ * while the ground is still bright would read as a bug rather than as dusk.
+ */
+export function nightFactor(now: number): number {
+  const stops = AMBIENCE.dayNight.stops;
+  if (stops.length === 0) return 0;
+
+  const luminance = (colour: number) => {
+    const r = (colour >> 16) & 0xff;
+    const g = (colour >> 8) & 0xff;
+    const b = colour & 0xff;
+    // Rec. 601 weights: green carries most of the perceived brightness.
+    return 0.299 * r + 0.587 * g + 0.114 * b;
+  };
+
+  let brightest = 0;
+  let darkest = 255;
+  for (const stop of stops) {
+    const value = luminance(parseHex(stop.tint));
+    if (value > brightest) brightest = value;
+    if (value < darkest) darkest = value;
+  }
+  if (brightest <= darkest) return 0;
+
+  const here = luminance(dayTint(now));
+  return Math.min(Math.max((brightest - here) / (brightest - darkest), 0), 1);
+}

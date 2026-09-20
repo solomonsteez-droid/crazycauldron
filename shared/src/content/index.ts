@@ -18,6 +18,7 @@ import type {
   AmbienceFile,
   DecorPiece,
   GatherNodeDef,
+  MapAnchors,
   TerrainFile,
   Ingredient,
   Recipe,
@@ -82,6 +83,23 @@ export const AMBIENCE = ambienceJson as unknown as AmbienceFile;
 export function lifeFor(mapId: number) {
   return AMBIENCE.life.maps.find((m) => m.map === mapId) ?? null;
 }
+
+/**
+ * Where one map's world motion hangs off the painting.
+ *
+ * An empty record rather than null for a map that lists nothing: every caller
+ * reads optional fields off it, and a map with no chimneys still has grass and
+ * weather, so there is nothing to branch on.
+ */
+export function anchorsFor(mapId: number): MapAnchors {
+  return AMBIENCE.anchors.maps.find((m) => m.map === mapId) ?? { map: mapId };
+}
+
+/** How long the wind takes to cross the map, in milliseconds. */
+export const WIND = {
+  periodMsMin: AMBIENCE.anchors.windPeriodMsMin,
+  periodMsMax: AMBIENCE.anchors.windPeriodMsMax,
+} as const;
 
 
 

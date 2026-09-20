@@ -47,6 +47,17 @@ interface Particle {
 export class Effects {
   private readonly pool: Particle[] = [];
   private live = 0;
+  /**
+   * Slots held by long-lived sprites that are not in this pool.
+   *
+   * The world motion keeps grass tufts, water shimmer and lantern glows alive
+   * for as long as a map is loaded. They are not particles and never pass
+   * through `take`, but they are sprites on the same screen and the 200 is a
+   * budget for the screen rather than for this class. Reserving means the
+   * transient effects see a smaller ceiling honestly, instead of both sides
+   * spending the same slots and the loser being whoever asked second.
+   */
+  private held = 0;
   private audio: AudioContext | null = null;
 
   constructor(private readonly scene: Phaser.Scene) {
@@ -54,9 +65,26 @@ export class Effects {
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.destroy());
   }
 
+  /**
+   * Holds slots back for sprites this pool does not own.
+   *
+   * Returns false, and reserves nothing, if the request would leave too little
+   * for the effects that mean something - a hub with no steam over the pan is
+   * a worse trade than a hub with less grass.
+   */
+  reserve(count: number): boolean {
+    if (this.held + count > MAX_PARTICLES / 2) return false;
+    this.held += count;
+    return true;
+  }
+
+  releaseReserved(count: number): void {
+    this.held = Math.max(0, this.held - count);
+  }
+
   /** Takes a sprite from the pool, or null when the budget is spent. */
   private take(texture: string): Particle | null {
-    if (this.live >= MAX_PARTICLES) return null;
+    if (this.live + this.held >= MAX_PARTICLES) return null;
 
     let particle = this.pool.pop();
     if (!particle) {
@@ -77,6 +105,11 @@ export class Effects {
 
   get liveCount(): number {
     return this.live;
+  }
+
+  /** Live particles plus reserved slots, against MAX_PARTICLES. */
+  get usedCount(): number {
+    return this.live + this.held;
   }
 
   /**
@@ -187,7 +220,7 @@ export class Effects {
 
   /** A ring of sparks, for a level-up. Capped so it cannot eat the budget. */
   burst(x: number, y: number, colour = PALETTE.accent, count = 16, depth = 10000): void {
-    const n = Math.min(count, MAX_PARTICLES - this.live);
+    const n = Math.min(count, MAX_PARTICLES - this.live - this.held);
     for (let i = 0; i < n; i += 1) {
       const particle = this.take(TEX_SPARK);
       if (!particle) return;

@@ -233,5 +233,200 @@
         "ms": 90
       }
     ]
+  },
+  "anchors": {
+    "_comment": "Where the world moves, per map, in [column, row] cells. Read off the paintings themselves - a chimney is where the painted chimney is - because the motion has to land on the thing it belongs to or it reads as a glitch floating in a field. Grass is not here: it is found by sampling the painting for green, so it needs no list and cannot drift out of step with the art.",
+    "_wind": "One wind drives the grass and the smoke together. A sway that sweeps the map every 6 to 10 seconds, and chimney smoke leaning the same way at the same moment, is most of what makes a still picture feel like weather rather than decoration.",
+    "windPeriodMsMin": 6000,
+    "windPeriodMsMax": 10000,
+    "maps": [
+      {
+        "map": 0,
+        "chimneys": [
+          [
+            2,
+            4
+          ],
+          [
+            24,
+            1
+          ],
+          [
+            39,
+            1
+          ]
+        ],
+        "lanterns": [
+          [
+            10,
+            1
+          ],
+          [
+            28,
+            4
+          ],
+          [
+            10,
+            20
+          ],
+          [
+            34,
+            10
+          ],
+          [
+            38,
+            14
+          ]
+        ],
+        "windows": [
+          [
+            17,
+            3
+          ],
+          [
+            19,
+            4
+          ],
+          [
+            35,
+            9
+          ],
+          [
+            37,
+            10
+          ]
+        ],
+        "cauldron": [
+          21,
+          11
+        ],
+        "birdsEveryMs": 60000,
+        "birdRows": [
+          1,
+          6
+        ]
+      },
+      {
+        "map": 1,
+        "water": [
+          [
+            40,
+            12
+          ],
+          [
+            37,
+            13
+          ],
+          [
+            34,
+            13
+          ],
+          [
+            31,
+            15
+          ],
+          [
+            30,
+            17
+          ],
+          [
+            28,
+            20
+          ],
+          [
+            27,
+            22
+          ]
+        ],
+        "flowers": [
+          [
+            36,
+            9
+          ],
+          [
+            22,
+            9
+          ],
+          [
+            2,
+            2
+          ],
+          [
+            5,
+            19
+          ],
+          [
+            13,
+            22
+          ],
+          [
+            29,
+            5
+          ]
+        ]
+      },
+      {
+        "map": 2,
+        "lanterns": [
+          [
+            25,
+            6
+          ],
+          [
+            6,
+            14
+          ]
+        ],
+        "water": [
+          [
+            5,
+            19
+          ],
+          [
+            29,
+            19
+          ]
+        ],
+        "shaft": [
+          20,
+          9
+        ]
+      },
+      {
+        "map": 3,
+        "water": [
+          [
+            29,
+            5
+          ],
+          [
+            33,
+            4
+          ]
+        ],
+        "crystals": [
+          [
+            10,
+            3
+          ],
+          [
+            18,
+            5
+          ],
+          [
+            3,
+            7
+          ],
+          [
+            31,
+            15
+          ],
+          [
+            14,
+            15
+          ]
+        ]
+      }
+    ]
   }
 }

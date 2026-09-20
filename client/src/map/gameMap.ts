@@ -220,6 +220,11 @@ export class GameMap {
     return sprite;
   }
 
+  /** The texture key of the painting under everything, for sampling it. */
+  get paintingKey(): string {
+    return mapKey(areaFor(this.mapId).id);
+  }
+
   private buildNodes() {
     for (const node of areaFor(this.mapId).nodes) {
       const sprite = this.addNode(node.id, node.c, node.r);

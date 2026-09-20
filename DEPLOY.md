@@ -537,6 +537,7 @@ already there on Cloud, so all three are a small change when they matter.
 npm run typecheck
 npx tsx scripts/validate-content.ts      # content, map layout and the shop
 npx tsx scripts/test-ambience.ts
+npx tsx scripts/test-motion.ts           # world motion cost, against a 4ms budget
 npx tsx scripts/test-cooking.ts
 npx tsx scripts/test-camera.ts
 npx tsx scripts/test-mobile.ts

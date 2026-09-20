@@ -87,6 +87,7 @@ npx tsx scripts/simulate-progression.ts --tune
 npx tsx scripts/test-cooking.ts            # heat bar outcome rates
 npx tsx scripts/test-camera.ts             # zoom and clamping maths
 npx tsx scripts/test-ambience.ts           # scenery, day-night and villagers
+npx tsx scripts/test-motion.ts             # world motion: where it lands, what it costs
 npx tsx scripts/test-mobile.ts             # the 390px audit, as rules
 
 # Against a running server

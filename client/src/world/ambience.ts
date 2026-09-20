@@ -12,9 +12,10 @@
  */
 
 import Phaser from "phaser";
-import { CELL, HUB_MAP, lifeFor, type LifeKind } from "@crazycauldron/shared";
+import { CELL, HUB_MAP, areaFor, lifeFor, type LifeKind } from "@crazycauldron/shared";
 import type { GameMap } from "../map/gameMap.js";
 import { Effects, TEX_PUFF } from "./effects.js";
+import { WorldMotion } from "./motion.js";
 
 /** How often the ground colour is re-evaluated. A minute of day per second. */
 const TINT_STEP_MS = 1000;
@@ -32,14 +33,28 @@ export class Ambience {
   private tintTimer?: Phaser.Time.TimerEvent;
   private alive = 0;
 
+  /**
+   * The painted world's own motion: grass, weather, water, lanterns, life.
+   *
+   * Kept here rather than in the scene because it is the same kind of thing as
+   * the drifting leaves - decoration that follows the map - and it starts and
+   * stops on the same call.
+   */
+  readonly motion: WorldMotion;
+
   constructor(
     private readonly scene: Phaser.Scene,
     private readonly fx: Effects,
-  ) {}
+  ) {
+    this.motion = new WorldMotion(scene, fx);
+  }
 
   /** Points the ambience at a map. Safe to call on every travel. */
   start(map: GameMap) {
     this.stop();
+
+    const area = areaFor(map.mapId);
+    this.motion.start(map, area.cols, area.rows);
 
     const life = lifeFor(map.mapId);
     if (life && life.everyMs > 0) {
@@ -59,7 +74,18 @@ export class Ambience {
     map.applyDaylight();
   }
 
+  /** One frame of the persistent motion. Called from the scene's update. */
+  tick(now: number) {
+    this.motion.tick(now);
+  }
+
+  /** A gather node shaking when it is harvested. */
+  rustle(x: number, y: number) {
+    this.motion.rustle(x, y);
+  }
+
   stop() {
+    this.motion.stop();
     this.lifeTimer?.remove();
     this.lifeTimer = undefined as unknown as Phaser.Time.TimerEvent;
     this.tintTimer?.remove();

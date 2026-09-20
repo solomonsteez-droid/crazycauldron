@@ -313,6 +313,9 @@ export class HubScene extends Phaser.Scene {
      */
     if (this.predicted && now > this.predicted.giveUpAt) this.clearPrediction();
 
+    // Grass, water, lanterns and the light shaft, one frame on.
+    this.ambience.tick(now);
+
     // Everyone in the room breathes, fidgets and dances - the motion is
     // procedural, so it costs the same for one player or thirty.
     for (const entry of this.avatars.values()) {
@@ -652,6 +655,17 @@ export class HubScene extends Phaser.Scene {
         available: true,
       });
       this.refreshNodes();
+
+      /*
+       * The node shakes. Feedback on the thing that was touched rather than
+       * only in a toast at the corner of the screen - at a glance you can see
+       * which bush you just picked.
+       */
+      const picked = this.map.features.find((f) => f.kind === "node" && f.id === result.nodeId);
+      if (picked) {
+        const at = this.map.tileCentre(picked.tile.tileX, picked.tile.tileY);
+        this.ambience.rustle(at.x, at.y);
+      }
 
       sound.play("gather");
       const doubled = result.doubled ? " (double drop!)" : "";
