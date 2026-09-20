@@ -23,6 +23,13 @@ publicRouter.get("/config", async (_req, res) => {
   res.json({
     domain: config.publicDomain,
     cookMint: config.cookMint,
+    /*
+     * The site shows the address only when both are true. Sending the flag as
+     * well as the value keeps the decision on the server, where the mint is,
+     * rather than asking a bundle to guess whether an address is real.
+     */
+    showMint: config.showMint,
+    treasuryWallet: config.treasuryWallet,
     minHold: config.minHold,
     social: {
       x: config.socialX,

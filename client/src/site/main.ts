@@ -13,12 +13,13 @@
  * either request answers, and stays readable if neither ever does.
  */
 
-import { html, mount, style } from "./dom.js";
+import { mount, style } from "./dom.js";
 import { SITE_CSS } from "./theme.js";
 import { siteConfig, siteStats, type SiteConfig, type SiteStats } from "./data.js";
 import { fillLiveNumbers, homePage } from "./home.js";
 import { startParallax, wireCopyButtons } from "./layout.js";
 import { startHero } from "./hero.js";
+import { startHeatDemo, startRecipeBrowser } from "./sections/craft.js";
 import { pageFor, renderPage } from "../ui/pages.js";
 
 /** The routes this bundle draws. Anything else is the game's index.html. */
@@ -72,9 +73,11 @@ function render(route: Route, config: SiteConfig, stats: SiteStats | null): void
   if (!root) return;
 
   if (route === "home") {
-    mount(root, homePage(config, stats, html``));
+    mount(root, homePage(config, stats));
     const canvas = document.getElementById("hero-canvas");
     if (canvas instanceof HTMLCanvasElement) startHero(canvas);
+    startHeatDemo();
+    startRecipeBrowser();
   }
 
   startParallax();

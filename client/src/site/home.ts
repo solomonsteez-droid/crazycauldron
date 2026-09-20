@@ -9,6 +9,10 @@
 import { count, html } from "./dom.js";
 import { footer, ticker, topbar } from "./layout.js";
 import type { SiteConfig, SiteStats } from "./data.js";
+import { howItWorksSection, worldSection } from "./sections/start.js";
+import { cookingSection, skillsSection } from "./sections/craft.js";
+import { proofSection, tokenSection, wardrobeSection } from "./sections/meta.js";
+import { roadmapSection } from "./roadmap.js";
 
 /**
  * The hero.
@@ -49,15 +53,29 @@ export function hero(config: SiteConfig, stats: SiteStats | null): ReturnType<ty
   `;
 }
 
+/**
+ * The sections, in the order somebody decides in.
+ *
+ * Two of the four paintings carry two bands each. That is a weight decision
+ * rather than an aesthetic one: eight distinct backgrounds would be most of
+ * the page budget, and reusing one costs nothing because the browser already
+ * has it.
+ */
+function sections(config: SiteConfig): ReturnType<typeof html> {
+  return html`
+    ${howItWorksSection(config)} ${worldSection()} ${skillsSection()} ${cookingSection()}
+    ${wardrobeSection()} ${roadmapSection()} ${tokenSection(config)} ${proofSection(config)}
+  `;
+}
+
 /** The whole front page. */
 export function homePage(
   config: SiteConfig,
   stats: SiteStats | null,
-  sections: ReturnType<typeof html>,
 ): ReturnType<typeof html> {
   return html`
     ${topbar(true)}
-    <main class="site-wrap">${hero(config, stats)} ${sections}</main>
+    <main class="site-wrap">${hero(config, stats)} ${sections(config)}</main>
     ${ticker(stats)} ${footer(config)}
   `;
 }

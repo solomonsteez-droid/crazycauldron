@@ -9,7 +9,7 @@
 
 import { count, html, raw } from "./dom.js";
 import type { SiteConfig, SiteStats } from "./data.js";
-import { handle } from "./data.js";
+import { handle } from "./text.js";
 
 /** The anchors in the order they appear. Also what the tests check for. */
 export const SECTIONS = [

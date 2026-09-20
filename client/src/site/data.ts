@@ -69,21 +69,3 @@ export async function siteStats(): Promise<SiteStats | null> {
   return getJson<SiteStats>("/stats", 4000);
 }
 
-/**
- * A social handle, or null when there is none.
- *
- * "none" is a real answer in the config and a deliberate one: saying "we have
- * no Telegram" is useful, and silence is what a fake account fills. It is not
- * a link, though, so it is filtered here and spelled out in the copy.
- */
-export function handle(value: string): string | null {
-  const trimmed = value.trim();
-  return trimmed === "" || trimmed.toLowerCase() === "none" ? null : trimmed;
-}
-
-/** An address shortened for display, with the full value kept for copying. */
-export function shorten(address: string, keep = 6): string {
-  return address.length <= keep * 2 + 3
-    ? address
-    : `${address.slice(0, keep)}…${address.slice(-keep)}`;
-}

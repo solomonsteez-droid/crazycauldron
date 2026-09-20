@@ -136,6 +136,18 @@ export const config = {
   /** Server-only. Must never be serialised into a client payload. */
   rpcUrl: str("RPC_URL", "https://api.devnet.solana.com"),
   cookMint: str("COOK_MINT"),
+
+  /*
+   * Whether the site may publish the mint as *the* contract address.
+   *
+   * Separate from COOK_MINT having a value, and separate on purpose. Before
+   * launch the configured mint is a stand-in - wrapped SOL, in .env.example -
+   * because the gate has to be able to run against something. A stand-in
+   * rendered under the words "the contract address" is exactly how somebody
+   * sends money to the wrong place, so the site says "revealed at launch"
+   * until this is switched on by hand.
+   */
+  showMint: bool("SHOW_MINT", false),
   minHold: num("MIN_HOLD", 2000),
   testBypassHold,
 
