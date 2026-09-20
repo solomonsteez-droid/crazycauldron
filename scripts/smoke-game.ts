@@ -59,6 +59,7 @@ import {
   type SoldPayload,
   type UnlockedPayload,
   type TilePos,
+  PATCH_RATE_MS,
 } from "@crazycauldron/shared";
 
 const HTTP = process.env.SMOKE_HTTP_URL ?? "http://localhost:2567";
@@ -419,13 +420,28 @@ async function main() {
   check("starts with 16 carry slots", profile.carrySlots === 16, `${profile.carrySlots}`);
   check("Meadows is unlocked", profile.unlockedSections.includes(1));
   check("starts bare-headed", profile.hatId === "");
-  check("wardrobe lists every hat", profile.wardrobe.length === 9, `${profile.wardrobe.length}`);
+  check(
+    "wardrobe lists every hat and companion",
+    profile.wardrobe.length === 16,
+    `${profile.wardrobe.length}`,
+  );
   // The cloak slot is dormant: the garments exist in the content file and
   // nothing offers them, so nothing about them reaches a player.
   check(
     "and offers no cloak",
-    profile.wardrobe.every((w) => w.kind === "hat"),
-    profile.wardrobe.map((w) => w.kind).join(","),
+    profile.wardrobe.every((w) => w.kind === "hat" || w.kind === "companion"),
+    [...new Set(profile.wardrobe.map((w) => w.kind))].join(","),
+  );
+  check(
+    "a new chef already has the starting companion",
+    profile.wardrobe.find((w) => w.id === "companion_01_hen")?.unlocked === true,
+  );
+  check(
+    "and the rest are locked with a reason",
+    profile.wardrobe.find((w) => w.id === "companion_04_mole")?.requirement.includes(
+      "prospecting",
+    ) ?? false,
+    profile.wardrobe.find((w) => w.id === "companion_04_mole")?.requirement,
   );
   check(
     "locked items explain themselves",
@@ -718,37 +734,82 @@ async function main() {
     "and grants the level-gated wardrobe items",
     profile.wardrobe.find((w) => w.id === "hat_05_circlet")?.unlocked === true,
   );
+  check(
+    "companions among them",
+    ["companion_02_piglet", "companion_03_berrymouse", "companion_05_owlet"].every(
+      (id) => profile.wardrobe.find((w) => w.id === id)?.unlocked === true,
+    ),
+  );
+  check(
+    "and prospecting 10 earns the mole",
+    profile.wardrobe.find((w) => w.id === "companion_04_mole")?.unlocked === true,
+  );
+  check(
+    "but the tier companions stay locked on an empty balance",
+    ["companion_06_glowslime", "companion_07_emberfox"].every(
+      (id) => profile.wardrobe.find((w) => w.id === id)?.unlocked === false,
+    ),
+  );
 
   room.send(MSG_DEV, { command: "nonsense" });
   await sleep(300);
   check("an unknown dev command is refused", rejected("unknown_command"));
 
-  /*
-   * The companion slot. Nothing grants one yet, so the dev command is the only
-   * way in - and a slot that is replicated but never exercised is a slot
-   * nobody finds out is broken until the day it matters.
-   */
   console.log("\n-- companions --");
-  check("nobody starts with a companion", self(room).companionId === "", self(room).companionId);
+  check("nobody starts with one equipped", self(room).companionId === "", self(room).companionId);
 
   mail.drain(MSG_REJECTED);
-  room.send(MSG_DEV, { command: "companion", value: "companion_01_hen" });
-  await sleep(300);
+  room.send(MSG_EQUIP, { kind: "companion", itemId: "companion_01_hen" });
+  await takeProfile();
+  check("the starting companion can be put on", profile.companionId === "companion_01_hen");
+  // Room state is patched on its own clock, so it lands just after the
+  // profile message rather than with it.
+  await sleep(PATCH_RATE_MS * 3);
   check(
-    "one can be put on",
+    "and it reaches room state, where everyone can see it",
     self(room).companionId === "companion_01_hen",
     self(room).companionId,
   );
+  check(
+    "and reads as worn in the wardrobe",
+    profile.wardrobe.find((w) => w.id === "companion_01_hen")?.equipped === true,
+  );
 
-  room.send(MSG_DEV, { command: "companion", value: "" });
+  room.send(MSG_EQUIP, { kind: "companion", itemId: "" });
+  await takeProfile();
+  check("it can be taken off again", profile.companionId === "");
+
+  /*
+   * By this point the dev command has taken the chef to level 20, so every
+   * level-gated companion is earned. The two that are not are the tier ones,
+   * and TEST_BYPASS_HOLD leaves the balance at zero - so those are what a
+   * refusal is tested against.
+   */
+  mail.drain(MSG_REJECTED);
+  room.send(MSG_EQUIP, { kind: "companion", itemId: "companion_07_emberfox" });
   await sleep(300);
-  check("and taken off again", self(room).companionId === "", self(room).companionId);
+  check("a companion the balance does not back is refused", rejected("tier_required"));
+
+  /*
+   * The slots are not interchangeable. A hat id sent to the companion slot is
+   * a client that has got its rows confused, and the server checks the item
+   * rather than trusting what the message says the kind is.
+   */
+  mail.drain(MSG_REJECTED);
+  room.send(MSG_EQUIP, { kind: "companion", itemId: "hat_01_chef" });
+  await sleep(300);
+  check("a hat cannot be equipped as a companion", rejected("unknown_item"));
 
   mail.drain(MSG_REJECTED);
-  room.send(MSG_DEV, { command: "companion", value: "../../etc/passwd" });
+  room.send(MSG_EQUIP, { kind: "hat", itemId: "companion_01_hen" });
   await sleep(300);
-  check("an id that is not an id is refused", rejected("bad_companion"));
-  check("and nothing was set", self(room).companionId === "", self(room).companionId);
+  check("nor a companion as a hat", rejected("unknown_item"));
+
+  // Dormant garments are not equippable into either slot.
+  mail.drain(MSG_REJECTED);
+  room.send(MSG_EQUIP, { kind: "hat", itemId: "cloak_01_wool" });
+  await sleep(300);
+  check("and a dormant cloak is refused outright", rejected("unknown_item"));
 
   // --- villagers -----------------------------------------------------------
   console.log(`

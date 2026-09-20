@@ -74,6 +74,7 @@ export async function openPostgres(url: string): Promise<pg.Pool> {
       bag_tier        INTEGER NOT NULL DEFAULT 0,
       buff_expires_at BIGINT NOT NULL DEFAULT 0,
       hat_id          TEXT NOT NULL DEFAULT '',
+      companion_id    TEXT NOT NULL DEFAULT '',
       apron_id        TEXT NOT NULL DEFAULT 'cloak_01_wool',
       updated_at      TEXT NOT NULL
     );
@@ -141,6 +142,10 @@ export async function openPostgres(url: string): Promise<pg.Pool> {
 
     CREATE INDEX IF NOT EXISTS idx_shop_purchases_wallet ON shop_purchases (wallet);
     CREATE INDEX IF NOT EXISTS idx_player_game_chef ON player_game (chef_xp DESC);
+
+    -- CREATE TABLE IF NOT EXISTS leaves an existing table alone, so a column
+    -- added after the first deploy needs saying twice.
+    ALTER TABLE player_game ADD COLUMN IF NOT EXISTS companion_id TEXT NOT NULL DEFAULT '';
   `);
 
   return pool;
@@ -232,9 +237,11 @@ export class PostgresGameRepository implements GameRepository {
         bag_tier: number;
         buff_expires_at: number;
         hat_id: string;
+        companion_id: string;
         apron_id: string;
       }>(
-        `SELECT coins, chef_xp, pan_tier, bag_tier, buff_expires_at, hat_id, apron_id
+        `SELECT coins, chef_xp, pan_tier, bag_tier, buff_expires_at, hat_id, companion_id,
+                apron_id
          FROM player_game WHERE wallet = $1`,
         [wallet],
       );
@@ -316,6 +323,7 @@ export class PostgresGameRepository implements GameRepository {
       nodeReadyAt,
       unlockedItems: wardrobe.rows.map((r) => r.item_id),
       hatId: row?.hat_id ?? "",
+      companionId: row?.companion_id ?? "",
       // See the note in gameRepo.ts: the column is named for the garment this
       // one replaced, and the name is not worth a table rewrite.
       cloakId: row?.apron_id ?? "cloak_01_wool",
@@ -337,11 +345,13 @@ export class PostgresGameRepository implements GameRepository {
 
       await client.query(
         `INSERT INTO player_game
-           (wallet, coins, chef_xp, pan_tier, bag_tier, buff_expires_at, hat_id, apron_id, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           (wallet, coins, chef_xp, pan_tier, bag_tier, buff_expires_at, hat_id, companion_id,
+            apron_id, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          ON CONFLICT (wallet) DO UPDATE SET
            coins = $2, chef_xp = $3, pan_tier = $4, bag_tier = $5,
-           buff_expires_at = $6, hat_id = $7, apron_id = $8, updated_at = $9`,
+           buff_expires_at = $6, hat_id = $7, companion_id = $8, apron_id = $9,
+           updated_at = $10`,
         [
           state.wallet,
           state.coins,
@@ -350,6 +360,7 @@ export class PostgresGameRepository implements GameRepository {
           state.bagTier,
           state.buffExpiresAt,
           state.hatId,
+          state.companionId,
           state.cloakId,
           now,
         ],

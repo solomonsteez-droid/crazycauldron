@@ -77,14 +77,8 @@ export class PlayerState {
    * player who earned a cloak still has it when the slot comes back.
    */
   cloakId: string;
-  /**
-   * The companion walking with this player. Nothing grants one yet.
-   *
-   * Not persisted, deliberately: a column for a slot with no way to fill it
-   * would be a migration on two databases in exchange for nothing. It lands
-   * with the unlocks.
-   */
-  companionId = "";
+  /** The companion walking with this player; empty for none. */
+  companionId: string;
   /** Permanently earned items. Tier items are never kept here. */
   readonly unlockedItems: Set<string>;
   /** Highest tier the last cached $COOK balance supports; refreshed on join. */
@@ -107,6 +101,7 @@ export class PlayerState {
     this.unlockedSections = new Set(record.unlockedSections);
     this.unlockedItems = new Set(record.unlockedItems);
     this.hatId = record.hatId;
+    this.companionId = record.companionId;
     // A saved apron id becomes its cloak; anything unrecognised is nothing.
     this.cloakId = migrateGarment(record.cloakId) ?? STARTER_CLOAK;
 
@@ -115,7 +110,7 @@ export class PlayerState {
 
     // Section 1 is open from Chef 1, so a brand new player already has it.
     this.unlockedSections.add(1);
-    // Everyone starts with the wool cloak.
+
     /*
      * Rewrite anything earned under the old names. Aprons became cloaks one
      * for one with the same conditions, so a wardrobe full of aprons is a
@@ -129,6 +124,19 @@ export class PlayerState {
       if (now) this.unlockedItems.add(now);
     }
     this.unlockedItems.add(STARTER_CLOAK);
+
+    /*
+     * Everything a player has from the start, granted here rather than waiting
+     * for the first action to notice it.
+     *
+     * newlyEarned would find these on the next payout, but "next payout" means
+     * a brand new player opens the wardrobe, sees the hen greyed out, and
+     * wonders what they did wrong. Read from the content so adding another
+     * starting item is a line of JSON.
+     */
+    for (const item of WARDROBE_ITEMS) {
+      if (item.unlock.type === "start") this.unlockedItems.add(item.id);
+    }
   }
 
   // --- derived -------------------------------------------------------------
@@ -324,11 +332,13 @@ export class PlayerState {
    */
   enforceTier(): string[] {
     const removed: string[] = [];
-    // Only the hat, because only the hat is worn.
-    const itemId = this.hatId;
-    if (itemId && requiredTier(itemId) && !this.canWear(itemId)) {
-      removed.push(itemId);
-      this.hatId = "";
+    // Both worn slots. A tier companion goes the same way a tier hat does.
+    for (const slot of ["hatId", "companionId"] as const) {
+      const itemId = this[slot];
+      if (itemId && requiredTier(itemId) && !this.canWear(itemId)) {
+        removed.push(itemId);
+        this[slot] = "";
+      }
     }
     return removed;
   }
@@ -340,7 +350,7 @@ export class PlayerState {
       const unlocked = tier
         ? isUnlocked(item.unlock, snapshot)
         : this.unlockedItems.has(item.id);
-      const equipped = item.id === this.hatId;
+      const equipped = item.id === this.hatId || item.id === this.companionId;
       return {
         id: item.id,
         kind: item.kind,
@@ -369,6 +379,7 @@ export class PlayerState {
       nodeReadyAt: Object.fromEntries(this.nodeReadyAt),
       unlockedItems: [...this.unlockedItems],
       hatId: this.hatId,
+      companionId: this.companionId,
       cloakId: this.cloakId,
     };
   }
@@ -443,6 +454,7 @@ export class PlayerState {
       titles: titlesEarned(levels),
       wardrobe: this.wardrobeViews(),
       hatId: this.hatId,
+      companionId: this.companionId,
       tier: this.tier,
       nextGoal: goal ? describeUnlock(goal) : null,
       serverNow: Date.now(),

@@ -1,5 +1,5 @@
 {
-  "_comment": "Wardrobe items and how each is earned. Tier thresholds are $COOK balances, read from the same cached figure the hold check already uses.",
+  "_comment": "Wardrobe items and how each is earned. Tier thresholds are $COOK balances, read from the same cached figure the hold check already uses. Two slots are worn: a hat and a companion.",
   "_dormant": "Cloaks are not worn at launch. The art, the pipeline and the conditions below all still exist - nothing here was deleted - but nothing reads 'dormant' when deciding what a player has earned or may put on. Moving these back into 'items' is what turns the slot on again, and every unlock is exactly as it was.",
   "tiers": [
     {
@@ -95,6 +95,69 @@
       "id": "hat_09_gold",
       "kind": "hat",
       "name": "Gold toque",
+      "unlock": {
+        "type": "tier",
+        "tier": "gold"
+      }
+    },
+    {
+      "id": "companion_01_hen",
+      "kind": "companion",
+      "name": "Hen",
+      "unlock": {
+        "type": "start"
+      }
+    },
+    {
+      "id": "companion_02_piglet",
+      "kind": "companion",
+      "name": "Piglet",
+      "unlock": {
+        "type": "chefLevel",
+        "level": 5
+      }
+    },
+    {
+      "id": "companion_03_berrymouse",
+      "kind": "companion",
+      "name": "Berrymouse",
+      "unlock": {
+        "type": "chefLevel",
+        "level": 10
+      }
+    },
+    {
+      "id": "companion_04_mole",
+      "kind": "companion",
+      "name": "Mole",
+      "unlock": {
+        "type": "skillLevel",
+        "skill": "prospecting",
+        "level": 10
+      }
+    },
+    {
+      "id": "companion_05_owlet",
+      "kind": "companion",
+      "name": "Owlet",
+      "unlock": {
+        "type": "chefLevel",
+        "level": 20
+      }
+    },
+    {
+      "id": "companion_06_glowslime",
+      "kind": "companion",
+      "name": "Glowslime",
+      "unlock": {
+        "type": "tier",
+        "tier": "silver"
+      }
+    },
+    {
+      "id": "companion_07_emberfox",
+      "kind": "companion",
+      "name": "Emberfox",
       "unlock": {
         "type": "tier",
         "tier": "gold"

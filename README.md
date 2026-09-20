@@ -99,6 +99,7 @@ AUTH_RATE_LIMIT=20 npx tsx scripts/test-rate-limits.ts
 npx tsx scripts/test-persistence.ts        # SIGKILL mid-session, then restart
 npx tsx scripts/test-production.ts         # what NODE_ENV=production changes
 npx tsx scripts/test-postgres.ts           # the Postgres backend, on a real one
+npx tsx scripts/test-migration.ts          # an old database gains new columns
 npx tsx scripts/test-shop.ts               # the $COOK shop, against devnet
 npx tsx scripts/test-pages.ts              # /official, /rules, /roadmap
 npx tsx scripts/test-maintenance.ts        # the rollback switch
@@ -208,12 +209,14 @@ who earned the Midnight cloak still has it in their record, because migration
 reads both lists while everything that grants or equips reads only the live
 one. Turning the slot back on is moving entries between two arrays.
 
-**Companions are scaffolding with the hard part already built.** A
-`companionId` is replicated per player and drawn as a creature that trails one
-cell behind and to their left, chasing rather than sticking, bobbing a pixel.
-Its position is derived entirely from the player it follows, so nothing about
-it goes on the wire and every client draws it in the same place. Nothing grants
-one yet; `cc.companion(id)` in development is how you look at it.
+**A companion is drawn from nothing but the player it follows.** Room state
+carries a `companionId` and no position: the creature's place comes from where
+its player is and which way they face, so nothing about it goes on the wire and
+every client draws it identically. It trails a cell behind and to the left,
+chases rather than sticks, faces the way it is travelling, bobs, hops every ten
+seconds or so, and stands aside by the kitchen while its player cooks. It is
+never interactive, so it cannot eat a click meant for the ground under it. Some
+villagers bring one too, rolled once when the server spawns them.
 
 **Which frames a walk cycle plays is measured, not assumed.** `npm run sprites`
 compares the four drawings of each direction two ways - how much of the outline

@@ -103,8 +103,9 @@ interface HubSceneData {
 
 interface AvatarEntry {
   avatar: Avatar;
-  /** Only players have one; villagers walk alone. */
   companion?: Companion;
+  /** Non-empty while the server is timing an action, so a pet can stand aside. */
+  activity?: string;
   tween?: Phaser.Tweens.Tween;
   /** The last vector a walk direction was chosen from, for the debug overlay. */
   vector?: { dx: number; dy: number; source: VectorSource };
@@ -329,11 +330,36 @@ export class HubScene extends Phaser.Scene {
         entry.avatar.container.depth,
         now,
         delta,
+        entry.activity === "cooking" ? this.kitchenSpot() : null,
       );
     }
-    for (const entry of this.villagers.values()) entry.avatar.tick(now);
+
+    for (const entry of this.villagers.values()) {
+      entry.avatar.tick(now);
+      entry.companion?.follow(
+        entry.avatar.container.x,
+        entry.avatar.container.y,
+        entry.avatar.heading,
+        entry.avatar.container.depth,
+        now,
+        delta,
+      );
+    }
 
     this.walkDebug?.update([...this.avatars.values(), ...this.villagers.values()]);
+  }
+
+  /**
+   * Where a companion waits while its player cooks.
+   *
+   * Null off the hub, or before the map has a kitchen - in which case the
+   * companion simply keeps following, which is the right thing to do when
+   * there is nowhere to be sent.
+   */
+  private kitchenSpot(): { x: number; y: number } | null {
+    const kitchen = this.map?.features.find((f) => f.id === "kitchen");
+    if (!kitchen) return null;
+    return this.map.tileCentre(kitchen.tile.tileX, kitchen.tile.tileY);
   }
 
   private buildMap(mapId: number) {
@@ -688,7 +714,7 @@ export class HubScene extends Phaser.Scene {
     else if (id === "outfitter") {
       // The outfitter sells upgrades and keeps the wardrobe; both open here.
       openShop(this.panelCallbacks());
-      openWardrobe((itemId) => this.room.send(MSG_EQUIP, { kind: "hat", itemId }));
+      openWardrobe((kind, itemId) => this.room.send(MSG_EQUIP, { kind, itemId }));
     }
   }
 
@@ -867,7 +893,14 @@ export class HubScene extends Phaser.Scene {
     avatar.container.setVisible(this.currentSection === HUB_MAP);
     avatar.setDirection(directionFor(villager.facing), villager.moving);
 
-    const entry: AvatarEntry = { avatar };
+    // Some residents bring one along; the server rolled it when it spawned
+    // them, so every client sees the same villager with the same creature.
+    const companion = new Companion(this);
+    companion.setCompanion(villager.companionId ?? "");
+    companion.setVisible(this.currentSection === HUB_MAP);
+    companion.snapTo(at.x, at.y, avatar.heading);
+
+    const entry: AvatarEntry = { avatar, companion };
     this.villagers.set(id, entry);
     this.watch(villager).onChange(() => this.onVillagerChanged(id, villager));
   }
@@ -877,6 +910,7 @@ export class HubScene extends Phaser.Scene {
     if (!entry) return;
 
     entry.avatar.container.setVisible(this.currentSection === HUB_MAP);
+    entry.companion?.setVisible(this.currentSection === HUB_MAP);
     const target = this.map.tileCentre(villager.tileX, villager.tileY);
     const moved =
       entry.avatar.container.x !== target.x || entry.avatar.container.y !== target.y;
@@ -921,6 +955,7 @@ export class HubScene extends Phaser.Scene {
     const entry = this.villagers.get(id);
     if (!entry) return;
     entry.tween?.stop();
+    entry.companion?.destroy();
     entry.avatar.destroy();
     this.villagers.delete(id);
   }
@@ -972,7 +1007,7 @@ export class HubScene extends Phaser.Scene {
     companion.setVisible(player.section === this.currentSection);
     companion.snapTo(position.x, position.y, avatar.heading);
 
-    const entry: AvatarEntry = { avatar, companion };
+    const entry: AvatarEntry = { avatar, companion, activity: player.activity ?? "" };
     this.avatars.set(sessionId, entry);
 
     this.watch(player).onChange(() => this.onPlayerChanged(sessionId, player));
@@ -1006,6 +1041,7 @@ export class HubScene extends Phaser.Scene {
       displayName: player.displayName,
       isSelf,
     });
+    entry.activity = player.activity ?? "";
     entry.companion?.setCompanion(player.companionId ?? "");
     entry.companion?.setVisible(player.section === this.currentSection);
     avatar.setActivity(player.activity ?? "");
@@ -1093,6 +1129,8 @@ export class HubScene extends Phaser.Scene {
       entry.tween?.stop();
       entry.avatar.container.setPosition(at.x, at.y);
       entry.avatar.container.setVisible(this.currentSection === HUB_MAP);
+      entry.companion?.setVisible(this.currentSection === HUB_MAP);
+      entry.companion?.snapTo(at.x, at.y, entry.avatar.heading);
     });
 
     this.room.state.players.forEach((player, sessionId) => {

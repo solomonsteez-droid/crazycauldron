@@ -7,6 +7,7 @@
  */
 
 import type { Quality, SkillId } from "./content/index.js";
+import type { WardrobeKind } from "./wardrobe.js";
 
 // --- client -> server ------------------------------------------------------
 
@@ -74,12 +75,9 @@ export interface DevIntent {
 }
 
 /** Equip a wardrobe item, or clear the slot with an empty id. */
+/** Equip into one of the two worn slots, or clear it with an empty id. */
 export interface EquipIntent {
-  /**
-   * Carried for shape rather than choice: a hat is the only thing worn, and
-   * the server checks the item is one regardless of what this says.
-   */
-  kind: "hat";
+  kind: "hat" | "companion";
   itemId: string;
 }
 
@@ -126,7 +124,7 @@ export interface RecipeAvailabilityView {
 
 export interface WardrobeItemView {
   id: string;
-  kind: "hat" | "cloak";
+  kind: WardrobeKind;
   name: string;
   unlocked: boolean;
   equipped: boolean;
@@ -163,6 +161,7 @@ export interface ProfilePayload {
   /** Every wardrobe item with its state, for the Outfitter panel. */
   wardrobe: WardrobeItemView[];
   hatId: string;
+  companionId: string;
   /** Highest tier the cached balance currently supports. */
   tier: "bronze" | "silver" | "gold" | null;
   nextGoal: string | null;
@@ -273,7 +272,7 @@ export interface BoughtPayload {
 
 /** Sent when an item is granted, so the client can celebrate it. */
 export interface UnlockedPayload {
-  items: { id: string; kind: "hat" | "cloak"; name: string }[];
+  items: { id: string; kind: WardrobeKind; name: string }[];
 }
 
 /** Every refusal the server sends back, with a reason the UI can show. */

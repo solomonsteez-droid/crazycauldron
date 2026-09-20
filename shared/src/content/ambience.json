@@ -1,7 +1,7 @@
 {
   "_comment": "Everything that makes the world feel inhabited without changing a rule. Villagers are simulated on the server so every client sees the same person in the same place; the particles, the day and the sound are client-side decoration driven by these numbers. The well, the cart, the signpost and the scattered shrubs used to live here as placements; they are painted into the maps now, and what is left is what paint cannot do.",
   "villagers": {
-    "_comment": "How many wander a hub, and how they move. Slower than a player on purpose: a villager overtaking you reads as a race. keepAwayTiles holds them out of the plaza centre and off the three shop fronts, so nobody is ever standing between you and the kitchen door.",
+    "_comment": "companionChance is how often a villager turns up with one, rolled per villager per spawn. Not every resident: a hub where everybody has a pet reads as a pet shop, and the point is that seeing one is a small pleasure rather than the default.",
     "min": 4,
     "max": 6,
     "keepAwayTiles": 3,
@@ -107,7 +107,8 @@
         ],
         "cloak": ""
       }
-    ]
+    ],
+    "companionChance": 0.35
   },
   "life": {
     "_comment": "Per-map particles. everyMs is how often one is emitted; 0 disables it. All of them draw from the same 200-particle pool as cooking, and cooking wins.",

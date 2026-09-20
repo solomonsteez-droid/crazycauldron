@@ -809,16 +809,18 @@ export class HubRoom extends Room<{ state: HubState; client: Client<{ auth: Join
     if (!session || !player) return;
 
     /*
-     * Hats, and nothing else. The cloak slot is dormant, so an equip naming a
-     * cloak is refused the same way an equip naming a fish would be - the
-     * item is real and this is not somewhere it can go.
+     * Two slots, and the item decides which one it goes in - the client's
+     * `kind` is checked against it rather than trusted. An equip naming a
+     * cloak is refused the same way one naming a fish would be: the item is
+     * real and this is not somewhere it can go.
      */
+    const kind = message?.kind === "companion" ? "companion" : "hat";
     const itemId = String(message?.itemId ?? "");
 
     if (itemId !== "") {
       const item = wardrobeItem(itemId);
-      if (!item || item.kind !== "hat") {
-        return this.reject(client, MSG_EQUIP, "unknown_item", "No such hat.");
+      if (!item || item.kind !== kind) {
+        return this.reject(client, MSG_EQUIP, "unknown_item", `No such ${kind}.`);
       }
       if (!session.state.canWear(itemId)) {
         const tier = item.unlock.type === "tier";
@@ -831,8 +833,11 @@ export class HubRoom extends Room<{ state: HubState; client: Client<{ auth: Join
       }
     }
 
-    session.state.hatId = itemId;
+    if (kind === "companion") session.state.companionId = itemId;
+    else session.state.hatId = itemId;
+
     player.hatId = session.state.hatId;
+    player.companionId = session.state.companionId;
     session.save();
     this.sendProfile(session);
   }

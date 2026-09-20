@@ -60,6 +60,8 @@ export class Villager extends Schema {
   @type("boolean") moving = false;
   @type("string") body = "male";
   @type("string") hatId = "";
+  /** Some of them bring one along; rolled once, when they are spawned. */
+  @type("string") companionId = "";
 }
 
 export class HubState extends Schema {

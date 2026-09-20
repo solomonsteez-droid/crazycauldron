@@ -22,6 +22,7 @@ import {
   villagerGround,
   type TilePos,
   type VillagerDef,
+  WARDROBE_ITEMS,
 } from "@crazycauldron/shared";
 import { Villager } from "../rooms/schema.js";
 
@@ -88,10 +89,27 @@ export class VillagerCrowd {
       villager.tileY = at.tileY;
       villager.body = def.body;
       villager.hatId = def.hat;
+      villager.companionId = this.rollCompanion();
 
       this.villagers.set(def.id, villager);
       this.walks.set(def.id, { route: [], restUntil: now + this.restMs() });
     }
+  }
+
+  /**
+   * A companion for this villager, or none.
+   *
+   * Rolled per villager per spawn rather than authored, so the hub is
+   * different each time somebody arrives - and not every resident, because a
+   * hub where everybody has a pet reads as a pet shop. Only companions that
+   * were actually cut are offered, so a roster does not have to be edited when
+   * a drawing is added or removed.
+   */
+  private rollCompanion(): string {
+    if (Math.random() >= SETTINGS.companionChance) return "";
+    const choices = WARDROBE_ITEMS.filter((item) => item.kind === "companion");
+    const pick = choices[Math.floor(Math.random() * choices.length)];
+    return pick?.id ?? "";
   }
 
   /**

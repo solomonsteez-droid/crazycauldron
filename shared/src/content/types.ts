@@ -311,6 +311,8 @@ export interface VillagerSettings {
   strollTilesMax: number;
   /** How far a villager stays from the cauldron and from every shop front. */
   keepAwayTiles: number;
+  /** Odds, 0 to 1, that a villager turns up with a companion. */
+  companionChance: number;
   roster: VillagerDef[];
 }
 

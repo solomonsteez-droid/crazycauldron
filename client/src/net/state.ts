@@ -49,6 +49,7 @@ export interface VillagerView {
   moving: boolean;
   body: string;
   hatId: string;
+  companionId: string;
 }
 
 export interface HubStateView {

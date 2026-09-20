@@ -27,6 +27,7 @@ export function migrateGameTables(db: Database.Database) {
       bag_tier        INTEGER NOT NULL DEFAULT 0,
       buff_expires_at INTEGER NOT NULL DEFAULT 0,
       hat_id          TEXT NOT NULL DEFAULT '',
+      companion_id    TEXT NOT NULL DEFAULT '',
       apron_id        TEXT NOT NULL DEFAULT 'cloak_01_wool',
       updated_at      TEXT NOT NULL
     );
@@ -95,6 +96,22 @@ export function migrateGameTables(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_shop_purchases_wallet ON shop_purchases (wallet);
     CREATE INDEX IF NOT EXISTS idx_player_game_chef ON player_game (chef_xp DESC);
   `);
+
+  addColumn(db, "player_game", "companion_id", "TEXT NOT NULL DEFAULT ''");
+}
+
+/**
+ * Adds a column to a table that already exists.
+ *
+ * CREATE TABLE IF NOT EXISTS does nothing to a table that is already there, so
+ * a new column reaches a fresh database and never reaches anybody's. SQLite
+ * has no ADD COLUMN IF NOT EXISTS, so the columns are read first and the
+ * statement is only run when it is needed.
+ */
+function addColumn(db: Database.Database, table: string, column: string, definition: string) {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (columns.some((c) => c.name === column)) return;
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
 }
 
 interface GameRow {
@@ -104,6 +121,7 @@ interface GameRow {
   bag_tier: number;
   buff_expires_at: number;
   hat_id: string;
+  companion_id: string;
   apron_id: string;
 }
 interface WardrobeRow {
@@ -165,15 +183,17 @@ export class SqliteGameRepository implements GameRepository {
 
   constructor(private readonly db: Database.Database) {
     this.selectGame = db.prepare<[string], GameRow>(
-      "SELECT coins, chef_xp, pan_tier, bag_tier, buff_expires_at, hat_id, apron_id FROM player_game WHERE wallet = ?",
+      `SELECT coins, chef_xp, pan_tier, bag_tier, buff_expires_at, hat_id, companion_id, apron_id
+       FROM player_game WHERE wallet = ?`,
     );
     this.upsertGame = db.prepare(
-      `INSERT INTO player_game (wallet, coins, chef_xp, pan_tier, bag_tier, buff_expires_at, hat_id, apron_id, updated_at)
-       VALUES (@wallet, @coins, @chefXp, @panTier, @bagTier, @buffExpiresAt, @hatId, @apronId, @now)
+      `INSERT INTO player_game (wallet, coins, chef_xp, pan_tier, bag_tier, buff_expires_at, hat_id, companion_id, apron_id, updated_at)
+       VALUES (@wallet, @coins, @chefXp, @panTier, @bagTier, @buffExpiresAt, @hatId, @companionId, @apronId, @now)
        ON CONFLICT(wallet) DO UPDATE SET
          coins = @coins, chef_xp = @chefXp, pan_tier = @panTier,
          bag_tier = @bagTier, buff_expires_at = @buffExpiresAt,
-         hat_id = @hatId, apron_id = @apronId, updated_at = @now`,
+         hat_id = @hatId, companion_id = @companionId, apron_id = @apronId,
+         updated_at = @now`,
     );
 
     this.selectSkills = db.prepare<[string], SkillRow>(
@@ -246,6 +266,7 @@ export class SqliteGameRepository implements GameRepository {
         bagTier: state.bagTier,
         buffExpiresAt: state.buffExpiresAt,
         hatId: state.hatId,
+        companionId: state.companionId,
         apronId: state.cloakId,
         now,
       });
@@ -332,6 +353,7 @@ export class SqliteGameRepository implements GameRepository {
       nodeReadyAt,
       unlockedItems: this.selectWardrobe.all(wallet).map((r) => r.item_id),
       hatId: row?.hat_id ?? "",
+      companionId: row?.companion_id ?? "",
       /*
        * The column is still called apron_id. Renaming it would mean a table
        * rewrite on every existing deployment to change a string that only

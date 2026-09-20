@@ -9,6 +9,10 @@
  *   npx tsx scripts/validate-content.ts
  */
 
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 import {
   AMBIENCE,
   AREAS,
@@ -40,6 +44,8 @@ import {
   techniquesUnlocked,
   type SkillId,
 } from "@crazycauldron/shared";
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 const problems: string[] = [];
 const note = (message: string) => problems.push(message);
@@ -362,6 +368,39 @@ for (const problem of validateAllLayouts()) {
  * held rather than owned, and buying one would spend the balance that grants
  * it - a purchase that revokes itself.
  */
+/*
+ * A companion has to have been cut, or it is a name in a panel that draws
+ * nothing. The manifest is the record of what the pipeline actually produced,
+ * so that is what it is checked against rather than the folder.
+ */
+const manifestFile = path.join(ROOT, "client", "public", "assets", "generated", "manifest.json");
+if (fs.existsSync(manifestFile)) {
+  const manifest = JSON.parse(fs.readFileSync(manifestFile, "utf8")) as {
+    companions?: { id: string }[];
+    hats?: { id: string }[];
+  };
+  const cut = new Set((manifest.companions ?? []).map((c) => c.id));
+  for (const item of WARDROBE_ITEMS.filter((i) => i.kind === "companion")) {
+    if (!cut.has(item.id)) note(`${item.id} is in the wardrobe but was never cut`);
+  }
+
+  const hatsCut = new Set((manifest.hats ?? []).map((h) => h.id));
+  for (const item of WARDROBE_ITEMS.filter((i) => i.kind === "hat")) {
+    if (!hatsCut.has(item.id)) note(`${item.id} is in the wardrobe but was never cut`);
+  }
+}
+
+/*
+ * Exactly one companion is a starting item. None and a new player walks alone
+ * with a row of grey; more than one and only the last would be equipped.
+ */
+const starters = WARDROBE_ITEMS.filter(
+  (i) => i.kind === "companion" && i.unlock.type === "start",
+);
+if (starters.length !== 1) {
+  note(`${starters.length} companions are starting items; there should be exactly one`);
+}
+
 const shopSeen = new Set<string>();
 for (const item of SHOP_ITEMS) {
   const wardrobe = WARDROBE_ITEMS.find((w) => w.id === item.itemId);
@@ -429,7 +468,7 @@ console.log(
   `shop: ${SHOP_ITEMS.length} cosmetics for $COOK, ${DORMANT_SHOP_ITEMS.length} priced but dormant`,
 );
 console.log(
-  `wardrobe: ${WARDROBE_ITEMS.length} items worn, ${DORMANT_WARDROBE_ITEMS.length} kept for a slot that is switched off`,
+  `wardrobe: ${WARDROBE_ITEMS.filter((i) => i.kind === "hat").length} hats, ${WARDROBE_ITEMS.filter((i) => i.kind === "companion").length} companions, ${DORMANT_WARDROBE_ITEMS.length} kept for a slot that is switched off`,
 );
 
 if (problems.length === 0) {

@@ -16,8 +16,10 @@ import {
   type LeaderboardPayload,
   type ProfilePayload,
   type Quality,
+  type WardrobeKind,
+  type EquipIntent,
 } from "@crazycauldron/shared";
-import { bodyKey, dishKey, hatKey, ingredientKey } from "../art/assets.js";
+import { bodyKey, companionKey, dishKey, hatKey, ingredientKey } from "../art/assets.js";
 import { defaultOffsets, loadArt, type Manifest, type OffsetsFile } from "../art/manifest.js";
 import { fetchLeaderboard } from "../net/api.js";
 import { gameStore } from "../net/game.js";
@@ -93,7 +95,7 @@ export function icon(key: string, size = 28): HTMLCanvasElement {
  */
 const PREVIEW_HEADROOM = 18;
 
-function wardrobePreview(id: string, size = 48): HTMLCanvasElement {
+function wardrobePreview(kind: WardrobeKind, id: string, size = 48): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
   const scale = Math.max(1, Math.floor(size / 48));
   canvas.width = 32 * scale;
@@ -115,9 +117,26 @@ function wardrobePreview(id: string, size = 48): HTMLCanvasElement {
   };
 
   /*
-   * Where the hat sits, resolved before anything is drawn so the preview
-   * layers the same way the character on screen does: body first, hat over it.
+   * A companion is shown on its own, and a hat on a head.
+   *
+   * A hat has to be previewed where it sits, because half of choosing one is
+   * seeing how it looks worn. A companion is not worn - it walks alongside -
+   * so drawing the figure as well would put a 16px creature next to a 48px
+   * character in a 48px box, and the thing being chosen would be the smaller
+   * half of the picture.
    */
+  if (kind === "companion") {
+    const companion = companionKey(id);
+    if (id && game.textures.exists(companion)) {
+      const texture = game.textures.get(companion);
+      const w = texture.source[0]?.width ?? 0;
+      const h = texture.source[0]?.height ?? 0;
+      // Centred, and standing on the floor of the box rather than in the air.
+      draw(companion, Math.round((32 - w) / 2), 48 - h);
+    }
+    return canvas;
+  }
+
   const art = wardrobeArt;
   const entry = id ? art?.manifest.hats.find((e) => e.id === id) : undefined;
   const saved = art?.offsets.hats?.[id] ?? defaultOffsets(entry);
@@ -613,18 +632,20 @@ const TIER_LABEL: Record<string, string> = {
 };
 
 /**
- * The Outfitter's wardrobe: hats.
+ * The Outfitter's wardrobe: hats, and the creature that walks with you.
  *
- * One row, because a hat is the only thing worn. The cloak slot is dormant -
- * the garments and their conditions are kept in the content file and nothing
- * lists them - so this panel has no second row rather than an empty one.
+ * Two rows, because two things are worn. The cloak slot is dormant - the
+ * garments and their conditions are kept in the content file and nothing lists
+ * them - so it has no row rather than an empty one.
  *
  * Unlocked items are in colour and clickable; locked ones are greyed with the
  * condition that earns them, taken from the content rather than written here.
  * Tier items carry a badge and stop being wearable the moment the balance stops
  * backing them - the server enforces that, this only shows it.
  */
-export function openWardrobe(onEquip: (itemId: string) => void): ModalHandle {
+export function openWardrobe(
+  onEquip: (kind: EquipIntent["kind"], itemId: string) => void,
+): ModalHandle {
   const modal = openModal("Wardrobe");
   const summary = document.createElement("p");
   const rows = document.createElement("div");
@@ -637,33 +658,38 @@ export function openWardrobe(onEquip: (itemId: string) => void): ModalHandle {
 
     rows.replaceChildren();
 
-    const heading = document.createElement("h3");
-    heading.textContent = "Hats";
-    heading.className = "cc-subhead";
+    for (const [kind, label, equipped] of [
+      ["hat", "Hats", profile.hatId],
+      ["companion", "Companions", profile.companionId],
+    ] as const) {
+      const heading = document.createElement("h3");
+      heading.textContent = label;
+      heading.className = "cc-subhead";
 
-    const grid = document.createElement("div");
-    grid.className = "cc-grid";
+      const grid = document.createElement("div");
+      grid.className = "cc-grid";
 
-    // An explicit "none" so a hat can be taken off again.
-    grid.append(
-      wardrobeSlot(
-        {
-          id: "",
-          kind: "hat",
-          name: "None",
-          unlocked: true,
-          equipped: profile.hatId === "",
-          requirement: "",
-        },
-        () => onEquip(""),
-      ),
-    );
+      // An explicit "none", so a slot can be emptied as well as filled.
+      grid.append(
+        wardrobeSlot(
+          {
+            id: "",
+            kind,
+            name: "None",
+            unlocked: true,
+            equipped: equipped === "",
+            requirement: "",
+          },
+          () => onEquip(kind, ""),
+        ),
+      );
 
-    for (const item of profile.wardrobe.filter((i) => i.kind === "hat")) {
-      grid.append(wardrobeSlot(item, () => onEquip(item.id)));
+      for (const item of profile.wardrobe.filter((i) => i.kind === kind)) {
+        grid.append(wardrobeSlot(item, () => onEquip(kind, item.id)));
+      }
+
+      rows.append(heading, grid);
     }
-
-    rows.append(heading, grid);
   });
 
   return modal;
@@ -672,7 +698,7 @@ export function openWardrobe(onEquip: (itemId: string) => void): ModalHandle {
 function wardrobeSlot(
   item: {
     id: string;
-    kind: "hat" | "cloak";
+    kind: WardrobeKind;
     name: string;
     unlocked: boolean;
     equipped: boolean;
@@ -688,7 +714,7 @@ function wardrobeSlot(
   if (item.equipped) cell.classList.add("cc-equipped");
   cell.disabled = !item.unlocked;
 
-  if (item.id) cell.append(wardrobePreview(item.id));
+  if (item.id) cell.append(wardrobePreview(item.kind, item.id));
 
   const name = document.createElement("strong");
   name.textContent = item.name;

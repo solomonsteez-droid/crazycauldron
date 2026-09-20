@@ -15,13 +15,13 @@ export type TierId = "bronze" | "silver" | "gold";
 /**
  * Kinds a wardrobe item can be.
  *
- * "cloak" is dormant: the items, the art and the conditions that earn them all
- * still exist, but none of it is active, so a hat is the only thing a player
- * wears. The kind stays in the type because the dormant entries still declare
+ * Two are worn: a hat and a companion. "cloak" is dormant - the items, the art
+ * and the conditions that earn them all still exist, but nothing evaluates
+ * them. The kind stays in the type because the dormant entries still declare
  * it, and because leaving it out would make turning the slot back on a
  * type-level change rather than a data one.
  */
-export type WardrobeKind = "hat" | "cloak";
+export type WardrobeKind = "hat" | "cloak" | "companion";
 
 /**
  * What a saved apron id becomes.
