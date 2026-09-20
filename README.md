@@ -101,6 +101,7 @@ npx tsx scripts/test-persistence.ts        # SIGKILL mid-session, then restart
 npx tsx scripts/test-production.ts         # what NODE_ENV=production changes
 npx tsx scripts/test-postgres.ts           # the Postgres backend, on a real one
 npx tsx scripts/test-migration.ts          # an old database gains new columns
+npx tsx scripts/test-prebuilt.ts           # the committed client, and its guard
 npx tsx scripts/test-shop.ts               # the $COOK shop, against devnet
 npx tsx scripts/test-pages.ts              # /official, /rules, /roadmap
 npx tsx scripts/test-maintenance.ts        # the rollback switch

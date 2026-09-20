@@ -106,7 +106,7 @@ holds deployment credentials, so treat it accordingly. Useful flags:
 Cloud runs the root `build` script, which is:
 
 ```
-npm run build -w shared && npm run build -w server && node scripts/build-client.mjs
+npm run build -w shared && npm run build -w server && node scripts/build-client.mjs --verify
 ```
 
 and then starts `ecosystem.config.js`, which runs `server/dist/index.js` in
@@ -155,21 +155,42 @@ What made the difference, in order of how much each bought:
 **When you change client or shared code, rebuild and commit the bundle:**
 
 ```bash
-npm run build -w client
+npm run build:client
 git add client/dist && git commit -m "client: rebuild"
 ```
 
-You will not forget silently. `npm run build` writes `client/dist/.build-stamp`
-- a hash of `client/src`, `shared/src`, `client/index.html`, the client's
-config and `package-lock.json` - and on the host a stamp that does not match
-the source **fails the deploy** and prints the two commands above. It fails
-rather than building, because building is the thing that runs out of memory,
-and a deploy that stops immediately beats one that dies halfway through a
-bundle. Line endings are normalised before hashing, so a bundle built on
-Windows still matches a Linux checkout.
+`npm run build:client` bundles and writes `client/dist/.build-stamp`; the root
+`npm run build` only *checks* that stamp, and fails if it does not match. That
+split is deliberate and it is the fix for a real failed deploy:
 
-Locally nothing changed: `npm run build` with no `NODE_ENV=production` builds
-the client as it always did.
+> The check used to switch on `NODE_ENV === "production"`. That variable is
+> set in `ecosystem.config.js`, which pm2 applies to the server process it
+> starts - long after the build has finished. During the build it was unset,
+> the guard never ran, the fallback was to build, and the deploy of 789ac74
+> died bundling the client on a 1 GB host. The stamp was never wrong.
+
+So the mode is not inferred any more. The host runs `build`, which passes
+`--verify` and has **no path that bundles anything**. Environment variables are
+still read, but only to refuse: `COLYSEUS_CLOUD`, `NODE_ENV=production` or
+`CI=true` turn building off even if `--build` was asked for.
+
+The stamp hashes `client/src`, `shared/src`, `client/index.html`, the client
+and shared `package.json`, the client's tsconfig and vite config, and
+`tsconfig.base.json`. Three things make it identical on Windows and Linux:
+line endings are normalised, a byte-order mark is stripped, and only known
+source extensions are hashed, with dotfiles and `node_modules` skipped - so a
+stray `.orig` from a merge or a screenshot dropped in `src` cannot move it on
+one machine and not the other. `package-lock.json` is deliberately **not**
+hashed: it is committed, but an install on the host may rewrite it, and that
+would be a mismatch caused by the installer rather than by anything that
+changes the bundle.
+
+If two machines ever disagree, run this on each and diff the output rather
+than guessing:
+
+```bash
+node scripts/build-client.mjs --explain
+```
 
 **To go back to building on the host** - if it is moved to a larger box - put
 `client/dist` back in `.gitignore`, `git rm -r --cached client/dist`, and
@@ -557,6 +578,7 @@ npx tsx scripts/test-persistence.ts      # SIGKILL mid-session, then restart
 npx tsx scripts/test-production.ts       # what NODE_ENV=production changes
 npx tsx scripts/test-postgres.ts         # the Postgres backend, on a real one
 npx tsx scripts/test-migration.ts        # an old database gains new columns
+npx tsx scripts/test-prebuilt.ts         # the committed client, and its guard
 npx tsx scripts/test-maintenance.ts      # the rollback switch
 npx tsx scripts/test-shop.ts             # the $COOK shop, against devnet
 ```

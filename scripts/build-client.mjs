@@ -1,19 +1,27 @@
 /**
- * Builds the client, or confirms the committed build is the right one.
+ * Uses the committed client build, or makes one - and never guesses which.
  *
- * The deploy host has 1 GB. Bundling the client peaks near all of it once npm,
- * tsc and vite are counted together, and a deploy has already been killed for
- * it; building only shared and server peaks at about 325 MB. So the built
- * client is committed, and in production this checks it rather than making it.
+ *   node scripts/build-client.mjs --verify    use the committed build, or fail
+ *   node scripts/build-client.mjs --build     build it and write the stamp
+ *   node scripts/build-client.mjs --explain   print exactly what is hashed
  *
- * The obvious danger of a committed build is that it goes stale - somebody
- * changes the client, deploys, and the old bundle ships in silence. So the
- * build writes a stamp: a hash of every file that can change what the bundle
- * contains. In production a stamp that does not match is a failed deploy with
- * the command to fix it, which is the one outcome nobody can miss.
+ * The deploy host has 1 GB and bundling the client needs most of it, so
+ * client/dist is committed and the host checks it rather than making it. The
+ * danger of a committed build is that it goes stale in silence, so it carries
+ * a stamp: a hash of every file that can change what the bundle contains.
  *
- * Anywhere else - a developer's machine, `npm run build` by hand - this just
- * builds the client as it always did.
+ * **Why this is a flag and not an environment check.** It used to switch on
+ * `NODE_ENV === "production"`, and that is exactly how a deploy of 789ac74
+ * ended up running vite on the host and dying. NODE_ENV was never set during
+ * the build: it lives in ecosystem.config.js, which pm2 applies to the server
+ * process it starts, long after the build has finished. The guard simply never
+ * ran, and the fallback was to build.
+ *
+ * A mode that matters this much cannot be inferred. The caller states it, and
+ * the root `build` script - the one the host runs - states `--verify`, which
+ * has no path that builds anything. Environment variables are still consulted,
+ * but only to refuse: if anything says we are on a host, building is off
+ * whatever the flags say.
  */
 
 import { createHash } from "node:crypto";
@@ -32,8 +40,13 @@ const STAMP = path.join(DIST, ".build-stamp");
  *
  * The client's own source and config, and shared - which is compiled into the
  * bundle, so a change there changes the client even though no client file
- * moved. Not node_modules: a dependency change comes with a package-lock
- * change, which is in the list.
+ * moved.
+ *
+ * `package-lock.json` is deliberately absent. It is committed, so it matches
+ * in principle; in practice the host runs an install before the build and an
+ * install may rewrite it, which would be a mismatch caused by the installer
+ * rather than by anything that changes the bundle. The package.json files are
+ * hashed instead: they pin the ranges, and nothing rewrites them.
  */
 const WATCHED = [
   ["client", "src"],
@@ -42,41 +55,99 @@ const WATCHED = [
   ["client", "vite.config.ts"],
   ["client", "tsconfig.json"],
   ["shared", "src"],
-  ["package-lock.json"],
+  ["shared", "package.json"],
+  ["tsconfig.base.json"],
 ];
 
-/** Every file under a path, sorted, so the hash does not depend on disk order. */
-function walk(target) {
-  const stat = fs.statSync(target, { throwIfNoEntry: false });
-  if (!stat) return [];
-  if (stat.isFile()) return [target];
+/**
+ * Extensions that go into the hash.
+ *
+ * An allowlist rather than a denylist: a stray file - an editor swap file, a
+ * .orig from a merge, a screenshot somebody dropped in src - would otherwise
+ * be hashed on the machine that has it and not on the one that does not, and
+ * the mismatch would be blamed on line endings for an afternoon.
+ */
+const HASHED_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".mjs", ".cjs", ".json", ".html", ".css"]);
 
-  return fs
-    .readdirSync(target)
-    .sort()
-    .flatMap((name) => walk(path.join(target, name)));
+/** Directories never worth walking into. */
+const SKIP_DIRS = new Set(["node_modules", "dist", ".git"]);
+
+/**
+ * Every hashable file under a path, as POSIX-relative paths.
+ *
+ * Returned unsorted; the caller sorts the whole set at once. Sorting per
+ * directory would be deterministic too, but sorting the complete list by its
+ * full path is deterministic *and* obvious, and this is a function whose
+ * output has to be identical on two operating systems.
+ */
+function collect(target, found) {
+  const stat = fs.statSync(target, { throwIfNoEntry: false });
+  if (!stat) return;
+
+  if (stat.isFile()) {
+    if (HASHED_EXTENSIONS.has(path.extname(target).toLowerCase())) {
+      found.push(path.relative(ROOT, target).split(path.sep).join("/"));
+    }
+    return;
+  }
+
+  for (const entry of fs.readdirSync(target)) {
+    // Dotfiles are tooling, not source, and differ between machines.
+    if (entry.startsWith(".")) continue;
+    if (SKIP_DIRS.has(entry)) continue;
+    collect(path.join(target, entry), found);
+  }
+}
+
+/** The files that go into the stamp, in one stable order. */
+function hashedFiles() {
+  const found = [];
+  for (const parts of WATCHED) collect(path.join(ROOT, ...parts), found);
+  // Plain code-unit order: the same on every platform and every locale.
+  return found.sort();
+}
+
+/**
+ * One file's contribution, normalised so the same commit hashes the same
+ * everywhere.
+ *
+ * Two things differ between a Windows working tree and a Linux checkout of the
+ * identical commit, and both are removed here: line endings, because git
+ * checks these files out as CRLF on Windows and LF on Linux, and a leading
+ * byte-order mark, which some editors add and others do not.
+ */
+function normalise(file) {
+  let text = fs.readFileSync(path.join(ROOT, file), "utf8");
+  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
+  return text.replace(/\r\n/g, "\n");
 }
 
 function stampOf() {
   const hash = createHash("sha256");
-  for (const parts of WATCHED) {
-    for (const file of walk(path.join(ROOT, ...parts))) {
-      // The path goes in as well as the bytes, so a rename is a change.
-      hash.update(path.relative(ROOT, file).replace(/\\/g, "/"));
-
-      /*
-       * Line endings are normalised out, and this is the whole reason the
-       * stamp works at all. These files are committed with LF and checked
-       * out with CRLF on Windows, so the same commit would hash
-       * differently on the machine that builds the client and the Linux
-       * host that checks it - and every deploy would fail with a mismatch
-       * nobody could explain. Everything watched is text; there is nothing
-       * here to corrupt by doing it.
-       */
-      hash.update(fs.readFileSync(file, "utf8").replace(/\r\n/g, "\n"));
-    }
+  for (const file of hashedFiles()) {
+    // The path as well as the bytes, so a rename is a change.
+    hash.update(file);
+    hash.update("\0");
+    hash.update(normalise(file));
+    hash.update("\0");
   }
   return hash.digest("hex").slice(0, 16);
+}
+
+/**
+ * The same walk, printed.
+ *
+ * When a stamp does disagree between two machines, this is how to find out
+ * why in one step: run it on both and diff. A file present on one side, or one
+ * whose digest differs, is named rather than guessed at.
+ */
+function explain() {
+  const files = hashedFiles();
+  for (const file of files) {
+    const digest = createHash("sha256").update(normalise(file)).digest("hex").slice(0, 12);
+    console.log(`${digest}  ${file}`);
+  }
+  console.log(`\n${files.length} files -> ${stampOf()}`);
 }
 
 function buildClient() {
@@ -88,47 +159,79 @@ function buildClient() {
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
+/**
+ * Signals that we are on a deploy host rather than somebody's machine.
+ *
+ * Only ever used to refuse. Any one of these being present turns building off,
+ * even if the caller asked for it - the failure mode of building here is a
+ * killed deploy, and the failure mode of refusing is a clear message.
+ */
+function onDeployHost() {
+  return (
+    process.env.COLYSEUS_CLOUD !== undefined ||
+    process.env.NODE_ENV === "production" ||
+    process.env.CI === "true"
+  );
+}
+
+const argv = process.argv.slice(2);
 const wanted = stampOf();
 
-// A way to ask what the stamp would be, without building anything.
-if (process.argv.includes("--stamp-only")) {
+if (argv.includes("--stamp-only")) {
   console.log(wanted);
   process.exit(0);
 }
-const prebuilt = fs.existsSync(path.join(DIST, "index.html"));
-const committed = fs.existsSync(STAMP) ? fs.readFileSync(STAMP, "utf8").trim() : null;
-
-if (process.env.NODE_ENV === "production" && prebuilt) {
-  if (committed === wanted) {
-    console.log(`client: using the committed build (${wanted}) - nothing to do`);
-    process.exit(0);
-  }
-
-  /*
-   * Failing here rather than building. Building is what runs out of memory on
-   * this host, and a deploy that dies halfway through a bundle is a worse
-   * outcome than one that stops immediately and says what to run.
-   */
-  console.error(
-    [
-      "",
-      "client/dist does not match the source it was built from.",
-      committed
-        ? `  committed build: ${committed}`
-        : "  committed build: no stamp - it was built before this check existed",
-      `  this source:     ${wanted}`,
-      "",
-      "The client is committed rather than built here, because building it",
-      "needs about 1 GB and this host has that in total. Rebuild and commit it:",
-      "",
-      "  npm run build -w client",
-      "  git add client/dist && git commit -m 'client: rebuild'",
-      "",
-    ].join("\n"),
-  );
-  process.exit(1);
+if (argv.includes("--explain")) {
+  explain();
+  process.exit(0);
 }
 
-buildClient();
-fs.writeFileSync(STAMP, `${wanted}\n`);
-console.log(`client: built and stamped ${wanted}`);
+const prebuilt = fs.existsSync(path.join(DIST, "index.html"));
+const committed = fs.existsSync(STAMP) ? fs.readFileSync(STAMP, "utf8").trim() : null;
+const mayBuild = argv.includes("--build") && !onDeployHost();
+
+if (prebuilt && committed === wanted) {
+  console.log(`client: using the committed build (${wanted}) - nothing to do`);
+  process.exit(0);
+}
+
+if (mayBuild) {
+  buildClient();
+  fs.writeFileSync(STAMP, `${wanted}\n`);
+  console.log(`client: built and stamped ${wanted}`);
+  process.exit(0);
+}
+
+/*
+ * Everything from here is a refusal, and it is deliberate.
+ *
+ * Building is what runs out of memory on this host. A deploy that stops now
+ * with the command to fix it is a better outcome than one that dies halfway
+ * through a bundle and leaves somebody reading a heap trace.
+ */
+const reason = !prebuilt
+  ? "client/dist is missing - the built client should be committed."
+  : "client/dist does not match the source it was built from.";
+
+console.error(
+  [
+    "",
+    reason,
+    committed
+      ? `  committed build: ${committed}`
+      : "  committed build: no stamp",
+    `  this source:     ${wanted}`,
+    "",
+    "The client is committed rather than built here: bundling it needs about",
+    "1 GB and this host has that in total. Rebuild it on a machine that can,",
+    "and commit the result:",
+    "",
+    "  npm run build:client",
+    "  git add client/dist && git commit -m 'client: rebuild'",
+    "",
+    "If the two stamps disagree on machines you believe are identical, run",
+    "`node scripts/build-client.mjs --explain` on each and diff the output.",
+    "",
+  ].join("\n"),
+);
+process.exit(1);
