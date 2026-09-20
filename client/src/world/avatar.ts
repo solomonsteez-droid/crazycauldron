@@ -22,15 +22,7 @@ import {
   type Manifest,
   type OffsetsFile,
 } from "../art/manifest.js";
-
-/**
- * Source frames of the walk cycle where the body is at the top of its bob.
- *
- * Numbered by the frame the artist drew, not by its position in the played
- * sequence: a ping-pong cycle plays six frames from four drawings, so a
- * position-based rule would bob at the wrong moments on the way back.
- */
-const BOB_FRAMES = new Set([1, 3]);
+import { DEFAULT_CYCLE, gaitPose, type WalkCycleData } from "./gait.js";
 
 /**
  * Procedural idle motion, in milliseconds.
@@ -80,6 +72,8 @@ export class Avatar {
 
   /** Set while the server says this player is cooking, which drives the dance. */
   private dancing = false;
+  /** True while the body is a mirrored left view standing in for a right one. */
+  private mirrored = false;
   /** Random per-avatar so a crowd does not breathe in unison. */
   private readonly phase = Math.random() * BREATH_MS;
   private bubble: Phaser.GameObjects.Text | null = null;
@@ -90,6 +84,23 @@ export class Avatar {
   private fidgetKind: Fidget = "squash";
   private nextFidgetAt = 0;
   private pose: Pose = { dx: 0, dy: 0, squash: 1 };
+
+  /**
+   * Milliseconds of walking, which is the only thing the stride depends on.
+   *
+   * Never reset. It used to be a Phaser animation, and three separate things
+   * could re-seat that sprite mid-walk - a click's predicted intent, the
+   * server's facing, and the tween ending a step early - each of which could
+   * land the cycle back on its first frame. A counter that only ever goes up
+   * cannot be put back by any of them, and a figure that stops and starts
+   * resumes mid-stride rather than lurching from the top.
+   */
+  private walkMs = 0;
+  private lastTickAt = 0;
+  private lastStep = -1;
+
+  /** Called once per foot-strike, so the scene can kick up dust. */
+  onContact: (() => void) | null = null;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -253,8 +264,10 @@ export class Avatar {
 
   /** What this avatar is doing right now, for the debug overlay. */
   debugState(): { animation: string; frame: number; direction: Direction; walking: boolean } {
+    const kind = this.walking ? "walk" : "idle";
     return {
-      animation: this.body.anims.currentAnim?.key ?? `${this.look.body}_idle_${this.direction}`,
+      animation:
+        `${this.look.body}_${kind}_${this.direction}` + (this.mirrored ? " (mirrored)" : ""),
       frame: this.sourceFrame(),
       direction: this.direction,
       walking: this.walking,
@@ -289,27 +302,60 @@ export class Avatar {
     this.placeOverlays();
   }
 
-  private playBody() {
-    const animation = `${this.look.body}_walk_${this.direction}`;
-    if (this.walking && this.scene.anims.exists(animation)) {
-      if (this.body.anims.currentAnim?.key !== animation) this.body.play(animation);
-      return;
-    }
-
-    this.body.stop();
-    const idle = `${this.look.body}_idle_${this.direction}`;
-    const texture = this.scene.textures.get(bodyKey(this.look.body));
-    if (texture.has(idle)) this.body.setFrame(idle);
+  /** What the pipeline worked out about this body's cycle in this direction. */
+  private cycle(): WalkCycleData {
+    const measured = this.manifest.bodies[this.look.body]?.walk?.[this.direction];
+    if (!measured) return DEFAULT_CYCLE;
+    return {
+      order: measured.order,
+      frameRate: measured.frameRate,
+      ...(measured.contact ? { contact: measured.contact } : {}),
+    };
   }
 
   /**
-   * Which of the four drawings is on screen, by the number in its name.
+   * The texture frame for a pose, and whether it has to be mirrored.
    *
-   * The played sequence is not the answer - a ping-pong cycle runs six frames
-   * over four drawings - so the frame's own texture name is what is read.
+   * A body may be drawn walking left and not right - the pipeline cuts
+   * whatever arrives - and a mirrored left view is a perfectly good right
+   * view at this size. The mirror is resolved here rather than at load, so a
+   * sheet that turns up later is used without anything else changing.
    */
+  private frameFor(kind: "idle" | "walk", index: number): { name: string; flip: boolean } {
+    const texture = this.scene.textures.get(bodyKey(this.look.body));
+    const suffix = kind === "idle" ? "" : `_${index}`;
+    const wanted = `${this.look.body}_${kind}_${this.direction}${suffix}`;
+    if (texture.has(wanted)) return { name: wanted, flip: false };
+
+    if (this.direction === "right") {
+      const mirrored = `${this.look.body}_${kind}_left${suffix}`;
+      if (texture.has(mirrored)) return { name: mirrored, flip: true };
+    }
+
+    return { name: `${this.look.body}_idle_down`, flip: false };
+  }
+
+  /** Shows one drawing of the current direction, mirroring it if it has to. */
+  private showFrame(kind: "idle" | "walk", index: number) {
+    const { name, flip } = this.frameFor(kind, index);
+    const texture = this.scene.textures.get(bodyKey(this.look.body));
+    if (!texture.has(name)) return;
+    this.body.setFrame(name);
+    this.body.setFlipX(flip);
+    this.mirrored = flip;
+  }
+
+  private playBody() {
+    if (this.walking) {
+      this.showFrame("walk", gaitPose(this.cycle(), this.walkMs, this.direction).sourceFrame);
+      return;
+    }
+    this.showFrame("idle", 0);
+  }
+
+  /** The drawing on screen, by the number in its name, for the debug overlay. */
   private sourceFrame(): number {
-    const name = String(this.body.anims.currentFrame?.textureFrame ?? "");
+    const name = String(this.body.frame?.name ?? "");
     const match = /_(\d+)$/.exec(name);
     return match ? Number(match[1]) : 0;
   }
@@ -322,22 +368,32 @@ export class Avatar {
    * frames 1 and 3, so a hat does not float free of the head mid-stride.
    */
   private placeOverlays() {
-    // Garments hang off the body, so they inherit whatever the pose did to it.
+    // Garments hang off the body, so they inherit whatever the pose did to
+    // it - the walk's bob and lean included, which is what keeps a hat on a
+    // head that is two pixels higher than it was last frame.
     const left = -BODY_FRAME.width / 2 + this.pose.dx;
     const top = -BODY_FRAME.height + this.pose.dy;
-    const bob = this.walking && BOB_FRAMES.has(this.sourceFrame()) ? -1 : 0;
 
     for (const [kind, sprite, id] of [["hats", this.hat, this.look.hatId]] as const) {
       if (!sprite.visible || !id) continue;
 
       const entry = this.manifest[kind].find((e) => e.id === id);
-      const { offset, flipX } = offsetFor(
+
+      /*
+       * A garment on a mirrored body reads its own left placement, mirrored.
+       * Reading the right-hand offsets would put the hat where it sits on the
+       * right-facing drawing, which is the drawing that does not exist - that
+       * being why the body is mirrored in the first place.
+       */
+      const placed = offsetFor(
         this.offsets,
         kind,
         id,
-        this.direction,
+        this.mirrored ? "left" : this.direction,
         defaultOffsets(entry),
       );
+      const offset = placed.offset;
+      const flipX = this.mirrored ? !placed.flipX : placed.flipX;
 
       sprite.setFlipX(flipX);
 
@@ -351,7 +407,7 @@ export class Avatar {
       const centre = this.pose.dx;
       const unflipped = left + offset.x;
       const x = flipX ? 2 * centre - unflipped - sprite.width : unflipped;
-      sprite.setPosition(x, top + offset.y + bob);
+      sprite.setPosition(x, top + offset.y);
     }
 
     // The name sits above whatever is tallest, so a dragonscale hat does not
@@ -372,15 +428,38 @@ export class Avatar {
    * so a hat never drifts off a head that has moved.
    */
   tick(now: number) {
-    this.pose = this.walking
-      ? { dx: 0, dy: 0, squash: 1 }
-      : this.dancing
-        ? this.dancePose(now)
-        : this.idlePose(now);
+    const delta = this.lastTickAt === 0 ? 0 : Math.min(64, now - this.lastTickAt);
+    this.lastTickAt = now;
+
+    if (this.walking) {
+      this.walkMs += delta;
+      const gait = gaitPose(this.cycle(), this.walkMs, this.direction);
+
+      this.showFrame("walk", gait.sourceFrame);
+      this.pose = { dx: gait.leanX, dy: gait.bobY, squash: 1 };
+
+      /*
+       * One puff per step, not per frame. The step is the played position, so
+       * a ping-pong that passes through the same drawing twice still lands
+       * two separate footfalls.
+       */
+      if (gait.step !== this.lastStep) {
+        this.lastStep = gait.step;
+        if (gait.contact) this.onContact?.();
+      }
+    } else {
+      this.lastStep = -1;
+      this.pose = this.dancing ? this.dancePose(now) : this.idlePose(now);
+    }
 
     this.body.setPosition(this.pose.dx, this.pose.dy);
     this.body.setScale(1, this.pose.squash);
     this.placeOverlays();
+  }
+
+  /** Where the feet are right now, in container-local pixels. */
+  get bobOffset(): number {
+    return this.pose.dy;
   }
 
   /**

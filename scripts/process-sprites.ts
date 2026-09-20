@@ -278,6 +278,22 @@ interface WalkCycle {
   duplicates: [number, number][];
   /** Every pair, for the report and for anyone deciding to redraw a sheet. */
   pairs: { a: number; b: number; silhouette: number; intensity: number }[];
+
+  /** Source frames where a foot is planted. The client bobs between them. */
+  contact: number[];
+  /** How far apart the feet are in each frame, in pixels of the 32px frame. */
+  footSpread: number[];
+  /** How far the feet travel horizontally across the whole cycle. */
+  footTravel: number;
+  /**
+   * True when the feet never change their separation.
+   *
+   * A walk cycle needs frames where the feet are apart and frames where they
+   * pass each other. A sheet with neither is a figure sliding along the
+   * ground however well it is played, and no amount of frame ordering fixes
+   * it - so it is named here and the client leans on its own bob instead.
+   */
+  strideless: boolean;
 }
 
 /**
@@ -296,6 +312,51 @@ const DUPLICATE_INTENSITY = 16;
 
 /** Frames per second. Fast enough to read as walking at this stride length. */
 const WALK_FPS = 10;
+
+/**
+ * Rows of a 48-tall frame that are feet, and how much separation counts.
+ *
+ * The bottom four rows: high enough to catch both feet when they are apart,
+ * low enough to miss the shins. Two pixels of difference between the widest
+ * and the narrowest frame is the least that reads as a stride at this size -
+ * below it the figure is standing still and being carried along.
+ */
+const FOOT_ROWS = 4;
+
+/**
+ * The two ways a sheet can have no stride, and the least each needs.
+ *
+ * Separation: the widest frame and the narrowest have to differ by two
+ * pixels, or the feet never pass each other. Travel: the feet's centre has to
+ * move a pixel across the cycle, or they never go anywhere. A sheet can pass
+ * one and fail the other - the up views fail travel while their feet sit a
+ * consistent thirteen pixels apart - and either failure is a figure being
+ * carried along the ground rather than walking.
+ */
+const STRIDE_MIN_PX = 2;
+const TRAVEL_MIN_PX = 1;
+
+/** Where the feet are in one frame: how wide they sit, and where their centre is. */
+function measureFeet(frame: Img): { spread: number; centre: number } {
+  let min = Infinity;
+  let max = -Infinity;
+  let sum = 0;
+  let count = 0;
+
+  for (let y = Math.max(0, frame.height - FOOT_ROWS); y < frame.height; y += 1) {
+    for (let x = 0; x < frame.width; x += 1) {
+      const alpha = frame.data[(y * frame.width + x) * 4 + 3] ?? 0;
+      if (alpha < 40) continue;
+      min = Math.min(min, x);
+      max = Math.max(max, x);
+      sum += x;
+      count += 1;
+    }
+  }
+
+  if (count === 0) return { spread: 0, centre: 0 };
+  return { spread: max - min + 1, centre: sum / count };
+}
 
 /**
  * How different two frames are, measured two ways.
@@ -352,12 +413,50 @@ function analyseWalk(frames: Img[]): WalkCycle {
   }
 
   const pingPong = duplicates.length > 0 && frames.length === 4;
+
+  /*
+   * Which frames plant a foot.
+   *
+   * The widest pair of feet is a contact and the narrowest is a passing
+   * frame, which is true of any walk ever drawn. It only works if the sheet
+   * has a stride at all: where the widest and the narrowest are within two
+   * pixels of each other there is nothing to tell apart, so the convention
+   * takes over - first and third of four - and the cycle is marked strideless
+   * so the audit can say so out loud.
+   */
+  const feet = frames.map(measureFeet);
+  const spreads = feet.map((f) => f.spread);
+  const centres = feet.map((f) => f.centre);
+  const range = Math.max(...spreads) - Math.min(...spreads);
+  const travel = Math.max(...centres) - Math.min(...centres);
+  const strideless = range < STRIDE_MIN_PX || travel < TRAVEL_MIN_PX;
+
+  /*
+   * Two contacts, opposite each other in the cycle.
+   *
+   * Two because that is how many feet there are, and opposite because that is
+   * where the other foot is. Simply taking the two widest frames gave 1 and 2
+   * on one sheet - adjacent, which would leave the body down for two steps
+   * and up for none, and through a ping-pong down for four of six. So the
+   * choice is between the pairs half a cycle apart, and the wider pair wins.
+   */
+  const half = Math.floor(frames.length / 2);
+  const pairs2 = Array.from({ length: half }, (_, i) => [i, i + half] as const);
+  const best = pairs2.reduce((a, b) =>
+    (spreads[b[0]] ?? 0) + (spreads[b[1]] ?? 0) > (spreads[a[0]] ?? 0) + (spreads[a[1]] ?? 0) ? b : a,
+  );
+  const contact = strideless ? [0, half] : [...best];
+
   return {
     order: pingPong ? [0, 1, 2, 3, 2, 1] : frames.map((_, i) => i),
     frameRate: WALK_FPS,
     pingPong,
     duplicates,
     pairs,
+    contact,
+    footSpread: spreads.map((n) => Math.round(n)),
+    footTravel: Math.round((Math.max(...centres) - Math.min(...centres)) * 10) / 10,
+    strideless,
   };
 }
 
@@ -408,6 +507,32 @@ function auditWalkCycles(cycles: Record<string, Record<string, WalkCycle>>): voi
               ? " (closest pair " + worst.a + "-" + worst.b + " at " +
                 Math.round(worst.silhouette * 100) + "%/" + Math.round(worst.intensity) + ")"
               : ""),
+        );
+      }
+
+      /*
+       * The stride, which is a different question from the frames being
+       * distinct - and the one that was actually wrong.
+       *
+       * A sheet can have four plainly different drawings and still have no
+       * walk in it, if what differs is the arms and the shading while the
+       * feet stay where they are. That is what the up sheets do, and it is
+       * why a player reported no leg motion at all on a cycle whose frames
+       * score as the most different of the four directions.
+       */
+      console.log(
+        "      " + "".padEnd(6) + "   feet: spread " + cycle.footSpread.join("/") +
+          "px, travel " + cycle.footTravel + "px, contacts " + cycle.contact.join(",") +
+          (cycle.strideless ? "  <- no stride" : ""),
+      );
+
+      if (cycle.strideless) {
+        suspect.push(
+          body + " walk_" + direction + ": no stride (spread " +
+            cycle.footSpread.join("/") + "px, travel " + cycle.footTravel +
+            "px) - the feet neither separate nor travel, so there is no contact " +
+            "or passing frame to read. The client bobs procedurally instead; " +
+            "worth redrawing with a real stride.",
         );
       }
     }

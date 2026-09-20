@@ -39,6 +39,7 @@ import { Effects, TEX_PUFF } from "./effects.js";
 import {
   edgeWeight,
   glowPose,
+  isDirtColour,
   isGrassColour,
   lighten,
   shaftAlpha,
@@ -182,6 +183,11 @@ export class WorldMotion {
   private windWidth = 1;
   private reserved = false;
 
+  /** The per-cell colour sample, kept so the walk can ask about the ground. */
+  private ground: Uint8ClampedArray | null = null;
+  private groundCols = 0;
+  private groundRows = 0;
+
   constructor(
     private readonly scene: Phaser.Scene,
     private readonly fx: Effects,
@@ -256,6 +262,18 @@ export class WorldMotion {
     const cells = this.sampleCells(map, cols, rows);
     if (!cells) return;
 
+    /*
+     * Kept, because it is already paid for.
+     *
+     * The walk asks whether the cell under a foot is bare ground, once per
+     * footfall. Sampling the painting again for that would be a canvas read
+     * every 200 milliseconds per walking character; this is the same thousand
+     * averages, taken once when the map loads.
+     */
+    this.ground = cells;
+    this.groundCols = cols;
+    this.groundRows = rows;
+
     const candidates: { c: number; r: number; colour: number; weight: number }[] = [];
     for (let r = 0; r < rows; r += 1) {
       for (let c = 0; c < cols; c += 1) {
@@ -295,6 +313,24 @@ export class WorldMotion {
 
       this.tufts.push({ image, x, phase: Math.random() * Math.PI * 2, leaning: false });
     }
+  }
+
+  /**
+   * Whether the ground at a cell is bare enough to raise dust.
+   *
+   * Answered from the sample the grass was placed from, so it costs an array
+   * lookup. A map whose painting could not be read says no to everything,
+   * which is the right answer: no dust is a missing detail, dust on water is
+   * a bug somebody screenshots.
+   */
+  isDustyAt(col: number, row: number): boolean {
+    if (!this.ground) return false;
+    const c = Math.floor(col);
+    const r = Math.floor(row);
+    if (c < 0 || r < 0 || c >= this.groundCols || r >= this.groundRows) return false;
+
+    const i = (r * this.groundCols + c) * 4;
+    return isDirtColour(this.ground[i] ?? 0, this.ground[i + 1] ?? 0, this.ground[i + 2] ?? 0);
   }
 
   /**

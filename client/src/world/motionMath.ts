@@ -122,6 +122,22 @@ export function isGrassColour(red: number, green: number, blue: number): boolean
 }
 
 /**
+ * Whether a cell's average colour is bare ground worth kicking dust off.
+ *
+ * Warm and not green: the path tiles in the palette are 0x6b5b45 and
+ * 0x8a7658, both red-dominant and mid-brightness, and the same is true of the
+ * trodden earth painted into the maps. The upper bound keeps a lit stone wall
+ * out of it and the lower keeps shadow out, so a footfall in the dark corner
+ * of a cave raises nothing.
+ *
+ * Deliberately the complement of isGrassColour rather than its negation: most
+ * of a map is neither, and a puff of dust off a pond is worse than no dust.
+ */
+export function isDirtColour(red: number, green: number, blue: number): boolean {
+  return red > green && green >= blue && red > 70 && red < 210 && !isGrassColour(red, green, blue);
+}
+
+/**
  * How much grass a cell deserves, 0.25 in the middle of a map rising to 1 at
  * the edges.
  *

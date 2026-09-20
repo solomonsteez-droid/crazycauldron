@@ -149,6 +149,14 @@ export class Companion {
     now: number,
     delta: number,
     waitAt: { x: number; y: number } | null = null,
+    /**
+     * The bob of the player it is following, in whole pixels.
+     *
+     * Borrowed rather than computed, so the pair rise and fall on the same
+     * step. A creature trotting beside a walker on its own two-second timer
+     * reads as two animations that happen to be near each other.
+     */
+    strideBob = 0,
   ) {
     if (!this.sprite.visible) return;
 
@@ -174,7 +182,14 @@ export class Companion {
 
     // Whole pixels: this is pixel art, and half a pixel of a 16px creature is
     // a blurred edge rather than a smaller step.
-    this.sprite.setPosition(Math.round(nextX), Math.round(nextY) + this.lift(now, moving));
+    this.sprite.setPosition(
+      Math.round(nextX),
+      Math.round(nextY) + (moving ? strideBob : this.lift(now, moving)),
+    );
+
+    // The hop timer still has to be told it is moving, or a companion that
+    // has been following for a minute hops the instant it stops.
+    if (moving) this.lift(now, true);
 
     /*
      * Behind its player when it is above them, in front when below - the same

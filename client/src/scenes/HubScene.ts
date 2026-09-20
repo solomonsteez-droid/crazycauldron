@@ -4,6 +4,7 @@ import type { GameRoom } from "../net/room.js";
 import {
   AMBIENCE,
   HUB_MAP,
+  PALETTE,
   approachTo,
   nearZone,
   zoneById,
@@ -334,6 +335,7 @@ export class HubScene extends Phaser.Scene {
         now,
         delta,
         entry.activity === "cooking" ? this.kitchenSpot() : null,
+        entry.avatar.bobOffset,
       );
     }
 
@@ -346,6 +348,8 @@ export class HubScene extends Phaser.Scene {
         entry.avatar.container.depth,
         now,
         delta,
+        null,
+        entry.avatar.bobOffset,
       );
     }
 
@@ -827,6 +831,37 @@ export class HubScene extends Phaser.Scene {
     for (const entry of this.villagers.values()) entry.avatar.setLabelScale(scale, resolution);
   }
 
+  /**
+   * A puff of dust where a foot lands, on ground bare enough to raise any.
+   *
+   * Called once per contact frame by the avatar's own stride, which is the
+   * only place that knows when a foot is actually down. It is the one piece
+   * of walk motion that is not on the character: two pixels of bob say the
+   * figure is stepping, and a puff under the heel says the ground noticed.
+   *
+   * Out of the same 200-particle pool as everything else - `float` returns
+   * false when the budget is spent, and a missing puff is invisible where a
+   * missing frame is not.
+   */
+  private footfall(avatar: Avatar) {
+    if (!avatar.container.visible) return;
+
+    const tile = this.map.tileAt(avatar.container.x, avatar.container.y);
+    if (!tile || !this.ambience.motion.isDustyAt(tile.tileX, tile.tileY)) return;
+
+    this.fx.float({
+      x: avatar.container.x + Phaser.Math.Between(-3, 3),
+      y: avatar.container.y - 1,
+      dx: Phaser.Math.Between(-5, 5),
+      dy: Phaser.Math.Between(-5, -2),
+      colour: PALETTE.pathLight,
+      durationMs: Phaser.Math.Between(320, 460),
+      scale: 0.5,
+      alpha: 0.45,
+      depth: avatar.container.depth - 1,
+    });
+  }
+
   // --- feel ----------------------------------------------------------------
 
   /** Sparks off the pan while the heat bar runs. */
@@ -906,6 +941,7 @@ export class HubScene extends Phaser.Scene {
     avatar.container.setDepth(this.map.depthForActor(villager.tileY));
     avatar.container.setVisible(this.currentSection === HUB_MAP);
     avatar.setDirection(directionFor(villager.facing), villager.moving);
+    avatar.onContact = () => this.footfall(avatar);
 
     // Some residents bring one along; the server rolled it when it spawned
     // them, so every client sees the same villager with the same creature.
@@ -1015,6 +1051,7 @@ export class HubScene extends Phaser.Scene {
     avatar.container.setVisible(player.section === this.currentSection);
     avatar.setDirection(directionFor(player.facing), player.moving);
     avatar.setActivity(player.activity ?? "");
+    avatar.onContact = () => this.footfall(avatar);
 
     const companion = new Companion(this);
     companion.setCompanion(player.companionId ?? "");

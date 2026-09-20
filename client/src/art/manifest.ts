@@ -38,6 +38,24 @@ export interface WalkCycle {
   pingPong: boolean;
   /** Pairs of frames too alike to read as separate poses. */
   duplicates: [number, number][];
+
+  /** Source frames where a foot is planted. The bob and the dust key off these. */
+  contact?: number[];
+  /** Pixels between the outermost feet, per frame. */
+  footSpread?: number[];
+  /** How far the feet's centre travels across the cycle, in pixels. */
+  footTravel?: number;
+  /**
+   * True when the feet neither separate nor travel.
+   *
+   * Three of the eight sheets are: male up travels 0.2px across its whole
+   * cycle and female up 0.8px, which is why walking up looked like standing
+   * still being slid along the ground. The client does not treat these
+   * differently - the procedural bob applies to every direction - but a value
+   * that says which sheets are weak is what turns "it looks wrong" into a
+   * list of files to redraw.
+   */
+  strideless?: boolean;
 }
 
 export interface BodyEntry {

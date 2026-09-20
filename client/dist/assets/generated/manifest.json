@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-20T01:12:03.012Z",
+  "generatedAt": "2026-09-20T05:34:41.621Z",
   "bodyFrame": {
     "width": 32,
     "height": 48
@@ -88,7 +88,19 @@
               "silhouette": 0.00904392764857881,
               "intensity": 8.532945736434108
             }
-          ]
+          ],
+          "contact": [
+            1,
+            3
+          ],
+          "footSpread": [
+            10,
+            12,
+            11,
+            11
+          ],
+          "footTravel": 2.5,
+          "strideless": false
         },
         "up": {
           "order": [
@@ -137,7 +149,19 @@
               "silhouette": 0.14015151515151514,
               "intensity": 33.63131313131313
             }
-          ]
+          ],
+          "contact": [
+            0,
+            2
+          ],
+          "footSpread": [
+            14,
+            13,
+            14,
+            12
+          ],
+          "footTravel": 0.2,
+          "strideless": true
         },
         "left": {
           "order": [
@@ -186,7 +210,19 @@
               "silhouette": 0.13924050632911392,
               "intensity": 36.79398734177215
             }
-          ]
+          ],
+          "contact": [
+            0,
+            2
+          ],
+          "footSpread": [
+            23,
+            24,
+            24,
+            24
+          ],
+          "footTravel": 1.5,
+          "strideless": true
         },
         "right": {
           "order": [
@@ -235,7 +271,19 @@
               "silhouette": 0.20454545454545456,
               "intensity": 48.00852272727273
             }
-          ]
+          ],
+          "contact": [
+            1,
+            3
+          ],
+          "footSpread": [
+            21,
+            17,
+            15,
+            21
+          ],
+          "footTravel": 3.1,
+          "strideless": false
         }
       }
     },
@@ -311,7 +359,19 @@
               "silhouette": 0.07926023778071334,
               "intensity": 26.193196829590487
             }
-          ]
+          ],
+          "contact": [
+            0,
+            2
+          ],
+          "footSpread": [
+            6,
+            7,
+            7,
+            5
+          ],
+          "footTravel": 3.1,
+          "strideless": false
         },
         "up": {
           "order": [
@@ -360,7 +420,19 @@
               "silhouette": 0.06508135168961202,
               "intensity": 15.198998748435544
             }
-          ]
+          ],
+          "contact": [
+            0,
+            2
+          ],
+          "footSpread": [
+            6,
+            9,
+            9,
+            7
+          ],
+          "footTravel": 0.8,
+          "strideless": true
         },
         "left": {
           "order": [
@@ -409,7 +481,19 @@
               "silhouette": 0.08396946564885496,
               "intensity": 21.501908396946565
             }
-          ]
+          ],
+          "contact": [
+            1,
+            3
+          ],
+          "footSpread": [
+            24,
+            24,
+            23,
+            25
+          ],
+          "footTravel": 2.4,
+          "strideless": false
         },
         "right": {
           "order": [
@@ -458,7 +542,19 @@
               "silhouette": 0.10074626865671642,
               "intensity": 21.490671641791046
             }
-          ]
+          ],
+          "contact": [
+            0,
+            2
+          ],
+          "footSpread": [
+            22,
+            20,
+            24,
+            23
+          ],
+          "footTravel": 3.3,
+          "strideless": false
         }
       }
     }

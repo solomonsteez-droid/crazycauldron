@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { createBodyAnimations, drawPlaceholders, queueArt } from "../art/assets.js";
+import { drawPlaceholders, queueArt } from "../art/assets.js";
 import { loadArt } from "../art/manifest.js";
 import { SECTIONS } from "@crazycauldron/shared";
 import { GameMap } from "../map/gameMap.js";
@@ -34,7 +34,11 @@ export class BootScene extends Phaser.Scene {
             section.nodes.map((node) => [node.id, node.ingredient] as [string, string]),
           ),
         );
-        createBodyAnimations(this, manifest);
+        /*
+         * No animations to register any more. The walk is driven by the
+         * avatar's own clock from world/gait.ts, so there is nothing here
+         * that a mid-walk re-seat could put back to its first frame.
+         */
         this.scene.start(SCENE_LOGIN);
       };
 

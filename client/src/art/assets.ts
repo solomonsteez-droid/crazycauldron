@@ -339,45 +339,6 @@ function effectStrip(scene: Phaser.Scene, key: string, name: string): void {
   for (let f = 0; f < frames; f += 1) texture.add(f, 0, f * size, 0, size, size);
 }
 
-/**
- * Registers one walk animation per body and direction.
- *
- * The order comes from the manifest rather than from a literal here. The
- * pipeline measures how different each of the four frames is from the others,
- * and where two are the same pose twice it hands back 0-1-2-3-2-1 instead of
- * 0-1-2-3 - a ping-pong, which turns a dead frame into a turning point rather
- * than a stumble. Everything else loops as drawn.
- */
-export function createBodyAnimations(scene: Phaser.Scene, manifest: Manifest): void {
-  for (const [body, entry] of Object.entries(manifest.bodies)) {
-    if (!scene.textures.exists(bodyKey(body))) continue;
-    const texture = scene.textures.get(bodyKey(body));
-
-    for (const direction of ["down", "up", "left", "right"]) {
-      const key = `${body}_walk_${direction}`;
-      if (scene.anims.exists(key)) continue;
-
-      const cycle = entry.walk?.[direction];
-      const order = cycle?.order ?? [0, 1, 2, 3];
-
-      const frames = order
-        .map((i) => `${key}_${i}`)
-        .filter((name) => texture.has(name));
-      if (frames.length === 0) continue;
-
-      scene.anims.create({
-        key,
-        frames: frames.map((name) => ({ key: bodyKey(body), frame: name })),
-        frameRate: cycle?.frameRate ?? WALK_FPS,
-        repeat: -1,
-      });
-    }
-  }
-}
-
-/** Used only when a body predates the manifest carrying its own cycle. */
-const WALK_FPS = 10;
-
 export function ingredientOf(id: string): Ingredient | undefined {
   return INGREDIENTS.find((i) => i.id === id);
 }
