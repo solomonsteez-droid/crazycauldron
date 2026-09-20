@@ -2,68 +2,70 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <!-- viewport-fit=cover so the notch does not letterbox the map; the UI
-         keeps clear of it with env(safe-area-inset-*) instead. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>CrazyCauldron — hold $COOK, cook your way up</title>
     <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
+      name="description"
+      content="A cozy fantasy cooking MMO in the browser. Hold 2,000 $COOK, sign in with your wallet, and gather, cook and sell your way from apprentice to Chef Level 30. No wagering, no cash prizes, no pay-to-win."
     />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <title>CrazyCauldron</title>
+    <link rel="canonical" href="https://crazycauldron.art/" />
+    <meta name="theme-color" content="#14101a" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="CrazyCauldron" />
+    <meta property="og:title" content="CrazyCauldron — hold $COOK, cook your way up" />
+    <meta
+      property="og:description"
+      content="A cozy fantasy cooking MMO in the browser. Three biomes, 24 ingredients, 20 recipes, five skills and a heat bar that gets kinder the better you get."
+    />
+    <meta property="og:url" content="https://crazycauldron.art/" />
+    <meta property="og:image" content="/assets/site/og.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <link rel="icon" href="/favicon.png" type="image/png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    <!--
+      One font file, and everything else is a system stack.
+
+      Fraunces is the warm serif the headings are set in; the body sans and the
+      mono are whatever the reader's machine already has, which is both faster
+      and, on a phone, better hinted than anything that could be downloaded.
+      preconnect because the request is on the critical path for the hero, and
+      display=swap because a heading that arrives late is better than a heading
+      that is invisible while it loads.
+    -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&display=swap"
+      media="print"
+      onload="this.media='all'"
+    />
+
+    <!-- The hero painting is the largest thing above the fold; ask for it
+         before the bundle has parsed and picked the same file. -->
+    <link
+      rel="preload"
+      as="image"
+      href="/assets/site/map_hub-wide.jpg"
+      imagesrcset="/assets/site/map_hub-narrow.jpg 720w, /assets/site/map_hub-wide.jpg 1440w"
+    />
+
     <style>
-      :root {
-        color-scheme: dark;
-        --ink: #f3e9d2;
-        --dim: #9a8f7a;
-        --bg: #14101a;
-        --accent: #7ce08a;
-      }
-      * { box-sizing: border-box; }
-      html, body {
-        margin: 0;
-        height: 100%;
-        /* A phone keyboard or URL bar must not be able to scroll the world
-           out from under the canvas. */
-        overscroll-behavior: none;
-        touch-action: manipulation;
-        background: var(--bg);
-        color: var(--ink);
-        font: 14px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-        overflow: hidden;
-      }
-      #game { position: fixed; inset: 0; }
-      #game canvas {
-        display: block;
-        image-rendering: pixelated;
-        /* Without this a drag across the map scrolls the page and a
-           double-tap zooms it, and neither gesture reaches the game. */
-        touch-action: none;
-        -webkit-user-select: none;
-        user-select: none;
-        -webkit-tap-highlight-color: transparent;
-      }
-      /* The UI layer floats over the canvas; scenes toggle its children. */
-      #ui {
-        position: fixed;
-        inset: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        pointer-events: none;
-      }
-      #ui > * { pointer-events: auto; }
-      #boot {
-        text-align: center;
-        color: var(--dim);
-      }
-      #boot strong { display: block; color: var(--ink); font-size: 18px; letter-spacing: 0.08em; }
+      /* Just enough to paint the right colour before the bundle arrives. */
+      html, body { margin: 0; background: #14101a; color: #f3e9d2; }
+      body { font: 16px/1.65 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+      #site-boot { padding: 6rem 1.15rem; text-align: center; color: #9a8f7a; }
     </style>
-    <script type="module" crossorigin src="/assets/index-Cu_KOKXn.js"></script>
+    <script type="module" crossorigin src="/assets/index-DJ_6cyuI.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/motionMath-CBnmCX7k.js">
   </head>
   <body>
-    <div id="game"></div>
-    <div id="ui">
-      <div id="boot"><strong>CRAZYCAULDRON</strong>warming the cauldron&hellip;</div>
-    </div>
+    <div id="site"><div id="site-boot">warming the cauldron&hellip;</div></div>
   </body>
 </html>

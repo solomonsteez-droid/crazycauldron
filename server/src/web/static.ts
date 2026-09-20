@@ -44,6 +44,7 @@ const ART_SECONDS = 3_600;
  */
 export function serveClient(app: express.Application): boolean {
   const index = path.join(CLIENT_DIST, "index.html");
+  const play = path.join(CLIENT_DIST, "play.html");
   if (!fs.existsSync(index)) {
     log.warn("client.not_built", { expected: CLIENT_DIST });
     return false;
@@ -67,19 +68,30 @@ export function serveClient(app: express.Application): boolean {
   );
 
   /*
-   * Anything else that looks like a page gets index.html.
+   * Which of the two documents a path gets.
    *
-   * The game is one page; /official, /rules and /roadmap are its routes. A
-   * request with a file extension is not a page - it is a missing asset, and
+   * There are two now: the marketing site and the game, built as separate
+   * bundles so that reading the front page does not download a renderer. Only
+   * /play is the game; everything else that looks like a page is the site,
+   * which draws the front page, the whitepaper, the roadmap and the two legal
+   * pages from its own router.
+   *
+   * A request with a file extension is not a page - it is a missing asset, and
    * answering it with HTML would turn "the sprite 404s" into "the sprite is
    * corrupt", which is a much worse afternoon.
    */
+  const GAME_PATHS = new Set(["/play"]);
+
   app.get("*", (req, res, next) => {
     if (req.method !== "GET" || path.extname(req.path)) return next();
+
+    const tidy = req.path.replace(/\/+$/, "") || "/";
+    const wantsGame = GAME_PATHS.has(tidy) && fs.existsSync(play);
+
     res.setHeader("Cache-Control", "no-cache");
-    return res.sendFile(index);
+    return res.sendFile(wantsGame ? play : index);
   });
 
-  log.info("client.served", { from: CLIENT_DIST });
+  log.info("client.served", { from: CLIENT_DIST, game: fs.existsSync(play) });
   return true;
 }

@@ -53,6 +53,29 @@ function styles(): void {
   const style = document.createElement("style");
   style.textContent = `
     /*
+     * These pages carry their own colours rather than borrowing the shell's.
+     *
+     * They used to be drawn by the game's bundle, inside the game's document,
+     * where the inline stylesheet had already defined all four. They are drawn
+     * by the site bundle now, in a document that has its own palette and no
+     * reason to keep a duplicate of this one - so if they are not declared
+     * here, /rules renders as black text on black.
+     */
+    :root {
+      --ink: #f3e9d2;
+      --dim: #9a8f7a;
+      --bg: #14101a;
+      --accent: #7ce08a;
+      color-scheme: dark;
+    }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 14px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    }
+
+    /*
      * The game shell pins the document: html and body are 100% tall with
      * overflow hidden, so a drag cannot scroll the world out from under the
      * canvas. A page is the opposite - it is a document, and has to scroll.

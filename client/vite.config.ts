@@ -287,8 +287,22 @@ export default defineConfig(({ command }) => ({
     // Phaser alone is ~1.2MB; warning about it on every build is just noise.
     chunkSizeWarningLimit: 2000,
     rollupOptions: {
-      // Only the game ships. dev-align.html is deliberately not an input.
-      input: path.join(here, "index.html"),
+      /*
+       * Two entries, and the split is the point.
+       *
+       * index.html is the marketing site and play.html is the game. They were
+       * one bundle, which meant somebody opening the front page downloaded
+       * Phaser - 1.2 MB of renderer - to read a paragraph and look at a
+       * painting. Rollup keeps whatever they genuinely share in a common
+       * chunk and gives the site its own small one.
+       *
+       * dev-align.html and dev-mapedit.html are deliberately still not inputs:
+       * the workbenches exist only under `vite dev`.
+       */
+      input: {
+        index: path.join(here, "index.html"),
+        play: path.join(here, "play.html"),
+      },
     },
   },
 }));

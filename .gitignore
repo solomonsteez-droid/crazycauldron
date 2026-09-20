@@ -16,3 +16,7 @@ logs/
 *.replaced-*
 scripts/tmp-*
 scripts/preview/
+
+# The inbox is where dropped art lands before it is processed; the
+# processed copy is what the repo keeps.
+art/inbox/

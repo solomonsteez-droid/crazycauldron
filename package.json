@@ -20,7 +20,8 @@
     "sprites": "tsx scripts/process-sprites.ts",
     "areas": "tsx scripts/build-areas.ts",
     "build:server": "npm run build -w shared && npm run build -w server",
-    "build:client": "node scripts/build-client.mjs --build"
+    "build:client": "node scripts/build-client.mjs --build",
+    "site:art": "node scripts/build-site-art.mjs"
   },
   "devDependencies": {
     "@colyseus/sdk": "^0.18.2",
@@ -32,6 +33,7 @@
     "bs58": "^6.0.0",
     "colyseus.js": "^0.15.26",
     "concurrently": "^8.2.2",
+    "jpeg-js": "^0.4.4",
     "pngjs": "^7.0.0",
     "tsx": "^4.19.2",
     "tweetnacl": "^1.0.3",
