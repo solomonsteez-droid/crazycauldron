@@ -344,7 +344,7 @@ function solveForCentre(bar: HeatBarPayload): number {
     const travelled = bar.startOffset + bar.direction * bar.speed * t;
     const cycle = ((travelled % 2) + 2) % 2;
     const pos = cycle <= 1 ? cycle : 2 - cycle;
-    const distance = Math.abs(pos - bar.windowCentre);
+    const distance = Math.abs(pos - (bar.superbFrom + bar.superbTo) / 2);
     if (distance < bestDistance) {
       bestDistance = distance;
       best = t;
@@ -568,17 +568,32 @@ async function main() {
 
   const fakeBar = await mail.next<HeatBarPayload>(MSG_HEAT_BAR);
   check("heat bar runs for 3s", fakeBar.durationMs === 3000, `${fakeBar.durationMs}ms`);
-  // Retuned in Block 3.5: a 3.3% Superb window at Firecraft 1 gives about 15%
-  // Superbs for a 60ms player, instead of the 54% the old 12% window gave.
+  /*
+   * The payload carries the bands themselves rather than a centre and two
+   * widths, so the client draws what the server scores. At Firecraft 1 that is
+   * a 3.3% Superb band inside a 13% Fine one.
+   */
+  const superbWidth = (fakeBar.superbTo - fakeBar.superbFrom) * 100;
+  const fineWidth = (fakeBar.fineTo - fakeBar.fineFrom) * 100;
   check(
     "window is 3.3% at firecraft 1",
-    Math.abs(fakeBar.windowPct - 3.3) < 0.05,
-    `${fakeBar.windowPct.toFixed(2)}%`,
+    Math.abs(superbWidth - 3.3) < 0.05,
+    `${superbWidth.toFixed(2)}%`,
   );
   check(
     "the Fine band is 3.95x the Superb one",
-    Math.abs(fakeBar.fineWindowPct / fakeBar.windowPct - 3.95) < 0.01,
-    `${(fakeBar.fineWindowPct / fakeBar.windowPct).toFixed(2)}x`,
+    Math.abs(fineWidth / superbWidth - 3.95) < 0.01,
+    `${(fineWidth / superbWidth).toFixed(2)}x`,
+  );
+  check(
+    "both bands are on the bar",
+    fakeBar.fineFrom >= 0 && fakeBar.fineTo <= 1 &&
+      fakeBar.superbFrom >= 0 && fakeBar.superbTo <= 1,
+    `fine ${fakeBar.fineFrom.toFixed(3)}..${fakeBar.fineTo.toFixed(3)}`,
+  );
+  check(
+    "and Superb sits inside Fine",
+    fakeBar.superbFrom >= fakeBar.fineFrom && fakeBar.superbTo <= fakeBar.fineTo,
   );
 
   room.send(MSG_COOK_STOP, { cookId: fakeBar.cookId, elapsedMs: fakeBar.durationMs });
@@ -587,7 +602,8 @@ async function main() {
   check("a refused click consumes nothing", countOf("sunwheat") === sunwheatBefore);
 
   const cooked = await cookOnce(room, "meadow_flatbread");
-  const landedInWindow = Math.abs(cooked.markerPos - cooked.windowCentre) <= fakeBar.windowPct / 200;
+  const landedInWindow =
+    Math.abs(cooked.markerPos - cooked.windowCentre) <= (fakeBar.superbTo - fakeBar.superbFrom) / 2;
   check(
     "the marker stopped inside the window",
     landedInWindow,

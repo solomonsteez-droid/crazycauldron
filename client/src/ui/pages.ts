@@ -236,22 +236,27 @@ async function official(root: HTMLElement): Promise<void> {
   }
 
   /*
-   * Stated plainly because the alternative is somebody assuming. A token with
-   * a fee on it invites the question "do I get some of that", and the honest
-   * answer needs to be on the page rather than in a reply to whoever asks.
+   * Stated plainly, and carefully.
+   *
+   * Holder Rewards is pump.fun's mechanism, not ours: they take the trading
+   * fees and pay them to holders in SOL. Describing it has to make three
+   * things unmistakable at once - that it exists, that we neither run it nor
+   * can promise what it pays, and that the game is funded by the team rather
+   * than out of it. Blur any one of those and the page starts sounding like
+   * an income claim.
    */
   const fees = document.createElement("h2");
   fees.textContent = "Where the fees go";
   root.append(
     fees,
     paragraph(
-      "$COOK uses the standard pump.fun creator fees. They are paid to the project treasury wallet and they fund the servers and the development of the game.",
+      "$COOK uses pump.fun's Holder Rewards. Trading fees on the token are distributed to holders in SOL by that mechanism.",
     ),
     paragraph(
-      "They are not shared out to holders. Holding $COOK does not pay you anything, and there is no mechanism here by which it could.",
+      "Holder Rewards is pump.fun's system. The game does not operate it, does not control it and cannot guarantee it: what it pays, whether it pays, and for how long are theirs to decide and not ours to promise.",
     ),
     paragraph(
-      "The same is true of anything spent in the game: half of a purchase is burned and half goes to that treasury, for the same two things.",
+      "The servers and the development are funded by the team, not out of those fees. Anything spent inside the game is separate again: half of a purchase is burned and half goes to the project treasury.",
       "cc-note",
     ),
   );
@@ -320,7 +325,7 @@ function rules(root: HTMLElement): void {
       "$COOK is a community token. It is not a share, not an investment, and not a claim on anything we own or earn.",
     ),
     paragraph(
-      "$COOK uses the standard pump.fun creator fees, paid to the project treasury wallet. They fund the servers and the development of the game. They are not shared out to holders, and holding $COOK pays you nothing.",
+      "$COOK uses pump.fun's Holder Rewards, which distributes trading fees to holders in SOL. That is pump.fun's mechanism: the game does not operate it and cannot guarantee what it pays or that it continues. The servers and the development are funded by the team.",
     ),
     paragraph(
       "We make no promise about its price, and no promise of rewards, income, airdrops or returns of any kind. Nothing on this site is financial advice.",

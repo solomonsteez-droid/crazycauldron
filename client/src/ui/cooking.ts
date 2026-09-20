@@ -166,16 +166,27 @@ export function runHeatBar(payload: HeatBarPayload, callbacks: KitchenCallbacks)
   const track = document.createElement("div");
   track.className = "cc-heat";
 
-  // The Fine band sits behind the Superb band, both centred on the target.
-  const fine = document.createElement("i");
-  fine.className = "cc-heat-fine";
-  fine.style.left = `${(payload.windowCentre - payload.fineWindowPct / 200) * 100}%`;
-  fine.style.width = `${payload.fineWindowPct}%`;
+  /*
+   * The bands are drawn from the server's own numbers, not recomputed here.
+   *
+   * They used to be laid out from a centre and a half-width, which at high
+   * Firecraft put both ends off the track - the Fine band is 3.95x the Superb
+   * one, and that is wider than the whole bar well before level 20. Taking the
+   * positions from the payload means the zone a player aims at is the zone
+   * they are scored against, by construction rather than by two pieces of
+   * arithmetic agreeing.
+   */
+  const band = (className: string, from: number, to: number) => {
+    const element = document.createElement("i");
+    element.className = className;
+    element.style.left = `${from * 100}%`;
+    element.style.width = `${Math.max(to - from, 0) * 100}%`;
+    return element;
+  };
 
-  const superb = document.createElement("i");
-  superb.className = "cc-heat-superb";
-  superb.style.left = `${(payload.windowCentre - payload.windowPct / 200) * 100}%`;
-  superb.style.width = `${payload.windowPct}%`;
+  // Fine sits behind Superb; both are already clamped to the bar.
+  const fine = band("cc-heat-fine", payload.fineFrom, payload.fineTo);
+  const superb = band("cc-heat-superb", payload.superbFrom, payload.superbTo);
 
   const marker = document.createElement("b");
   marker.className = "cc-heat-marker";
@@ -199,13 +210,24 @@ export function runHeatBar(payload: HeatBarPayload, callbacks: KitchenCallbacks)
   const tick = () => {
     const elapsed = Math.min(performance.now() - startedAt, payload.durationMs);
     marker.style.left = `${positionAt(elapsed) * 100}%`;
+
     if (elapsed >= payload.durationMs) {
-      // Out of time: the server settles it at the end of the bar either way.
+      /*
+       * The bar ran out. The server is already settling it as a Common dish -
+       * its own timer fires a moment after this one - so there is nothing to
+       * send and nothing to scold anybody with. The panel says what is
+       * happening, the same as it would after a click, and the result replaces
+       * it a beat later.
+       *
+       * It used to say "Out of time." there, which read as a failure state on
+       * a bar that had simply finished.
+       */
       stopped = true;
       stopButton.disabled = true;
-      hint.textContent = "Out of time.";
+      hint.textContent = "Cooking\u2026";
       return;
     }
+
     frame = requestAnimationFrame(tick);
   };
   frame = requestAnimationFrame(tick);

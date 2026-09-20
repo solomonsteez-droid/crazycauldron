@@ -217,11 +217,16 @@ export interface HeatBarPayload {
   speed: number;
   startOffset: number;
   direction: 1 | -1;
-  /** Centre of the Superb window, 0..1 along the bar. */
-  windowCentre: number;
-  /** Full width of the Superb window as a percentage of the bar. */
-  windowPct: number;
-  fineWindowPct: number;
+  /**
+   * The two bands, 0..1 along the bar, already clamped to fit on it.
+   *
+   * Positions rather than a centre and two widths, so the client draws the
+   * same zone the server scores instead of recomputing it and hoping.
+   */
+  superbFrom: number;
+  superbTo: number;
+  fineFrom: number;
+  fineTo: number;
   serverNow: number;
 }
 

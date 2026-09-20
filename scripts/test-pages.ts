@@ -154,26 +154,49 @@ async function main(): Promise<void> {
     check("and promise nothing about price or rewards", /no promise about its price/i.test(built));
 
     /*
-     * The fee model, said the right way round.
+     * The fee model, and the three things that have to travel with it.
      *
-     * $COOK takes standard pump.fun creator fees to the treasury, and they pay
-     * for servers and development. What they are not is a payout: any wording
-     * that implies holding the token earns you something would be a claim
-     * about income, which is the one claim this project must never make.
+     * $COOK uses pump.fun's Holder Rewards, which pays trading fees to holders
+     * in SOL. Saying so is fine; saying it without the next two sentences is
+     * not. That it is pump.fun's mechanism rather than the game's, and that
+     * nothing about it is promised, is what keeps a description of a feature
+     * from reading as a claim about income.
      */
     check(
-      "the fees are described as funding servers and development",
-      /creator fees/i.test(built) && /fund the servers and the development/i.test(built),
+      "the fees are described as Holder Rewards, paid to holders",
+      /holder rewards/i.test(built) && /distribut\w* to holders in SOL/i.test(built),
     );
     check(
-      "and as not shared out to holders",
-      /not shared out to holders/i.test(built),
+      "as pump.fun's mechanism and not the game's",
+      /pump\.fun's (?:system|mechanism)/i.test(built) &&
+        /(?:does not operate it|game does not operate)/i.test(built),
     );
+    check(
+      "with no guarantee attached",
+      /cannot guarantee/i.test(built),
+    );
+    check(
+      "and the team funding the servers",
+      /funded by the team/i.test(built),
+    );
+
+    /*
+     * The disclaimer stays exactly as it was. A token can have a fee mechanism
+     * and still promise nothing, and these are the sentences that say so.
+     */
+    for (const required of [
+      /no promise about its price/i,
+      /no promise of rewards, income, airdrops or returns of any kind/i,
+      /Nothing on this site is financial advice/i,
+    ]) {
+      check(`the disclaimer still says ${required.source}`, required.test(built));
+    }
+
+    // Wording that would turn a described mechanism into a promise.
     for (const forbidden of [
-      /holder rewards?/i,
-      /rewards? (?:are |is )?(?:paid|shared|distributed) to holders/i,
-      /fee distribution/i,
-      /passive (?:income|rewards?|payouts?)/i,
+      /guaranteed (?:rewards?|income|returns?|payouts?)/i,
+      /passive income/i,
+      /you will (?:earn|receive|be paid)/i,
       /earn(?:ing)?s? (?:just )?(?:by|from) holding/i,
     ]) {
       check(`the bundle never says ${forbidden.source}`, !forbidden.test(built));

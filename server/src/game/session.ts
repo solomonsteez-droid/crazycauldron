@@ -7,6 +7,7 @@
  */
 
 import type { Client } from "@colyseus/core";
+import type { HeatWindows } from "@crazycauldron/shared";
 import { gameStore } from "../db/index.js";
 import { log } from "../logger.js";
 import { ActionGuard } from "./actionGuard.js";
@@ -23,9 +24,8 @@ export interface PendingCook {
   speed: number;
   startOffset: number;
   direction: 1 | -1;
-  windowCentre: number;
-  windowPct: number;
-  fineWindowPct: number;
+  /** The bands, already clamped; see heatWindows in shared. */
+  windows: HeatWindows;
 }
 
 export class Session {

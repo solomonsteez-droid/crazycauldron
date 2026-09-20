@@ -588,18 +588,22 @@ export class HubRoom extends Room<{ state: HubState; client: Client<{ auth: Join
       speed: cook.speed,
       startOffset: cook.startOffset,
       direction: cook.direction,
-      windowCentre: cook.windowCentre,
-      windowPct: cook.windowPct,
-      fineWindowPct: cook.fineWindowPct,
+      superbFrom: cook.windows.superbFrom,
+      superbTo: cook.windows.superbTo,
+      fineFrom: cook.windows.fineFrom,
+      fineTo: cook.windows.fineTo,
       serverNow: cook.barStartedAt,
     };
     client.send(MSG_HEAT_BAR, payload);
 
-    // No click by the time the bar ends means the marker ran off the end; the
-    // dish is settled at that final position rather than left hanging.
+    /*
+     * No click by the time the bar ends settles the dish as Common rather than
+     * leaving it hanging. The grace is for the round trip: a click sent at
+     * 2.99s has to beat this timer home.
+     */
     session.clearTimer();
     session.timer = setTimeout(
-      () => this.settleCook(session, client, cook.durationMs),
+      () => this.settleCook(session, client, cook.durationMs, true),
       cook.durationMs + 400,
     );
   }
@@ -625,13 +629,13 @@ export class HubRoom extends Room<{ state: HubState; client: Client<{ auth: Join
   }
 
   /** Computes the dish and pays out after the cook time has elapsed. */
-  private settleCook(session: Session, client: Client, elapsedMs: number) {
+  private settleCook(session: Session, client: Client, elapsedMs: number, timedOut = false) {
     const cook = session.cook;
     if (!cook) return;
     session.cook = null;
     session.clearTimer();
 
-    const outcome = resolveCook(session.state, cook, elapsedMs);
+    const outcome = resolveCook(session.state, cook, elapsedMs, timedOut);
     if (!("quality" in outcome)) {
       session.guard.finish();
       const stalled = this.state.players.get(client.sessionId);
@@ -652,7 +656,9 @@ export class HubRoom extends Room<{ state: HubState; client: Client<{ auth: Join
       marker: Number(d.markerPos.toFixed(4)),
       superb: `${d.superbFrom.toFixed(3)}..${d.superbTo.toFixed(3)}`,
       fine: `${d.fineFrom.toFixed(3)}..${d.fineTo.toFixed(3)}`,
-      windowPct: Number(cook.windowPct.toFixed(1)),
+      superbPct: Number(cook.windows.superbPct.toFixed(1)),
+      finePct: Number(cook.windows.finePct.toFixed(1)),
+      timedOut: d.timedOut,
       fromBar: d.fromBar,
       result: d.final,
       firecraft: session.state.levels.firecraft,
@@ -678,7 +684,7 @@ export class HubRoom extends Room<{ state: HubState; client: Client<{ auth: Join
         recipeId: cook.recipeId,
         quality: outcome.quality,
         markerPos: outcome.markerPos,
-        windowCentre: cook.windowCentre,
+        windowCentre: cook.windows.centre,
         chefXp: outcome.chefXp,
         skillXp: outcome.skillXp,
         downgraded: outcome.downgraded,

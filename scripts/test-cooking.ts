@@ -11,7 +11,17 @@
  * the speed entirely.
  */
 
-import { CONFIG, timingWindowPct, type SkillLevels } from "@crazycauldron/shared";
+import {
+  CONFIG,
+  MAX_FINE_WINDOW_PCT,
+  MAX_SUPERB_WINDOW_PCT,
+  RECIPES,
+  heatWindows,
+  pickWindowCentre,
+  qualityForPosition,
+  timingWindowPct,
+  type SkillLevels,
+} from "@crazycauldron/shared";
 
 /** Average absolute timing error of the modelled player. */
 const MEAN_ERROR_MS = 60;
@@ -49,10 +59,19 @@ interface Mix {
   common: number;
 }
 
-/** Outcome distribution for one window, analytically rather than by sampling. */
-function mixFor(windowPct: number, fineMultiplier: number, sigma: number): Mix {
-  const superb = within(windowPct / 200, sigma);
-  const fine = Math.max(within((windowPct * fineMultiplier) / 200, sigma) - superb, 0);
+/**
+ * Outcome distribution for one window, analytically rather than by sampling.
+ *
+ * The widths come from `heatWindows`, which is what the server actually uses,
+ * so the clamps are part of what is measured. Reading the raw multiplier here
+ * instead would report the distribution of a bar that is not the one being
+ * played - at Firecraft 20 the raw Fine band is 158% of the bar, and a model
+ * that believes that overstates Fine and understates Common.
+ */
+function mixFor(rawWindowPct: number, sigma: number): Mix {
+  const windows = heatWindows(rawWindowPct, 0.5);
+  const superb = within(windows.superbPct / 200, sigma);
+  const fine = Math.max(within(windows.finePct / 200, sigma) - superb, 0);
   return { superb, fine, common: Math.max(1 - superb - fine, 0) };
 }
 
@@ -84,18 +103,22 @@ function report() {
   console.log(
     `  player error ${MEAN_ERROR_MS}ms average = ${(sigma * 100).toFixed(1)}% of the bar\n`,
   );
-  console.log("  firecraft  window   superb    fine   common");
-  console.log("  ---------  ------   ------   -----   ------");
+  console.log("  firecraft  superb    fine   superb    fine   common");
+  console.log("             window  window     rate    rate     rate");
+  console.log("  ---------  ------  ------   ------   -----   ------");
 
   const rates: Record<number, Mix> = {};
   for (const firecraft of [1, 5, 10, 15, 20]) {
-    const windowPct = timingWindowPct(levelsAt(firecraft), 0);
-    const mix = mixFor(windowPct, CONFIG.cooking.fineWindowMultiplier, sigma);
+    const raw = timingWindowPct(levelsAt(firecraft), 0);
+    const windows = heatWindows(raw, 0.5);
+    const mix = mixFor(raw, sigma);
     rates[firecraft] = mix;
+    const clamped = windows.superbPct < raw - 0.05 ? " (clamped)" : "";
     console.log(
-      `  ${String(firecraft).padStart(9)}  ${windowPct.toFixed(1).padStart(5)}%  ` +
+      `  ${String(firecraft).padStart(9)}  ${windows.superbPct.toFixed(1).padStart(5)}%  ` +
+        `${windows.finePct.toFixed(1).padStart(5)}%  ` +
         `${(mix.superb * 100).toFixed(1).padStart(6)}%  ${(mix.fine * 100).toFixed(1).padStart(5)}%  ` +
-        `${(mix.common * 100).toFixed(1).padStart(6)}%`,
+        `${(mix.common * 100).toFixed(1).padStart(6)}%${clamped}`,
     );
   }
 
@@ -131,10 +154,132 @@ function report() {
     near(high.fine, TARGETS[20].fine),
     `${(high.fine * 100).toFixed(1)}%`,
   );
+  const mid = rates[10]!;
+  check(
+    "Firecraft 10 sits between the two ends",
+    mid.superb > low.superb && mid.superb < high.superb,
+    `superb ${(mid.superb * 100).toFixed(1)}%, fine ${(mid.fine * 100).toFixed(1)}%`,
+  );
   check(
     "five Superbs in a row is unlikely at Firecraft 1",
     low.superb ** 5 < 0.01,
     `${(low.superb ** 5 * 100).toFixed(2)}% chance`,
+  );
+
+  // --- the bands fit on the bar -------------------------------------------
+  console.log();
+
+  /*
+   * The case that broke: everything maxed.
+   *
+   * The window reads the player, so the widest one is a level 20 chef with
+   * level 20 knifework and the best pan. That is where Fine reached 97% of a
+   * 100% bar, both ends off the track, and the drawn zone stopped being the
+   * scored one.
+   */
+  const maxed: SkillLevels = {
+    foraging: 20, prospecting: 20, knifework: 20, firecraft: 20, spicecraft: 20,
+  };
+  const bestPan = CONFIG.economy.pan.reduce((a, b) => (b.tier > a.tier ? b : a));
+  const rawMax = timingWindowPct(maxed, bestPan.tier);
+  const maxWindows = heatWindows(rawMax, 0.5);
+  console.log(
+    `  everything maxed (Firecraft 20, knifework 20, pan ${bestPan.tier}): ` +
+      `raw ${rawMax.toFixed(1)}% / ` +
+      `${(rawMax * CONFIG.cooking.fineWindowMultiplier).toFixed(1)}% ` +
+      `-> ${maxWindows.superbPct.toFixed(1)}% / ${maxWindows.finePct.toFixed(1)}%`,
+  );
+  check(
+    "the widest possible Fine band is clamped onto the bar",
+    maxWindows.finePct <= MAX_FINE_WINDOW_PCT + 1e-9 &&
+      rawMax * CONFIG.cooking.fineWindowMultiplier > MAX_FINE_WINDOW_PCT,
+    `raw ${(rawMax * CONFIG.cooking.fineWindowMultiplier).toFixed(1)}% -> ` +
+      `${maxWindows.finePct.toFixed(1)}%`,
+  );
+  const maxCentre = pickWindowCentre(maxWindows.finePct, 0);
+  const laid = heatWindows(rawMax, maxCentre);
+  check(
+    "and still sits entirely on it",
+    laid.fineFrom >= 0 && laid.fineTo <= 1,
+    `${laid.fineFrom.toFixed(3)}..${laid.fineTo.toFixed(3)}`,
+  );
+  console.log();
+  for (const firecraft of [1, 10, 20]) {
+    const raw = timingWindowPct(levelsAt(firecraft), 0);
+    const windows = heatWindows(raw, 0.5);
+    check(
+      `Firecraft ${firecraft}: Superb is at most ${MAX_SUPERB_WINDOW_PCT}% of the bar`,
+      windows.superbPct <= MAX_SUPERB_WINDOW_PCT + 1e-9,
+      `${windows.superbPct.toFixed(1)}%`,
+    );
+    check(
+      `Firecraft ${firecraft}: Fine is at most ${MAX_FINE_WINDOW_PCT}% of the bar`,
+      windows.finePct <= MAX_FINE_WINDOW_PCT + 1e-9,
+      `${windows.finePct.toFixed(1)}%`,
+    );
+    check(
+      `Firecraft ${firecraft}: Fine contains Superb`,
+      windows.finePct >= windows.superbPct,
+      `${windows.finePct.toFixed(1)}% vs ${windows.superbPct.toFixed(1)}%`,
+    );
+  }
+
+  /*
+   * Every centre the server can pick has to leave both bands on the bar. This
+   * is the bug that started it: a band laid out from a centre chosen without
+   * reference to its width ran off both ends and the drawn zone stopped
+   * matching the scored one.
+   */
+  console.log();
+  let offBar = 0;
+  let worstWidth = 0;
+  for (const firecraft of [1, 10, 20]) {
+    const raw = timingWindowPct(levelsAt(firecraft), 0);
+    for (let roll = 0; roll <= 1.0001; roll += 0.01) {
+      const provisional = heatWindows(raw, 0.5);
+      const windows = heatWindows(raw, pickWindowCentre(provisional.finePct, roll));
+      if (windows.fineFrom < 0 || windows.fineTo > 1) offBar += 1;
+      if (windows.superbFrom < 0 || windows.superbTo > 1) offBar += 1;
+      worstWidth = Math.max(worstWidth, windows.fineTo - windows.fineFrom);
+    }
+  }
+  check("no window the server can pick runs off the bar", offBar === 0, `${offBar} did`);
+  check(
+    "and the widest Fine band still leaves bar either side",
+    worstWidth <= MAX_FINE_WINDOW_PCT / 100 + 1e-9,
+    `${(worstWidth * 100).toFixed(1)}% of the bar`,
+  );
+
+  /*
+   * The scored band is the drawn band. qualityForPosition reads the same four
+   * numbers the payload carries, so a position just inside an edge scores as
+   * the band it is inside of and one just outside does not.
+   */
+  const sample = heatWindows(timingWindowPct(levelsAt(20), 0), 0.5);
+  check(
+    "a marker on the Superb edge is Superb",
+    qualityForPosition(sample, sample.superbTo - 1e-6) === "superb",
+  );
+  check(
+    "just outside it is Fine",
+    qualityForPosition(sample, sample.superbTo + 1e-6) === "fine",
+  );
+  check(
+    "and outside the Fine band is Common",
+    qualityForPosition(sample, sample.fineTo + 1e-6) === "common",
+  );
+
+  /*
+   * Only Firecraft moves the window. Pan and knifework are the player's own
+   * gear and skill; the recipe is not, and a bar that narrowed for a harder
+   * dish would be teaching a lesson that does not transfer.
+   */
+  const atTen = timingWindowPct(levelsAt(10), 0);
+  const everyRecipeSame = RECIPES.every(() => timingWindowPct(levelsAt(10), 0) === atTen);
+  check("recipe tier does not enter the window maths", everyRecipeSame);
+  check(
+    "but Firecraft does",
+    timingWindowPct(levelsAt(20), 0) > timingWindowPct(levelsAt(1), 0),
   );
 
   console.log(`\n${failures === 0 ? "test-cooking: OK" : `test-cooking: ${failures} failure(s)`}`);

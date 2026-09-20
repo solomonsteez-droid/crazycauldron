@@ -19,6 +19,9 @@ import {
   cookXpAwards,
   findIngredient,
   ingredientSlots,
+  heatWindows,
+  pickWindowCentre,
+  qualityForPosition,
   recipe as recipeOrThrow,
   recipeUsesHoney,
   recipeUsesSpice,
@@ -122,7 +125,16 @@ export function planCook(state: PlayerState, recipeId: string): CookPlan | CookR
  * the reply can be checked against what was actually sent.
  */
 export function makeHeatBar(state: PlayerState, recipe: Recipe, cookId: string): PendingCook {
-  const windowPct = timingWindowPct(state.levels, state.panTier);
+  /*
+   * Firecraft decides the window, and nothing about the recipe does.
+   *
+   * timingWindowPct reads the player - their Firecraft, their pan, their
+   * knifework - and never the dish. A hard recipe is hard because of what it
+   * needs and what it pays, not because the bar narrows for it; a bar that
+   * changed size per recipe would teach a player nothing they could carry to
+   * the next one.
+   */
+  const rawWindowPct = timingWindowPct(state.levels, state.panTier);
   const durationMs = CONFIG.cooking.barMs;
 
   // Between 2.5 and 3.5 full passes of the bar, times the retune multiplier:
@@ -139,10 +151,16 @@ export function makeHeatBar(state: PlayerState, recipe: Recipe, cookId: string):
     speed: sweeps / durationMs,
     startOffset: Math.random(),
     direction: Math.random() < 0.5 ? 1 : -1,
-    // Kept off the very ends so a marker that bounces cannot skip past it.
-    windowCentre: 0.2 + Math.random() * 0.6,
-    windowPct,
-    fineWindowPct: windowPct * CONFIG.cooking.fineWindowMultiplier,
+    /*
+     * The centre is picked from the *clamped* Fine width, so the band it
+     * implies is one that fits on the bar. Working the other way round - pick
+     * a centre, then lay out the bands - is what put 158% of a window on a
+     * 100% track.
+     */
+    windows: (() => {
+      const provisional = heatWindows(rawWindowPct, 0.5);
+      return heatWindows(rawWindowPct, pickWindowCentre(provisional.finePct, Math.random()));
+    })(),
   };
 }
 
@@ -207,6 +225,8 @@ export interface CookDiagnostics {
   superbTo: number;
   fineFrom: number;
   fineTo: number;
+  /** True when the bar ran out rather than being stopped. */
+  timedOut: boolean;
   fromBar: Quality;
   final: Quality;
 }
@@ -222,14 +242,7 @@ export interface CookOutcome {
   cookMs: number;
 }
 
-/** Raw quality from where the marker stopped, before any skill adjustments. */
-function qualityFromPosition(cook: PendingCook, markerPos: number): Quality {
-  const distance = Math.abs(markerPos - cook.windowCentre);
-  // windowPct is the full width of the window, so half of it is the reach.
-  if (distance <= cook.windowPct / 200) return "superb";
-  if (distance <= cook.fineWindowPct / 200) return "fine";
-  return "common";
-}
+
 
 /**
  * Settles the dish: quality, ingredients spent, XP paid, codex updated.
@@ -240,6 +253,8 @@ export function resolveCook(
   state: PlayerState,
   cook: PendingCook,
   elapsedMs: number,
+  /** True when the bar ran out with no click. See below. */
+  timedOut = false,
 ): CookOutcome | CookRefusal {
   const recipe = recipeOrThrow(cook.recipeId);
   const levels = state.levels;
@@ -251,7 +266,15 @@ export function resolveCook(
   }
 
   const markerPos = markerPosition(cook, elapsedMs);
-  const fromBar = qualityFromPosition(cook, markerPos);
+
+  /*
+   * Letting the bar run out is a Common dish, wherever the marker happened to
+   * be at the end. Judging the final position instead would hand a Superb to
+   * anyone who did nothing and got lucky, which is the opposite of what a
+   * timing game is for - and at high Firecraft, where the window is nearly
+   * half the bar, "did nothing and got lucky" would be most of the time.
+   */
+  const fromBar: Quality = timedOut ? "common" : qualityForPosition(cook.windows, markerPos);
   let quality = fromBar;
 
   /*
@@ -302,20 +325,18 @@ export function resolveCook(
   const paid = cookXpAwards(recipe, levels, quality);
   for (const award of paid) state.awardSkillXp(award.skill, award.xp);
 
-  const superbHalf = cook.windowPct / 200;
-  const fineHalf = cook.fineWindowPct / 200;
-
   return {
     quality,
     markerPos,
     diagnostics: {
       elapsedMs,
       markerPos,
-      windowCentre: cook.windowCentre,
-      superbFrom: cook.windowCentre - superbHalf,
-      superbTo: cook.windowCentre + superbHalf,
-      fineFrom: cook.windowCentre - fineHalf,
-      fineTo: cook.windowCentre + fineHalf,
+      windowCentre: cook.windows.centre,
+      superbFrom: cook.windows.superbFrom,
+      superbTo: cook.windows.superbTo,
+      fineFrom: cook.windows.fineFrom,
+      fineTo: cook.windows.fineTo,
+      timedOut,
       fromBar,
       final: quality,
     },

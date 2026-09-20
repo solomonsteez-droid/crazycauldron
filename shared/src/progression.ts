@@ -304,6 +304,92 @@ export function timingWindowPct(levels: SkillLevels, panTier: number): number {
   return Math.min(withPan * blade, 100);
 }
 
+
+/**
+ * The two bands on the heat bar, as positions rather than widths.
+ *
+ * The widths alone were not enough, and at high Firecraft they stopped being
+ * usable at all. `timingWindowPct` reaches about 40 at Firecraft 20, and Fine
+ * is 3.95 times that - 158% of a bar that is 100% wide. Drawn from a centre
+ * and a half-width, both ends ran off the track; judged from the same numbers,
+ * the server was scoring against a window nobody could see the edges of.
+ *
+ * So the widths are clamped, the centre is chosen so the wider band fits, and
+ * what comes out is four numbers between 0 and 1. The client draws exactly
+ * those and the server judges exactly those, which is the only way the drawn
+ * zone and the scored zone cannot drift apart.
+ */
+export const MAX_SUPERB_WINDOW_PCT = 45;
+export const MAX_FINE_WINDOW_PCT = 90;
+
+/**
+ * How far the centre stays from either end, at minimum.
+ *
+ * A window hard against the edge is reachable only at the moment the marker
+ * turns around, which is a different game from the one the rest of the bar is
+ * playing.
+ */
+const MIN_CENTRE_MARGIN = 0.1;
+
+export interface HeatWindows {
+  centre: number;
+  /** Full widths, as a percentage of the bar, after clamping. */
+  superbPct: number;
+  finePct: number;
+  /** The bands themselves, 0..1 along the bar. */
+  superbFrom: number;
+  superbTo: number;
+  fineFrom: number;
+  fineTo: number;
+}
+
+/**
+ * Clamps the two widths and lays them out around a centre.
+ *
+ * Fine is never narrower than Superb - it contains it - and never wider than
+ * the cap, so a maxed-out player gets a band they can see rather than a bar
+ * that is entirely window.
+ */
+export function heatWindows(rawWindowPct: number, centre: number): HeatWindows {
+  const superbPct = Math.min(Math.max(rawWindowPct, 0), MAX_SUPERB_WINDOW_PCT);
+  const finePct = Math.min(
+    Math.max(rawWindowPct * CONFIG.cooking.fineWindowMultiplier, superbPct),
+    MAX_FINE_WINDOW_PCT,
+  );
+
+  const superbHalf = superbPct / 200;
+  const fineHalf = finePct / 200;
+  const clamp = (n: number) => Math.min(Math.max(n, 0), 1);
+
+  return {
+    centre,
+    superbPct,
+    finePct,
+    superbFrom: clamp(centre - superbHalf),
+    superbTo: clamp(centre + superbHalf),
+    fineFrom: clamp(centre - fineHalf),
+    fineTo: clamp(centre + fineHalf),
+  };
+}
+
+/**
+ * Where to put the window so the whole of it is on the bar.
+ *
+ * `roll` is 0..1 from the caller's own generator, so the server can seed this
+ * however it likes and a test can pin it.
+ */
+export function pickWindowCentre(finePct: number, roll: number): number {
+  const margin = Math.min(Math.max(finePct / 200, MIN_CENTRE_MARGIN), 0.5);
+  return margin + roll * Math.max(1 - 2 * margin, 0);
+}
+
+/** Which band a stopped marker landed in. Bounds, not distances - see above. */
+export function qualityForPosition(windows: HeatWindows, markerPos: number): Quality {
+  if (markerPos >= windows.superbFrom && markerPos <= windows.superbTo) return "superb";
+  if (markerPos >= windows.fineFrom && markerPos <= windows.fineTo) return "fine";
+  return "common";
+}
+
 /** Sections whose *plants* or *minerals* this player may gather from. */
 export function gatherSectionAccess(levels: SkillLevels, skill: GatherSkillId): Set<number> {
   const set = new Set<number>([1]);
