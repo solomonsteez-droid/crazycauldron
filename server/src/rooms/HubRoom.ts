@@ -81,7 +81,7 @@ import {
   type TravelIntent,
 } from "@crazycauldron/shared";
 import { config } from "../config.js";
-import { players as playerRepo } from "../db/index.js";
+import { gameStore, players as playerRepo } from "../db/index.js";
 import { makeHeatBar, planCook, resolveCook, validateClick } from "../game/cooking.js";
 import { buyUpgrade, eatStack, sellStack } from "../game/economy.js";
 import { completeGather, nodeStates, planGather } from "../game/gathering.js";
@@ -89,6 +89,7 @@ import { loadSession, type Session } from "../game/session.js";
 import { VillagerCrowd } from "../game/villagers.js";
 import { log } from "../logger.js";
 import { recordMessage, recordTick } from "../metrics.js";
+import { utcDay } from "../time.js";
 import { checkHold, invalidateHold } from "../tokengate/index.js";
 import { authenticateJoin, CLOSE_INSUFFICIENT_HOLD, type JoinAuth } from "./auth.js";
 import { HubState, Player } from "./schema.js";
@@ -666,6 +667,16 @@ export class HubRoom extends Room<{ state: HubState; client: Client<{ auth: Join
     });
 
     session.save();
+
+    /*
+     * The public tally, counted where the dish is settled rather than where
+     * the player is told about it - a disconnect between the two must not
+     * lose the count. Failing to write it must also never fail a cook, so it
+     * is fire-and-forget with its own log line.
+     */
+    void gameStore.recordCook(outcome.quality, utcDay()).catch((err: unknown) => {
+      log.warn("stats.record_failed", { message: (err as Error).message });
+    });
 
     // The dish is settled the moment the marker stops; the cook time is the
     // wait before the player is told, which keeps one timer rather than two.

@@ -38,6 +38,7 @@ internet, and each fails quietly rather than loudly.
 | `TEST_BYPASS_HOLD` | unset or `false` | `true` disables the token gate entirely |
 | `JWT_SECRET` | 32+ random characters, not the example | anyone with it can mint sessions |
 | `CORS_ORIGIN` | your real origins, comma separated | no `localhost`, no `*`; see below |
+| `SHOW_MINT` | `true`, once the mint is real | the site says "revealed at launch" while false |
 | `SIWS_DOMAIN` | the domain wallets should display | wallets sign for whatever this says |
 | `RPC_URL` | a mainnet endpoint | devnet balances are not real balances |
 | `COOK_MINT` | the real mint | the gate has nothing to check, and `/official` publishes it |
@@ -173,6 +174,28 @@ What made the difference, in order of how much each bought:
 npm run build:client
 git add client/dist && git commit -m "client: rebuild"
 ```
+
+There are two bundles now, and `build:client` makes both: `index.html` is the
+marketing site and `play.html` is the game. They are separate inputs so that
+the front page does not carry Phaser — the game bundle is about 1.8 MB and the
+site's is about 90 kB, and somebody deciding in four seconds whether to try
+this should not download a renderer to read a paragraph. The server sends
+`play.html` for `/play` and `index.html` for everything else that looks like a
+page.
+
+**When you change a painting or the brand art**, also run:
+
+```bash
+npm run site:art
+git add client/public/assets/site client/public/favicon.png && git commit -m "art: site sizes"
+```
+
+That makes the web-sized copies the site loads. The paintings the game uses are
+4.5 to 6.7 MB each and the whole page has a 3 MB budget, so each one becomes a
+wide and a narrow JPEG — about 1 MB for all eight, and a phone downloads a
+fifth of that. It also cuts the Open Graph card and the icons from
+`art/brand/cook_token.png`. Like `client/dist`, the output is committed, so the
+1 GB host never runs an image pipeline.
 
 `npm run build:client` bundles and writes `client/dist/.build-stamp`; the root
 `npm run build` only *checks* that stamp, and fails if it does not match. That

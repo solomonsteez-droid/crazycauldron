@@ -5,6 +5,7 @@ import type {
   GameRepository,
   GameStateRecord,
   LeaderboardEntry,
+  PublicTally,
   PurchaseRecord,
   StackRecord,
 } from "./gameTypes.js";
@@ -77,6 +78,11 @@ export function migrateGameTables(db: Database.Database) {
       item_id     TEXT NOT NULL,
       unlocked_at TEXT NOT NULL,
       PRIMARY KEY (wallet, item_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS cook_tally (
+      day     TEXT PRIMARY KEY,
+      superbs INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS server_flags (
@@ -404,6 +410,34 @@ export class SqliteGameRepository implements GameRepository {
       cook: r.cook,
       at: r.at,
     }));
+  }
+
+  async recordCook(quality: Quality, day: string): Promise<void> {
+    if (quality !== "superb") return;
+    this.db
+      .prepare(
+        `INSERT INTO cook_tally (day, superbs) VALUES (?, 1)
+         ON CONFLICT(day) DO UPDATE SET superbs = superbs + 1`,
+      )
+      .run(day);
+  }
+
+  async publicTally(day: string): Promise<PublicTally> {
+    const chefs = this.db
+      .prepare<[], { n: number }>("SELECT COUNT(*) AS n FROM players")
+      .get();
+    const dishes = this.db
+      .prepare<[], { n: number }>("SELECT COALESCE(SUM(cooked_count), 0) AS n FROM player_codex")
+      .get();
+    const superbs = this.db
+      .prepare<[string], { superbs: number }>("SELECT superbs FROM cook_tally WHERE day = ?")
+      .get(day);
+
+    return {
+      chefsRegistered: chefs?.n ?? 0,
+      dishesCooked: dishes?.n ?? 0,
+      superbsToday: superbs?.superbs ?? 0,
+    };
   }
 
   async readFlag(name: string): Promise<string | null> {

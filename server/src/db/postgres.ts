@@ -19,6 +19,7 @@ import type {
   GameRepository,
   GameStateRecord,
   LeaderboardEntry,
+  PublicTally,
   PurchaseRecord,
   StackRecord,
 } from "./gameTypes.js";
@@ -124,6 +125,11 @@ export async function openPostgres(url: string): Promise<pg.Pool> {
       item_id     TEXT NOT NULL,
       unlocked_at TEXT NOT NULL,
       PRIMARY KEY (wallet, item_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS cook_tally (
+      day     TEXT PRIMARY KEY,
+      superbs BIGINT NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS server_flags (
@@ -492,6 +498,44 @@ export class PostgresGameRepository implements GameRepository {
       cook: Number(r.cook),
       at: r.at,
     }));
+  }
+
+  async recordCook(quality: Quality, day: string): Promise<void> {
+    if (quality !== "superb") return;
+    await this.pool.query(
+      `INSERT INTO cook_tally (day, superbs) VALUES ($1, 1)
+       ON CONFLICT (day) DO UPDATE SET superbs = cook_tally.superbs + 1`,
+      [day],
+    );
+  }
+
+  async publicTally(day: string): Promise<PublicTally> {
+    /*
+     * One round trip. Three counts over three tables would be three waits on
+     * a network the SQLite side does not have, and this is behind a cache
+     * anyway - but a single statement is also the only way the three numbers
+     * are from the same instant.
+     *
+     * Postgres returns BIGINT as a string, so every column is cast.
+     */
+    const { rows } = await this.pool.query<{
+      chefs: string;
+      dishes: string;
+      superbs: string;
+    }>(
+      `SELECT
+         (SELECT COUNT(*) FROM players) AS chefs,
+         (SELECT COALESCE(SUM(cooked_count), 0) FROM player_codex) AS dishes,
+         (SELECT COALESCE(MAX(superbs), 0) FROM cook_tally WHERE day = $1) AS superbs`,
+      [day],
+    );
+
+    const row = rows[0];
+    return {
+      chefsRegistered: Number(row?.chefs ?? 0),
+      dishesCooked: Number(row?.dishes ?? 0),
+      superbsToday: Number(row?.superbs ?? 0),
+    };
   }
 
   async readFlag(name: string): Promise<string | null> {

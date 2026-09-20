@@ -16,6 +16,7 @@ import { matchmakeRouter } from "./matchmaking/routes.js";
 import { shopRouter } from "./shop/routes.js";
 import { adminRouter } from "./web/admin.js";
 import { publicRouter } from "./web/publicConfig.js";
+import { statsRouter } from "./web/stats.js";
 import { serveClient } from "./web/static.js";
 import { HubRoom } from "./rooms/HubRoom.js";
 import { WaitingRoom } from "./rooms/WaitingRoom.js";
@@ -188,6 +189,7 @@ function routes(app: express.Application): void {
   app.use("/shop", shopRouter);
   // Facts the public pages need, including the contract address players copy.
   app.use("/public", publicRouter);
+  app.use("/stats", statsRouter);
   // The rollback switch. Absent entirely unless ADMIN_TOKEN is set.
   app.use("/admin", adminRouter);
 

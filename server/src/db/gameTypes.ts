@@ -65,6 +65,19 @@ export interface PurchaseRecord {
   at: string;
 }
 
+/**
+ * The four numbers the public /stats endpoint publishes.
+ *
+ * Counts and nothing else. No wallet, no name, no balance: this is served to
+ * anybody who asks for it, and the safe way to keep it that way is for the
+ * shape itself to have nowhere to put a person.
+ */
+export interface PublicTally {
+  chefsRegistered: number;
+  dishesCooked: number;
+  superbsToday: number;
+}
+
 export interface GameRepository {
   load(wallet: string): Promise<GameStateRecord>;
   save(state: GameStateRecord): Promise<void>;
@@ -82,6 +95,23 @@ export interface GameRepository {
 
   /** What a wallet has bought, newest first. */
   purchasesOf(wallet: string): Promise<PurchaseRecord[]>;
+
+  /**
+   * Counts one finished cook, for the public tally.
+   *
+   * Only Superbs are actually written: the all-time dish count is already in
+   * player_codex, summed at read time, so counting it again here would be a
+   * second number that could disagree with the first. What is not derivable
+   * from anything else is how many Superbs happened *today*, so that is the
+   * one this records.
+   *
+   * `day` is passed in rather than taken from the clock so the caller decides
+   * the timezone once, and a test can ask for yesterday.
+   */
+  recordCook(quality: Quality, day: string): Promise<void>;
+
+  /** The public tally, for /stats. */
+  publicTally(day: string): Promise<PublicTally>;
 
   /**
    * A named switch, shared by every process.
