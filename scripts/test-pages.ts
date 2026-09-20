@@ -154,31 +154,54 @@ async function main(): Promise<void> {
     check("and promise nothing about price or rewards", /no promise about its price/i.test(built));
 
     /*
-     * The fee model, and the three things that have to travel with it.
+     * The fee model, and the sentence that has to travel with it.
      *
-     * $COOK uses pump.fun's Holder Rewards, which pays trading fees to holders
-     * in SOL. Saying so is fine; saying it without the next two sentences is
-     * not. That it is pump.fun's mechanism rather than the game's, and that
-     * nothing about it is promised, is what keeps a description of a feature
-     * from reading as a claim about income.
+     * $COOK takes standard pump.fun creator fees; they go to the treasury and
+     * pay for the game. Saying where they go is fine. Saying it alone is not,
+     * because a reader who wants to hear "and some comes back to me" will, so
+     * "nothing is paid out to holders" is asserted as its own requirement
+     * rather than trusted to be implied.
+     *
+     * The page said the opposite for a while - Holder Rewards, trading fees
+     * distributed to holders in SOL - which is why the forbidden list below
+     * has the affirmative phrasings in it by name.
      */
     check(
-      "the fees are described as Holder Rewards, paid to holders",
-      /holder rewards/i.test(built) && /distribut\w* to holders in SOL/i.test(built),
+      "the fees are described as pump.fun creator fees",
+      /creator fees/i.test(built) && /pump\.fun/i.test(built),
     );
     check(
-      "as pump.fun's mechanism and not the game's",
-      /pump\.fun's (?:system|mechanism)/i.test(built) &&
-        /(?:does not operate it|game does not operate)/i.test(built),
+      "received by the team at the treasury wallet",
+      /treasury wallet/i.test(built) && /received by the team/i.test(built),
     );
     check(
-      "with no guarantee attached",
-      /cannot guarantee/i.test(built),
+      "and spent on the servers and the game",
+      /fund the servers and the development/i.test(built) &&
+        /run the servers and build the game/i.test(built),
     );
     check(
-      "and the team funding the servers",
-      /funded by the team/i.test(built),
+      "with nothing paid out to holders, said outright",
+      /nothing is paid out to holders/i.test(built),
     );
+
+    /*
+     * And no trace of the model it replaced. These run against the whole
+     * bundle, so a stale string anywhere - a page, a tooltip, a comment that
+     * survived minification - fails rather than ships.
+     *
+     * Each pattern needs an affirmative subject, so that the approved sentence
+     * "Nothing is paid out to holders" cannot trip the check that exists to
+     * enforce it.
+     */
+    for (const forbidden of [
+      /holder rewards/i,
+      /fees?\b[^.]{0,60}(?:are|is) (?:paid|distributed|shared|split)(?: out)? to holders/i,
+      /distribut\w*[^.]{0,60}to holders/i,
+      /(?:pays|paid|distributed) to holders in SOL/i,
+      /holders (?:receive|earn|get) (?:a )?(?:share|cut|part)/i,
+    ]) {
+      check(`no fee is promised to holders: ${forbidden.source}`, !forbidden.test(built));
+    }
 
     /*
      * The disclaimer stays exactly as it was. A token can have a fee mechanism
