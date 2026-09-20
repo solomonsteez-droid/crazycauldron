@@ -316,6 +316,7 @@ export class HubScene extends Phaser.Scene {
 
     // Grass, water, lanterns and the light shaft, one frame on.
     this.ambience.tick(now);
+    this.map.tickPortals(now);
 
     // Everyone in the room breathes, fidgets and dances - the motion is
     // procedural, so it costs the same for one player or thirty.
@@ -371,7 +372,7 @@ export class HubScene extends Phaser.Scene {
 
   private buildMap(mapId: number) {
     this.map?.destroy();
-    this.map = new GameMap(this, mapId);
+    this.map = new GameMap(this, mapId, this.fx);
     this.currentSection = mapId;
     this.map.applyLabelScale(this.zoom);
     this.refreshNodes();

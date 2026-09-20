@@ -9,6 +9,7 @@
 
 import ambienceJson from "./ambience.json" with { type: "json" };
 import ingredientsJson from "./ingredients.json" with { type: "json" };
+import portalsJson from "./portals.json" with { type: "json" };
 import recipesJson from "./recipes.json" with { type: "json" };
 import sectionsJson from "./sections.json" with { type: "json" };
 import shopJson from "./shop.json" with { type: "json" };
@@ -21,6 +22,8 @@ import type {
   MapAnchors,
   TerrainFile,
   Ingredient,
+  PortalDef,
+  PortalsFile,
   Recipe,
   Section,
   SectionsFile,
@@ -78,6 +81,24 @@ export function decorFor(mapId: number): DecorPiece[] {
 }
 
 export const AMBIENCE = ambienceJson as unknown as AmbienceFile;
+
+/**
+ * How the gates are drawn.
+ *
+ * Every colour and size a portal has, in one file, because they are drawn in
+ * code now rather than cut from a painting - which means tuning one is an
+ * edit and a reload instead of a pipeline run.
+ */
+export const PORTALS = portalsJson as unknown as PortalsFile;
+
+/** The gate that leads to a map, or the way home when nothing else matches. */
+export function portalFor(section: number): PortalDef {
+  return (
+    PORTALS.portals.find((p) => p.section === section) ??
+    PORTALS.portals.find((p) => p.section === 0) ??
+    PORTALS.portals[0]!
+  );
+}
 
 /** Particle settings for a map, or null when it has none authored. */
 export function lifeFor(mapId: number) {
