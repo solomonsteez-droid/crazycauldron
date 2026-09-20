@@ -1,17 +1,17 @@
 /**
- * The three pages that are not the game.
+ * The routes and the endpoints behind the site, against a running server.
  *
  *   npx tsx scripts/test-pages.ts        (against a running server)
  *
- * Checked at the two levels that can be checked without a browser: that the
- * server answers every page path with the app shell and the roadmap file with
- * markdown, and that the built bundle actually contains the pages - a route
- * that resolves to a bundle without the code in it is a blank screen.
+ * What the pages *say* is checked by scripts/test-site.ts, which renders them
+ * under Node. This is the other half: that the server answers each path with
+ * the right one of the two documents, that the endpoints they read return what
+ * they promise, and that neither leaks anything.
  *
- * The one thing it watches hardest is /public/config, because that is where
- * the contract address a player copies comes from. It must carry the address,
- * and it must carry nothing else - a secret served to every visitor is a
- * secret no longer.
+ * The one it watches hardest is /public/config, because that is where the
+ * contract address a player copies comes from. It must carry the address, and
+ * it must carry nothing else - a secret served to every visitor is a secret no
+ * longer.
  */
 
 import fs from "node:fs";
@@ -29,12 +29,19 @@ function check(what: string, ok: boolean, detail = ""): void {
   if (!ok) failures += 1;
 }
 
-/** The built bundle, whatever Vite named it this time. */
-function bundle(): string {
+/**
+ * One of the two built bundles, whatever Vite named it this time.
+ *
+ * "index" is the marketing site and the two legal pages; "play" is the game.
+ * They are separate files now, so a check has to say which one it means - the
+ * login panel's links are in the game's and the fee wording is in the site's,
+ * and a check that did not say would quietly stop checking anything.
+ */
+function bundle(which: "index" | "play" = "index"): string {
   if (!fs.existsSync(BUNDLE_DIR)) return "";
   const file = fs
     .readdirSync(BUNDLE_DIR)
-    .find((name) => name.startsWith("index-") && name.endsWith(".js"));
+    .find((name) => name.startsWith(`${which}-`) && name.endsWith(".js"));
   return file ? fs.readFileSync(path.join(BUNDLE_DIR, file), "utf8") : "";
 }
 
@@ -43,24 +50,34 @@ async function main(): Promise<void> {
 
   // --- routing -------------------------------------------------------------
   console.log("-- the server answers every page --");
-  for (const page of ["/official", "/rules", "/roadmap"]) {
+
+  /*
+   * Two documents, and which one each path gets.
+   *
+   * The site and the game are separate bundles now: the game's is 1.8 MB
+   * because Phaser is most of it, and the front page must not carry it. So
+   * only /play may answer with play.html, and a path that quietly drifted into
+   * the game's document would cost every visitor the whole renderer.
+   */
+  const sitePaths = ["/", "/whitepaper", "/docs", "/roadmap", "/official", "/rules"];
+  for (const page of [...sitePaths, "/play"]) {
     const res = await fetch(`${HTTP}${page}`);
     const type = res.headers.get("content-type") ?? "";
-    check(`${page} is the app shell`, res.ok && type.includes("text/html"), `${res.status} ${type}`);
-  }
+    const body = await res.text();
+    const isGame = /src="\/assets\/play-[^"]+\.js"/.test(body);
+    const wantsGame = page === "/play";
 
-  const md = await fetch(`${HTTP}/roadmap.md`);
-  const roadmap = await md.text();
-  check("the roadmap file is served", md.ok, String(md.status));
-  check(
-    "and it is the roadmap",
-    roadmap.includes("# CrazyCauldron Roadmap"),
-    `${roadmap.length} bytes`,
-  );
-  check(
-    "which says it is a plan, not a promise",
-    /plan, not a promise/i.test(roadmap),
-  );
+    check(
+      `${page} is served`,
+      res.ok && type.includes("text/html"),
+      `${res.status} ${type}`,
+    );
+    check(
+      `${page} is the ${wantsGame ? "game" : "site"}`,
+      isGame === wantsGame,
+      isGame ? "play.html" : "index.html",
+    );
+  }
 
   // A missing asset must 404 rather than quietly becoming a page of HTML.
   const missing = await fetch(`${HTTP}/assets/generated/nope.png`);
@@ -85,6 +102,50 @@ async function main(): Promise<void> {
     "the socials say none, rather than nothing",
     cfg.social.x === "none" && cfg.social.telegram === "none",
     `${cfg.social.x} / ${cfg.social.telegram}`,
+  );
+  check(
+    "and it says whether the address may be published",
+    typeof (cfg as { showMint?: unknown }).showMint === "boolean",
+    String((cfg as { showMint?: unknown }).showMint),
+  );
+
+  // --- the live counters ---------------------------------------------------
+  console.log("\n-- /stats --");
+  const statsRes = await fetch(`${HTTP}/stats`);
+  const statsType = statsRes.headers.get("content-type") ?? "";
+  check(
+    "it answers with JSON, not the app shell",
+    statsRes.ok && statsType.includes("application/json"),
+    `${statsRes.status} ${statsType}`,
+  );
+
+  const stats = (await statsRes.json()) as Record<string, unknown>;
+  for (const key of ["playersOnline", "chefsRegistered", "dishesCooked", "superbsToday"]) {
+    check(
+      `${key} is a number`,
+      typeof stats[key] === "number" && Number.isFinite(stats[key] as number),
+      String(stats[key]),
+    );
+  }
+  check(
+    "and it carries nothing else",
+    Object.keys(stats).length === 4,
+    Object.keys(stats).join(", "),
+  );
+
+  /*
+   * A public counter endpoint is a place a wallet could end up by accident,
+   * so it is checked for one the way /public/config is checked for secrets.
+   */
+  const statsRaw = JSON.stringify(stats);
+  check(
+    "no wallet-shaped string anywhere in it",
+    !/[1-9A-HJ-NP-Za-km-z]{32,44}/.test(statsRaw),
+  );
+  check(
+    "it is cached rather than counted per visitor",
+    (statsRes.headers.get("cache-control") ?? "").includes("max-age="),
+    statsRes.headers.get("cache-control") ?? "(none)",
   );
 
   /*
@@ -138,7 +199,10 @@ async function main(): Promise<void> {
   const built = bundle();
   check("there is a built bundle", built.length > 0, "run npm run build -w client if this fails");
   if (built) {
-    check("it knows the page paths", ["/official", "/rules", "/roadmap"].every((p) => built.includes(p)));
+    check(
+      "it knows the page paths",
+      ["/official", "/rules", "/roadmap", "/whitepaper", "/play"].every((p) => built.includes(p)),
+    );
     check(
       "the official page warns about fake contract addresses",
       /Any other contract address is a different token/.test(built),
@@ -195,7 +259,7 @@ async function main(): Promise<void> {
      */
     for (const forbidden of [
       /holder rewards/i,
-      /fees?\b[^.]{0,60}(?:are|is) (?:paid|distributed|shared|split)(?: out)? to holders/i,
+      /fees?\b[^.]{0,60}(?<!nothing )(?:are|is) (?:paid|distributed|shared|split)(?: out)? to holders/i,
       /distribut\w*[^.]{0,60}to holders/i,
       /(?:pays|paid|distributed) to holders in SOL/i,
       /holders (?:receive|earn|get) (?:a )?(?:share|cut|part)/i,
@@ -229,7 +293,20 @@ async function main(): Promise<void> {
       "and that items are tied to the wallet",
       /belong to the wallet/i.test(built),
     );
-    check("the login panel links to them", /cc-links/.test(built));
+    /*
+     * The login panel's links are in the game's bundle now, not this one. The
+     * split moved the pages out from under the login card, and a check that
+     * followed them here would have stopped checking the panel at all.
+     */
+    const game = bundle("play");
+    check("there is a built game too", game.length > 0);
+    check("the login panel links to the pages", /cc-links/.test(game));
+    check(
+      "and the site's own footer does as well",
+      ["/official", "/rules", "/whitepaper", "/roadmap"].every((page) =>
+        built.includes(`"${page}"`),
+      ),
+    );
   }
 
   console.log(`\ntest-pages: ${failures === 0 ? "OK" : `${failures} FAILED`}`);

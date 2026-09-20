@@ -651,6 +651,7 @@ npx tsx scripts/test-cooking.ts
 npx tsx scripts/test-camera.ts
 npx tsx scripts/test-mobile.ts
 npx tsx scripts/test-config-docs.ts      # every setting is in this file
+npx tsx scripts/test-site.ts             # the marketing site, and its 3 MB budget
 npx tsx scripts/simulate-progression.ts
 
 npm run build                            # the page tests read the built bundle
@@ -658,7 +659,7 @@ npm run dev                              # then, against it:
 npx tsx scripts/smoke-game.ts            # the whole loop, end to end
 npx tsx scripts/test-auth-abuse.ts       # replay, forgery, expiry
 npx tsx scripts/test-action-abuse.ts     # cheating clients
-npx tsx scripts/test-pages.ts            # /official, /rules, /roadmap
+npx tsx scripts/test-pages.ts            # routing, /public/config and /stats
 AUTH_RATE_LIMIT=20 npx tsx scripts/test-rate-limits.ts
 
 # These start and stop their own servers

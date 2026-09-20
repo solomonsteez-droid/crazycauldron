@@ -35,7 +35,14 @@ function check(label: string, ok: boolean, detail = ""): void {
 
 const read = (relative: string) => fs.readFileSync(path.join(ROOT, relative), "utf8");
 
-const html = read("client/index.html");
+/*
+ * The game's shell, which is play.html now: index.html became the marketing
+ * site when the two were split into separate bundles. Everything below is
+ * about a canvas you drag on, so it is the game's document that has to pin
+ * the page, claim the gestures and cover the notch - the site is a document
+ * and is supposed to scroll.
+ */
+const html = read("client/play.html");
 const overlay = read("client/src/ui/overlay.ts");
 const cooking = read("client/src/ui/cooking.ts");
 const panels = read("client/src/ui/panels.ts");
