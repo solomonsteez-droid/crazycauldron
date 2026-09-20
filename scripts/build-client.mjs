@@ -42,6 +42,12 @@ const STAMP = path.join(DIST, ".build-stamp");
  * bundle, so a change there changes the client even though no client file
  * moved.
  *
+ * `client/public` is in here because vite copies it into dist verbatim. The
+ * art is most of what a change to this game actually is - a re-nudged hat
+ * offset, a repainted map - and leaving it out meant the one kind of edit that
+ * happens most often could not make the stamp move. A stale dist would then
+ * verify happily on the host and ship yesterday's art with today's code.
+ *
  * `package-lock.json` is deliberately absent. It is committed, so it matches
  * in principle; in practice the host runs an install before the build and an
  * install may rewrite it, which would be a mismatch caused by the installer
@@ -50,6 +56,7 @@ const STAMP = path.join(DIST, ".build-stamp");
  */
 const WATCHED = [
   ["client", "src"],
+  ["client", "public"],
   ["client", "index.html"],
   ["client", "package.json"],
   ["client", "vite.config.ts"],
@@ -60,14 +67,50 @@ const WATCHED = [
 ];
 
 /**
- * Extensions that go into the hash.
+ * Extensions whose bytes are text, and are normalised before hashing.
+ */
+const TEXT_EXTENSIONS = new Set([
+  ".ts",
+  ".tsx",
+  ".js",
+  ".mjs",
+  ".cjs",
+  ".json",
+  ".html",
+  ".css",
+  ".md",
+  ".txt",
+]);
+
+/**
+ * Extensions whose bytes are hashed as they are, and only under
+ * `client/public`.
+ *
+ * The scope is the point. Everything in that directory is copied into dist
+ * verbatim and served, so a picture there is part of what ships and has to
+ * count. Everywhere else a binary is a leftover - a screenshot dropped in
+ * src, an export nobody deleted - and hashing it would put the number at the
+ * mercy of files one machine has and the other does not, which is the failure
+ * this whole scheme exists to avoid.
+ */
+const BINARY_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".mp3", ".ogg", ".wav", ".woff", ".woff2", ".ttf"]);
+
+/** Where a binary counts as source rather than as litter. */
+const ASSET_ROOT = "client/public/";
+
+/**
+ * Whether a file goes into the hash at all.
  *
  * An allowlist rather than a denylist: a stray file - an editor swap file, a
  * .orig from a merge, a screenshot somebody dropped in src - would otherwise
  * be hashed on the machine that has it and not on the one that does not, and
  * the mismatch would be blamed on line endings for an afternoon.
  */
-const HASHED_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".mjs", ".cjs", ".json", ".html", ".css"]);
+function hashed(relative) {
+  const extension = path.extname(relative).toLowerCase();
+  if (TEXT_EXTENSIONS.has(extension)) return true;
+  return relative.startsWith(ASSET_ROOT) && BINARY_EXTENSIONS.has(extension);
+}
 
 /** Directories never worth walking into. */
 const SKIP_DIRS = new Set(["node_modules", "dist", ".git"]);
@@ -85,9 +128,8 @@ function collect(target, found) {
   if (!stat) return;
 
   if (stat.isFile()) {
-    if (HASHED_EXTENSIONS.has(path.extname(target).toLowerCase())) {
-      found.push(path.relative(ROOT, target).split(path.sep).join("/"));
-    }
+    const relative = path.relative(ROOT, target).split(path.sep).join("/");
+    if (hashed(relative)) found.push(relative);
     return;
   }
 
@@ -115,9 +157,16 @@ function hashedFiles() {
  * identical commit, and both are removed here: line endings, because git
  * checks these files out as CRLF on Windows and LF on Linux, and a leading
  * byte-order mark, which some editors add and others do not.
+ *
+ * Binary files get neither treatment - their bytes are the same on both
+ * machines already, and "normalising" a PNG would corrupt it into a number
+ * that means nothing.
  */
 function normalise(file) {
-  let text = fs.readFileSync(path.join(ROOT, file), "utf8");
+  const bytes = fs.readFileSync(path.join(ROOT, file));
+  if (!TEXT_EXTENSIONS.has(path.extname(file).toLowerCase())) return bytes;
+
+  let text = bytes.toString("utf8");
   if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
   return text.replace(/\r\n/g, "\n");
 }

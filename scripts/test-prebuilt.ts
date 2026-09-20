@@ -52,6 +52,7 @@ function run(args: string[], env: Record<string, string> = {}) {
 }
 
 const stamp = () => run(["--stamp-only"]).out.trim();
+const explained = () => run(["--explain"]).out;
 
 function main(): void {
   console.log("test-prebuilt\n");
@@ -140,6 +141,54 @@ function main(): void {
     fs.writeFileSync(probe, original);
   }
   check("and the probe was put back", fs.readFileSync(probe).equals(original));
+
+  /*
+   * The art is hashed too, and as bytes.
+   *
+   * vite copies client/public into dist verbatim, so a re-nudged hat offset or
+   * a repainted map changes what ships without touching a line of code. That
+   * is the most common kind of change this game has; if it could not move the
+   * stamp, a dist built before it would still verify on the host and yesterday
+   * is what players would see.
+   *
+   * A PNG also must not be put through the line-ending normaliser, which would
+   * rewrite 0x0d 0x0a inside the image data and produce a number that means
+   * nothing. This checks the number moves and comes back, which it can only do
+   * if the bytes are read and restored as bytes.
+   */
+  console.log("\n-- the art counts as source --");
+  check(
+    "the offsets are hashed",
+    explained().includes("client/public/assets/generated/offsets.json"),
+  );
+  check(
+    "and so are the painted maps",
+    explained().includes("client/public/assets/maps/map_hub.png"),
+  );
+
+  /*
+   * Nothing real is edited to prove it. These probes are new files under
+   * client/public, which is exactly what a new piece of art is - and anything
+   * that lands there ships, so moving the stamp is the right answer.
+   *
+   * The pair also proves the bytes are hashed as bytes. A PNG must not go
+   * through the line-ending normaliser: if it did, CRLF inside image data
+   * would be rewritten to LF and these two different files would hash the
+   * same, which is a stamp that cannot tell two pictures apart.
+   */
+  const probePng = path.join(ROOT, "client", "public", "assets", "generated", "_probe.png");
+  try {
+    fs.writeFileSync(probePng, Buffer.from([0x0d, 0x0a]));
+    const withCrLf = stamp();
+    check("a new image moves the stamp", withCrLf !== first, withCrLf);
+
+    fs.writeFileSync(probePng, Buffer.from([0x0a]));
+    const withLf = stamp();
+    check("and image bytes are not line-ending normalised", withLf !== withCrLf, withLf);
+  } finally {
+    fs.rmSync(probePng, { force: true });
+  }
+  check("the stamp comes home once the probe is gone", stamp() === first, stamp());
 
   /*
    * A file the other machine does not have must not move the number. This is

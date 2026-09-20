@@ -189,16 +189,25 @@ So the mode is not inferred any more. The host runs `build`, which passes
 still read, but only to refuse: `COLYSEUS_CLOUD`, `NODE_ENV=production` or
 `CI=true` turn building off even if `--build` was asked for.
 
-The stamp hashes `client/src`, `shared/src`, `client/index.html`, the client
-and shared `package.json`, the client's tsconfig and vite config, and
-`tsconfig.base.json`. Three things make it identical on Windows and Linux:
-line endings are normalised, a byte-order mark is stripped, and only known
-source extensions are hashed, with dotfiles and `node_modules` skipped - so a
-stray `.orig` from a merge or a screenshot dropped in `src` cannot move it on
-one machine and not the other. `package-lock.json` is deliberately **not**
-hashed: it is committed, but an install on the host may rewrite it, and that
-would be a mismatch caused by the installer rather than by anything that
-changes the bundle.
+The stamp hashes `client/src`, `client/public`, `shared/src`,
+`client/index.html`, the client and shared `package.json`, the client's
+tsconfig and vite config, and `tsconfig.base.json`.
+
+`client/public` is in there because vite copies it into dist verbatim, so the
+art is part of what ships: a re-nudged hat offset or a repainted map changes
+the deployment without touching a line of code, and that is the most common
+kind of change this game has. Images are hashed as raw bytes — **only** under
+`client/public`, where everything is served. Elsewhere a binary is a leftover
+rather than a source file, and hashing it would make the number depend on
+which machine happens to have a stray screenshot.
+
+Three things keep it identical on Windows and Linux: line endings are
+normalised in text files, a byte-order mark is stripped, and only known
+extensions are hashed, with dotfiles and `node_modules` skipped — so a stray
+`.orig` from a merge cannot move it on one machine and not the other.
+`package-lock.json` is deliberately **not** hashed: it is committed, but an
+install on the host may rewrite it, and that would be a mismatch caused by the
+installer rather than by anything that changes the bundle.
 
 If two machines ever disagree, run this on each and diff the output rather
 than guessing:
