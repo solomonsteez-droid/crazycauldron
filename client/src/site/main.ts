@@ -20,6 +20,7 @@ import { fillLiveNumbers, homePage } from "./home.js";
 import { startParallax, wireCopyButtons } from "./layout.js";
 import { startHero } from "./hero.js";
 import { startHeatDemo, startRecipeBrowser } from "./sections/craft.js";
+import { startTocHighlight, whitepaperPage } from "./whitepaper.js";
 import { pageFor, renderPage } from "../ui/pages.js";
 
 /** The routes this bundle draws. Anything else is the game's index.html. */
@@ -78,6 +79,10 @@ function render(route: Route, config: SiteConfig, stats: SiteStats | null): void
     if (canvas instanceof HTMLCanvasElement) startHero(canvas);
     startHeatDemo();
     startRecipeBrowser();
+  } else if (route === "whitepaper") {
+    mount(root, whitepaperPage(config));
+    document.title = "CrazyCauldron — whitepaper";
+    startTocHighlight();
   }
 
   startParallax();
