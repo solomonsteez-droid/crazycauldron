@@ -1,9 +1,15 @@
 /**
- * The three pages that are not the game: /official, /rules and /roadmap.
+ * The two pages that are neither the game nor the marketing site: /official
+ * and /rules.
  *
- * They live in the same bundle and are served by the same Express, so there is
- * one deployment and one version of the truth. A request for /rules gets
- * index.html, this file notices the path, and the game never boots.
+ * They live in the site's bundle and are served by the same Express, so there
+ * is one deployment and one version of the truth. A request for /rules gets
+ * index.html and the site's router hands it here.
+ *
+ * They keep this plainer look on purpose. Their job is to be checkable - one
+ * of them publishes the contract address - and wrapping them in the marketing
+ * site's furniture would make them read as advertising, which is the opposite
+ * of what they are for.
  *
  * /official exists for one reason. A token project attracts people who
  * register a similar name and publish a different contract address, and the
@@ -15,7 +21,7 @@
 import { env } from "../net/env.js";
 
 /** Paths this module owns. Anything else boots the game as usual. */
-export const PAGE_PATHS = ["/official", "/rules", "/roadmap"] as const;
+export const PAGE_PATHS = ["/official", "/rules"] as const;
 export type PagePath = (typeof PAGE_PATHS)[number];
 
 /** The page the current URL asks for, or null when it is asking for the game. */
@@ -141,12 +147,14 @@ function nav(current: PagePath): HTMLElement {
   const bar = document.createElement("nav");
   bar.className = "cc-nav";
   for (const [href, label] of [
-    ["/", "← Play"],
+    ["/", "← Home"],
+    ["/play", "Play"],
+    ["/whitepaper", "Whitepaper"],
+    ["/roadmap", "Roadmap"],
     ["/official", "Official"],
     ["/rules", "Rules"],
-    ["/roadmap", "Roadmap"],
   ] as const) {
-    if (href === current) continue;
+    if (href === (current as string)) continue;
     const link = document.createElement("a");
     link.href = href;
     link.textContent = label;
@@ -377,128 +385,6 @@ function rules(root: HTMLElement): void {
 }
 
 /**
- * A small Markdown renderer for the roadmap.
- *
- * Enough for the document that is actually there - headings, paragraphs, lists,
- * tables, bold and inline code - and no more. Pulling in a parser for one
- * static file would cost more bytes than the file, and this one builds nodes
- * rather than assigning HTML, so nothing in the document can inject markup.
- */
-function renderMarkdown(source: string, root: HTMLElement): void {
-  const lines = source.replace(/\r\n/g, "\n").split("\n");
-  let index = 0;
-
-  /** Splits a table row on its pipes, dropping the empty edges. */
-  const cells = (line: string) =>
-    line
-      .replace(/^\||\|$/g, "")
-      .split("|")
-      .map((cell) => cell.trim());
-
-  /** Bold and inline code, as text nodes and elements - never as HTML. */
-  const inline = (text: string, into: HTMLElement) => {
-    const pattern = /(\*\*[^*]+\*\*|`[^`]+`)/g;
-    let last = 0;
-    for (const match of text.matchAll(pattern)) {
-      const at = match.index ?? 0;
-      if (at > last) into.append(text.slice(last, at));
-      const token = match[0];
-      if (token.startsWith("`")) {
-        const code = document.createElement("code");
-        code.textContent = token.slice(1, -1);
-        into.append(code);
-      } else {
-        const strong = document.createElement("strong");
-        strong.textContent = token.slice(2, -2);
-        into.append(strong);
-      }
-      last = at + token.length;
-    }
-    if (last < text.length) into.append(text.slice(last));
-  };
-
-  while (index < lines.length) {
-    const line = lines[index] ?? "";
-
-    if (line.trim() === "") {
-      index += 1;
-      continue;
-    }
-
-    const headingMatch = /^(#{1,4})\s+(.*)$/.exec(line);
-    if (headingMatch) {
-      const level = Math.min(headingMatch[1]!.length, 4);
-      const element = document.createElement(`h${level}`);
-      inline(headingMatch[2]!, element);
-      root.append(element);
-      index += 1;
-      continue;
-    }
-
-    // A table: a header row, a divider of dashes, then body rows.
-    if (line.includes("|") && (lines[index + 1] ?? "").includes("---")) {
-      const table = document.createElement("table");
-      const head = document.createElement("tr");
-      for (const cell of cells(line)) {
-        const th = document.createElement("th");
-        inline(cell, th);
-        head.append(th);
-      }
-      table.append(head);
-
-      index += 2;
-      while (index < lines.length && (lines[index] ?? "").includes("|")) {
-        const row = document.createElement("tr");
-        for (const cell of cells(lines[index] ?? "")) {
-          const td = document.createElement("td");
-          inline(cell, td);
-          row.append(td);
-        }
-        table.append(row);
-        index += 1;
-      }
-      root.append(table);
-      continue;
-    }
-
-    if (/^[-*]\s+/.test(line)) {
-      const ul = document.createElement("ul");
-      while (index < lines.length && /^[-*]\s+/.test(lines[index] ?? "")) {
-        const li = document.createElement("li");
-        inline((lines[index] ?? "").replace(/^[-*]\s+/, ""), li);
-        ul.append(li);
-        index += 1;
-      }
-      root.append(ul);
-      continue;
-    }
-
-    // Anything else is a paragraph, running until a blank line.
-    const paragraphLines: string[] = [];
-    while (index < lines.length && (lines[index] ?? "").trim() !== "") {
-      paragraphLines.push(lines[index] ?? "");
-      index += 1;
-    }
-    const p = document.createElement("p");
-    inline(paragraphLines.join(" "), p);
-    root.append(p);
-  }
-}
-
-async function roadmap(root: HTMLElement): Promise<void> {
-  document.title = "CrazyCauldron - Roadmap";
-  try {
-    const res = await fetch("/roadmap.md");
-    if (!res.ok) throw new Error(String(res.status));
-    renderMarkdown(await res.text(), root);
-  } catch {
-    root.append(
-      heading("Roadmap", "The roadmap could not be loaded just now. Please try again shortly."),
-    );
-  }
-}
-
-/**
  * Renders the page the URL asks for. Called before the game boots, and returns
  * true when it has taken over the document.
  */
@@ -517,6 +403,5 @@ export async function renderPage(path: PagePath): Promise<void> {
   ui.setAttribute("style", "position:static;display:block;pointer-events:auto");
 
   if (path === "/official") await official(root);
-  else if (path === "/rules") rules(root);
-  else await roadmap(root);
+  else rules(root);
 }

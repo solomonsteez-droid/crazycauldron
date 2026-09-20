@@ -11,8 +11,9 @@
  */
 
 import { html } from "./dom.js";
-import { band } from "./layout.js";
+import { band, footer, topbar } from "./layout.js";
 import { SPRITES } from "./sprites.js";
+import type { SiteConfig } from "./data.js";
 
 export interface Floor {
   id: string;
@@ -216,4 +217,37 @@ export function roadmapSection(): ReturnType<typeof html> {
     label: "roadmap.txt",
     body: roadmapBody(),
   });
+}
+
+/**
+ * The roadmap on its own page.
+ *
+ * Same body, more room: the floors get the paintings behind them at full
+ * width, so the plan reads as a path across the world rather than a table.
+ * It replaced a page that fetched a Markdown file and parsed it in the
+ * browser - one more copy of the plan, in one more format, free to drift from
+ * the one on the front page.
+ */
+export function roadmapPage(config: SiteConfig): ReturnType<typeof html> {
+  return html`
+    ${topbar(false)}
+    <main class="site-wrap">
+      <section class="band" id="roadmap">
+        <img
+          class="band-art"
+          src="${SPRITES.painting("map_forest", false)}"
+          srcset="${SPRITES.paintingSrcset("map_forest")}"
+          sizes="100vw"
+          alt=""
+          aria-hidden="true"
+          decoding="async"
+        />
+        <div class="inner">
+          <div class="label">roadmap.txt</div>
+          ${roadmapBody()}
+        </div>
+      </section>
+    </main>
+    ${footer(config)}
+  `;
 }

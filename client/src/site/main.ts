@@ -21,6 +21,7 @@ import { startParallax, wireCopyButtons } from "./layout.js";
 import { startHero } from "./hero.js";
 import { startHeatDemo, startRecipeBrowser } from "./sections/craft.js";
 import { startTocHighlight, whitepaperPage } from "./whitepaper.js";
+import { roadmapPage } from "./roadmap.js";
 import { pageFor, renderPage } from "../ui/pages.js";
 
 /** The routes this bundle draws. Anything else is the game's index.html. */
@@ -83,6 +84,9 @@ function render(route: Route, config: SiteConfig, stats: SiteStats | null): void
     mount(root, whitepaperPage(config));
     document.title = "CrazyCauldron — whitepaper";
     startTocHighlight();
+  } else if (route === "roadmap") {
+    mount(root, roadmapPage(config));
+    document.title = "CrazyCauldron — roadmap";
   }
 
   startParallax();
