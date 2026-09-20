@@ -650,7 +650,7 @@ npx tsx scripts/test-motion.ts           # world motion cost, against a 4ms budg
 npx tsx scripts/test-cooking.ts
 npx tsx scripts/test-camera.ts
 npx tsx scripts/test-walk.ts             # the stride advances, and the sheets that have one
-npx tsx scripts/test-portals.ts          # the gates, against a 1ms budget
+npx tsx scripts/test-offsets.ts          # generated placement vs hand nudges
 npx tsx scripts/test-mobile.ts
 npx tsx scripts/test-config-docs.ts      # every setting is in this file
 npx tsx scripts/test-site.ts             # the marketing site, and its 3 MB budget

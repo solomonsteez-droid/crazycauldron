@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-20T05:34:41.621Z",
+  "generatedAt": "2026-09-20T20:15:39.936Z",
   "bodyFrame": {
     "width": 32,
     "height": 48
@@ -285,6 +285,11 @@
           "footTravel": 3.1,
           "strideless": false
         }
+      },
+      "anchors": {
+        "headTop": 0,
+        "shoulders": 6,
+        "centre": 17
       }
     },
     "female": {
@@ -556,6 +561,11 @@
           "footTravel": 3.3,
           "strideless": false
         }
+      },
+      "anchors": {
+        "headTop": 0,
+        "shoulders": 7,
+        "centre": 16
       }
     }
   },

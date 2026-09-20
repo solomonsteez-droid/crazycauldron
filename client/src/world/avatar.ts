@@ -18,9 +18,10 @@ import { BODY_FRAME, bodyKey, hatKey } from "../art/assets.js";
 import {
   defaultOffsets,
   offsetFor,
+  resolveOffsets,
+  type Art,
   type Direction,
   type Manifest,
-  type OffsetsFile,
 } from "../art/manifest.js";
 import { DEFAULT_CYCLE, gaitPose, type WalkCycleData } from "./gait.js";
 
@@ -105,7 +106,7 @@ export class Avatar {
   constructor(
     private readonly scene: Phaser.Scene,
     private readonly manifest: Manifest,
-    private readonly offsets: OffsetsFile,
+    private readonly art: Art,
     look: AvatarLook,
     x: number,
     y: number,
@@ -386,7 +387,7 @@ export class Avatar {
        * being why the body is mirrored in the first place.
        */
       const placed = offsetFor(
-        this.offsets,
+        resolveOffsets(this.art, this.look.body),
         kind,
         id,
         this.mirrored ? "left" : this.direction,

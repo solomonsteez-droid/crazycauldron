@@ -3,9 +3,20 @@
  *
  * The pipeline guesses where each hat and cloak sits on the body. That guess is
  * close but never right to the pixel, and a hat one pixel low reads as wrong
- * immediately. This shows the composite at 4x, lets the arrow keys nudge the
- * selected garment, and writes the result to
- * client/public/assets/generated/offsets.json, which the game reads at load.
+ * immediately. This shows the composite at 4x and lets the arrow keys nudge
+ * the selected garment.
+ *
+ * **What it saves, and what it does not.** It writes only
+ * art/offsets.overrides.json, and only the values somebody actually changed -
+ * this item, this direction. The pipeline's own guesses live in
+ * generated/offsets.default.json and are rewritten on every run; this file is
+ * never touched by anything but this tool. That separation is the whole
+ * reason both files exist: one file holding both meant that every re-cut
+ * either clobbered the nudges or left them describing a body that had moved.
+ *
+ * Nudges are stored as rows below the body's measured head top (or its
+ * shoulders, for a cloak) rather than as pixels from the corner of the frame,
+ * so a re-cut that shifts the whole figure carries them along with it.
  *
  * Deliberately plain DOM and canvas: it is a workbench, not a screen.
  */
@@ -15,11 +26,16 @@ import {
   GENERATED,
   defaultOffsets,
   loadArt,
+  resolveOffsets,
+  toOverride,
+  type Art,
   type Direction,
   type ItemOffsets,
   type Manifest,
   type OffsetsFile,
+  type OverridesFile,
   type OverlayEntry,
+  type Vec2,
 } from "../art/manifest.js";
 
 const ZOOM = 4;
@@ -56,7 +72,19 @@ async function loadAtlas(body: string): Promise<Atlas | null> {
 
 class AlignTool {
   private manifest!: Manifest;
+  private art!: Art;
+
+  /**
+   * The placement being edited, resolved for the body on screen.
+   *
+   * Working state, thrown away on save: what is written is `overrides`.
+   * Keeping both means the canvas can go on drawing absolute pixels while the
+   * file records rows below an anchor.
+   */
   private offsets!: OffsetsFile;
+
+  /** The only thing this tool writes. Starts as whatever is on disk. */
+  private overrides!: OverridesFile;
   private readonly atlases = new Map<string, Atlas>();
   private readonly overlayImages = new Map<string, HTMLImageElement>();
 
@@ -84,7 +112,9 @@ class AlignTool {
   async start(root: HTMLElement) {
     const art = await loadArt();
     this.manifest = art.manifest;
-    this.offsets = art.offsets;
+    this.art = art;
+    this.overrides = art.overrides;
+    this.reresolve();
 
     for (const body of BODIES) {
       const atlas = await loadAtlas(body);
@@ -117,12 +147,39 @@ class AlignTool {
     return this.manifest[kind].find((e) => e.id === id);
   }
 
+  /**
+   * Re-resolves the working placement for the body on screen.
+   *
+   * Called on load and whenever the previewed body changes, because the
+   * anchors differ between bodies - which is the point of storing rows rather
+   * than pixels.
+   */
+  private reresolve() {
+    const merged = resolveOffsets({ ...this.art, overrides: this.overrides }, this.body);
+    // A fresh object per resolve, so editing the working copy cannot write
+    // through into the cache the rest of the game is reading.
+    this.offsets = JSON.parse(JSON.stringify(merged)) as OffsetsFile;
+  }
+
   private current(kind: "hats" | "cloaks", id: string): ItemOffsets {
     const existing = this.offsets[kind][id];
     if (existing) return existing;
     const fresh = defaultOffsets(this.entry(kind, id));
     this.offsets[kind][id] = fresh;
     return fresh;
+  }
+
+  /**
+   * Records one changed value, and nothing else.
+   *
+   * The override file gains an entry for this item and this direction only.
+   * Three directions left alone stay absent, so the pipeline's own guess goes
+   * on deciding them and a better guess next time is an improvement rather
+   * than something to undo by hand.
+   */
+  private record(kind: "hats" | "cloaks", id: string, direction: Direction, point: Vec2) {
+    const item = (this.overrides[kind][id] ??= {});
+    item[direction] = toOverride(this.manifest, this.body, kind, point);
   }
 
   private nudge(dx: number, dy: number) {
@@ -132,6 +189,7 @@ class AlignTool {
     const point = offsets[this.direction];
     point.x += dx;
     point.y += dy;
+    this.record(this.selected, id, this.direction, point);
     this.draw();
   }
 
@@ -353,9 +411,11 @@ class AlignTool {
       "but still cut and still worth aligning for when they come back. " +
       "F toggles the flip flag. " +
       "E toggles the eraser: left-drag rubs pixels out, right-drag paints them " +
-      "back from the source. [ and ] change the brush size. Save writes both " +
-      "offsets.json and any overlay you have cleaned; Reset re-cuts the " +
-      "selected item from its drop.";
+      "back from the source. [ and ] change the brush size. Save writes " +
+      "art/offsets.overrides.json - only the values you changed, as rows " +
+      "below the body's head top, so a re-cut cannot invalidate them - plus " +
+      "any overlay you have cleaned; Reset re-cuts the selected item from " +
+      "its drop.";
 
     const controls = document.createElement("div");
     controls.className = "row";
@@ -363,6 +423,9 @@ class AlignTool {
     controls.append(
       this.select("Body", [...BODIES], this.body, (v) => {
         this.body = v;
+        // The anchors differ between bodies, so the working placement has to
+        // be resolved again against the one now on screen.
+        this.reresolve();
         this.draw();
       }),
       this.select(
@@ -476,6 +539,7 @@ class AlignTool {
           if (id) {
             const offsets = this.current(this.selected, id);
             offsets.flip = !offsets.flip;
+            (this.overrides[this.selected][id] ??= {}).flip = offsets.flip;
             this.draw();
           }
           break;
@@ -491,12 +555,17 @@ class AlignTool {
     button.disabled = true;
     button.textContent = "Saving…";
     try {
-      const response = await fetch("/dev/offsets", {
+      /*
+       * Only the overrides. The generated defaults belong to the pipeline and
+       * are not this tool's to write - saving a merged file is exactly how
+       * the two used to get confused with each other.
+       */
+      const response = await fetch("/dev/overrides", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(this.offsets, null, 2),
+        body: JSON.stringify(this.overrides, null, 2),
       });
-      if (!response.ok) throw new Error(`offsets ${response.status}`);
+      if (!response.ok) throw new Error(`overrides ${response.status}`);
 
       // Any overlay the eraser touched goes back to generated/ as a PNG, so
       // the game and the next pipeline run both see the cleaned art.

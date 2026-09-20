@@ -20,7 +20,7 @@ import {
   type EquipIntent,
 } from "@crazycauldron/shared";
 import { bodyKey, companionKey, dishKey, hatKey, ingredientKey } from "../art/assets.js";
-import { defaultOffsets, loadArt, type Manifest, type OffsetsFile } from "../art/manifest.js";
+import { defaultOffsets, loadArt, resolveOffsets, type Art } from "../art/manifest.js";
 import { fetchLeaderboard } from "../net/api.js";
 import { gameStore } from "../net/game.js";
 import { openModal, toast, type ModalHandle } from "./overlay.js";
@@ -139,7 +139,9 @@ function wardrobePreview(kind: WardrobeKind, id: string, size = 48): HTMLCanvasE
 
   const art = wardrobeArt;
   const entry = id ? art?.manifest.hats.find((e) => e.id === id) : undefined;
-  const saved = art?.offsets.hats?.[id] ?? defaultOffsets(entry);
+  // The preview draws a male body, so it resolves the nudges against one.
+  const saved = art ? resolveOffsets(art, "male").hats?.[id] : undefined;
+  const placement = saved ?? defaultOffsets(entry);
 
   // The body frame is a cell inside the atlas, so it is drawn by hand.
   const bodyTexture = game.textures.get(bodyKey("male"));
@@ -163,12 +165,12 @@ function wardrobePreview(kind: WardrobeKind, id: string, size = 48): HTMLCanvasE
     );
   }
 
-  if (id) draw(hatKey(id), saved.down.x, saved.down.y);
+  if (id) draw(hatKey(id), placement.down.x, placement.down.y);
   return canvas;
 }
 
 /** Filled once so the preview can read offsets without awaiting per item. */
-let wardrobeArt: { manifest: Manifest; offsets: OffsetsFile } | null = null;
+let wardrobeArt: Art | null = null;
 void loadArt().then((art) => {
   wardrobeArt = art;
 });

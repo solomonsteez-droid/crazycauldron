@@ -20,9 +20,8 @@ import {
   labelScale,
   type Rect,
 } from "./camera.js";
-import { TEX_NODE, TEX_NODE_SPENT } from "./textures.js";
-import { Portal } from "../world/portal.js";
-import { hasProcessedNode, mapKey, nodeArchetype, nodeKey } from "../art/assets.js";
+import { TEX_GLOW, TEX_NODE, TEX_NODE_SPENT } from "./textures.js";
+import { GATE_PROP, hasProcessedNode, mapKey, nodeArchetype, nodeKey, propKey } from "../art/assets.js";
 import { Effects } from "../world/effects.js";
 
 /**
@@ -66,20 +65,11 @@ export class GameMap {
   private readonly nodeLabels = new Map<string, Phaser.GameObjects.Text>();
   private readonly nodeRings = new Map<string, Phaser.GameObjects.Graphics>();
   private readonly zoneMarkers = new Map<string, Phaser.GameObjects.GameObject[]>();
-  /** The gates, drawn in code. Ticked by the scene, destroyed with the map. */
-  private readonly portals: Portal[] = [];
   private highlighted: MapFeature | null = null;
 
   constructor(
     private readonly scene: Phaser.Scene,
     readonly mapId: number,
-    /**
-     * The particle pool, for the gates' motes and petals.
-     *
-     * Optional because a map is built before the effects in some tests, and a
-     * map without gates that move is still a map; a crash on load is not.
-     */
-    private readonly fx?: Effects,
   ) {
     const area = areaFor(mapId);
     const bounds = boundsOf(mapId);
@@ -120,18 +110,46 @@ export class GameMap {
       const at = cellToWorld(centre.tileX, centre.tileY);
       const marks: Phaser.GameObjects.GameObject[] = [];
 
-      if (zone.kind === "portal" && this.fx) {
+      if (zone.kind === "portal") {
+        if (zone.glow) {
+          const tint = Phaser.Display.Color.HexStringToColor(zone.glow).color;
+          const halo = this.scene.add
+            .image(at.x, at.y, TEX_GLOW)
+            .setOrigin(0.5)
+            .setDepth(this.depthFor(zone.baseline) - 1)
+            .setTint(tint)
+            .setAlpha(0.3)
+            .setBlendMode(Phaser.BlendModes.ADD);
+          halo.setDisplaySize(zone.w * CELL, zone.h * CELL);
+
+          this.scene.tweens.add({
+            targets: halo,
+            alpha: 0.55,
+            duration: 1700,
+            yoyo: true,
+            repeat: -1,
+            ease: "Sine.easeInOut",
+          });
+          halo.setData("glow", true);
+          this.decorations.push(halo);
+          marks.push(halo);
+        }
+
         /*
-         * A gate, built in code.
+         * An arch over the path mouth.
          *
          * Stood on the zone's baseline like anything else on the map, so a
-         * player walking up to one passes in front of it and one standing
-         * beyond it is framed by it. It is the only thing still drawn over a
-         * painting, because a path leaving the picture is the one thing the
-         * picture does not say is a door - and it is the loudest object in
-         * the hub on purpose.
+         * player walking up to a gate passes in front of it and one standing
+         * beyond it is framed by it. Width is the zone's own, height follows
+         * the art; the arch is the only prop still drawn over a painting,
+         * because a path leaving the picture is the one thing the picture
+         * does not say is a door.
          */
-        this.portals.push(new Portal(this.scene, this.fx, zone, this.depthFor(zone.baseline)));
+        const arch = this.gateSprite(zone);
+        if (arch) {
+          this.decorations.push(arch);
+          marks.push(arch);
+        }
       }
 
       if (zone.name) {
@@ -166,6 +184,41 @@ export class GameMap {
   }
 
   // --- nodes ----------------------------------------------------------------
+
+  /** The processed archway for a gate, or null when its art is missing. */
+  private gateSprite(zone: AreaZone): Phaser.GameObjects.Image | null {
+    const id = zone.section !== undefined ? GATE_PROP[zone.section] : undefined;
+    // The way home out of a section reuses whichever arch that section has.
+    const key = propKey(id ?? GATE_PROP[this.mapId] ?? "portal_meadows");
+    if (!this.scene.textures.exists(key)) return null;
+
+    const centre = zoneCentre(zone);
+    const at = cellToWorld(centre.tileX, centre.tileY);
+
+    /*
+     * The base of the arch sits on the gate cell, and the art grows upward
+     * from there - origin (0.5, 1) on the bottom edge of the baseline row. A
+     * player walking to the gate stands in front of its foot rather than
+     * inside it.
+     */
+    const sprite = this.scene.add
+      .image(at.x, (zone.baseline + 1) * CELL, key)
+      .setOrigin(0.5, 1)
+      .setDepth(this.depthFor(zone.baseline));
+
+    /*
+     * Drawn at the size it was cut, and drawn smoothly.
+     *
+     * The pipeline sizes a portal by height - three characters - because that
+     * is what makes it read as a doorway rather than as scenery. Stretching it
+     * to the zone's width instead would make an arch over a two-cell gate
+     * squat and one over a four-cell gate enormous, for no reason a player
+     * could see. LINEAR because it is a painting: NEAREST on a downscaled
+     * painting is the one thing that makes it look like a mistake.
+     */
+    sprite.texture.setFilter(Phaser.Textures.FilterMode.LINEAR);
+    return sprite;
+  }
 
   /** The texture key of the painting under everything, for sampling it. */
   get paintingKey(): string {
@@ -450,14 +503,7 @@ export class GameMap {
     for (const label of this.labels) label.setScale(scale).setResolution(resolution);
   }
 
-  /** One frame of every gate on this map. */
-  tickPortals(now: number) {
-    for (const portal of this.portals) portal.tick(now);
-  }
-
   destroy() {
-    for (const portal of this.portals) portal.destroy();
-    this.portals.length = 0;
     for (const decoration of this.decorations) decoration.destroy();
     this.decorations.length = 0;
     this.labels.length = 0;

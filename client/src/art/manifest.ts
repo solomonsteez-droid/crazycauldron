@@ -1,11 +1,22 @@
 /**
  * What the sprite pipeline produced, and where each garment sits on the body.
  *
- * Two files, with different owners. manifest.json is written by
- * `npm run sprites` and describes what exists; offsets.json is written by the
- * alignment tool at /dev/align and records the hand-nudged placement. The
- * manifest carries a computed default for every overlay, so the game looks
- * right before anyone has opened the tool and better afterwards.
+ * Three files, with two owners, and the split is the point.
+ *
+ * `manifest.json` and `offsets.default.json` are written by `npm run sprites`
+ * and may be overwritten on any run: they describe what exists and where the
+ * pipeline computed each overlay should go.
+ *
+ * `art/offsets.overrides.json` is written only by the alignment tool at
+ * /dev/align, is committed, and the pipeline never touches it. It holds only
+ * the values somebody actually changed - per item, per direction - and holds
+ * them **against the body's measured rows** rather than as pixels from the
+ * corner of the frame. A re-cut that shifts the whole figure moves the rows
+ * and the nudges move with them, which is the difference between a re-cut
+ * costing nothing and costing an afternoon.
+ *
+ * The client merges the two at load, per body, so one nudge lands correctly
+ * on every figure that wears the item.
  */
 
 export interface Vec2 {
@@ -58,11 +69,29 @@ export interface WalkCycle {
   strideless?: boolean;
 }
 
+/**
+ * The rows an overlay hangs from, measured off this body's own front idle
+ * frame by the pipeline.
+ *
+ * A hat is placed from where the head starts; a cloak from where the figure
+ * reaches its full width. `centre` is the column the figure sits on, kept for
+ * anything that needs to know and not currently used to place anything - the
+ * frames are centred by construction, so x is already stable across a re-cut
+ * and only y needs anchoring.
+ */
+export interface BodyAnchors {
+  headTop: number;
+  shoulders: number;
+  centre: number;
+}
+
 export interface BodyEntry {
   scale: number;
   frames: string[];
   /** Missing for a body whose walk sheets did not all arrive. */
   walk?: Record<string, WalkCycle>;
+  /** Missing for a manifest written before the rows were measured. */
+  anchors?: BodyAnchors;
 }
 
 /** A companion creature, at the size the pipeline cut it to. */
@@ -160,6 +189,106 @@ export interface ItemOffsets {
 
 export type OffsetsFile = Record<"hats" | "cloaks", Record<string, ItemOffsets>>;
 
+/**
+ * One item's hand nudges: only the directions somebody changed.
+ *
+ * `y` is rows below the anchor for the item's kind, so it survives a re-cut.
+ * `x` is the column in the frame, unchanged, because the pipeline centres
+ * every figure horizontally and there is nothing there to drift.
+ */
+export interface ItemOverride {
+  down?: Vec2;
+  up?: Vec2;
+  left?: Vec2;
+  right?: Vec2;
+  flip?: boolean;
+}
+
+export type OverridesFile = Record<"hats" | "cloaks", Record<string, ItemOverride>>;
+
+/** Everything the placement of a garment depends on. */
+export interface Art {
+  manifest: Manifest;
+  defaults: OffsetsFile;
+  overrides: OverridesFile;
+}
+
+/** The row a kind of overlay hangs from, on a given body. */
+export function anchorRow(manifest: Manifest, body: string, kind: "hats" | "cloaks"): number {
+  const anchors = manifest.bodies[body]?.anchors;
+  if (!anchors) return 0;
+  return kind === "hats" ? anchors.headTop : anchors.shoulders;
+}
+
+/**
+ * The generated default and the hand nudges, resolved into absolute placement
+ * for one body.
+ *
+ * Memoised per art *and* per body: it is read on every frame that places a
+ * garment, and the answer only changes when the art is reloaded. Keyed by the
+ * art object rather than by the body alone, because the body's name is not
+ * enough to identify an answer - the alignment tool holds a second, edited
+ * copy of the same bodies, and a cache that could not tell them apart would
+ * hand the game the tool's unsaved work.
+ */
+const resolved = new WeakMap<Art, Map<string, OffsetsFile>>();
+
+export function resolveOffsets(art: Art, body: string): OffsetsFile {
+  let byBody = resolved.get(art);
+  if (!byBody) {
+    byBody = new Map<string, OffsetsFile>();
+    resolved.set(art, byBody);
+  }
+
+  const hit = byBody.get(body);
+  if (hit) return hit;
+
+  const out: OffsetsFile = { hats: {}, cloaks: {} };
+
+  for (const kind of ["hats", "cloaks"] as const) {
+    const row = anchorRow(art.manifest, body, kind);
+    const ids = new Set([
+      ...Object.keys(art.defaults[kind] ?? {}),
+      ...Object.keys(art.overrides[kind] ?? {}),
+    ]);
+
+    for (const id of ids) {
+      const base =
+        art.defaults[kind]?.[id] ??
+        defaultOffsets(art.manifest[kind]?.find((entry) => entry.id === id));
+      const nudged = art.overrides[kind]?.[id];
+
+      const item: ItemOffsets = {
+        down: { ...base.down },
+        up: { ...base.up },
+        left: { ...base.left },
+        right: { ...base.right },
+        flip: nudged?.flip ?? base.flip,
+      };
+
+      for (const direction of DIRECTIONS) {
+        const over = nudged?.[direction];
+        if (over) item[direction] = { x: over.x, y: over.y + row };
+      }
+
+      out[kind][id] = item;
+    }
+  }
+
+  byBody.set(body, out);
+  return out;
+}
+
+/** Turns an absolute placement back into an override, for the alignment tool. */
+export function toOverride(
+  manifest: Manifest,
+  body: string,
+  kind: "hats" | "cloaks",
+  point: Vec2,
+): Vec2 {
+  return { x: point.x, y: point.y - anchorRow(manifest, body, kind) };
+}
+
 const EMPTY_MANIFEST: Manifest = {
   generatedAt: "",
   bodyFrame: { width: 32, height: 48 },
@@ -189,21 +318,24 @@ async function fetchJson<T>(url: string, fallback: T): Promise<T> {
   }
 }
 
-let cached: { manifest: Manifest; offsets: OffsetsFile } | null = null;
+let cached: Art | null = null;
 
 /** Loads both files once per tab. */
-export async function loadArt(): Promise<{ manifest: Manifest; offsets: OffsetsFile }> {
+export async function loadArt(): Promise<Art> {
   if (cached) return cached;
-  const [manifest, offsets] = await Promise.all([
+  const [manifest, defaults, overrides] = await Promise.all([
     fetchJson<Manifest>(`${GENERATED}/manifest.json`, EMPTY_MANIFEST),
-    fetchJson<OffsetsFile>(`${GENERATED}/offsets.json`, { hats: {}, cloaks: {} }),
+    fetchJson<OffsetsFile>(`${GENERATED}/offsets.default.json`, { hats: {}, cloaks: {} }),
+    fetchJson<OverridesFile>(`${GENERATED}/offsets.overrides.json`, { hats: {}, cloaks: {} }),
   ]);
-  cached = { manifest, offsets };
+  cached = { manifest, defaults, overrides };
   return cached;
 }
 
 /** Forgets the cache, so the alignment tool sees its own saves. */
 export function invalidateArt(): void {
+  // The resolved placements hang off the art object, so dropping it drops
+  // them: a WeakMap has nothing to clear.
   cached = null;
 }
 

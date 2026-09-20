@@ -35,22 +35,41 @@ export const SPRITES = {
    * The "down" offset, because that is the pose the site draws. Fetched
    * rather than imported so that re-nudging a hat in /dev/align changes the
    * marketing page too, without a rebuild of anything but the art.
+   *
+   * Two files, merged the way the game merges them: the pipeline's computed
+   * placement, and the hand nudges on top. A nudge's y is rows below the
+   * body's head top, which is why the manifest is read as well - though on
+   * every body this game currently has, that row is 0.
    */
   async hatOffsets(): Promise<Record<string, { x: number; y: number }>> {
-    try {
-      const res = await fetch(`${GENERATED}/offsets.json`);
-      if (!res.ok) return {};
-      const file = (await res.json()) as {
-        hats?: Record<string, { down?: { x: number; y: number } }>;
-      };
-      const out: Record<string, { x: number; y: number }> = {};
-      for (const [id, poses] of Object.entries(file.hats ?? {})) {
-        if (poses.down) out[id] = poses.down;
+    const read = async <T>(name: string): Promise<T | null> => {
+      try {
+        const res = await fetch(`${GENERATED}/${name}`);
+        return res.ok ? ((await res.json()) as T) : null;
+      } catch {
+        return null;
       }
-      return out;
-    } catch {
-      return {};
+    };
+
+    type Placements = { hats?: Record<string, { down?: { x: number; y: number } }> };
+
+    const [defaults, overrides, manifest] = await Promise.all([
+      read<Placements>("offsets.default.json"),
+      read<Placements>("offsets.overrides.json"),
+      read<{ bodies?: Record<string, { anchors?: { headTop?: number } }> }>("manifest.json"),
+    ]);
+
+    const headTop = manifest?.bodies?.male?.anchors?.headTop ?? 0;
+    const out: Record<string, { x: number; y: number }> = {};
+
+    for (const [id, poses] of Object.entries(defaults?.hats ?? {})) {
+      if (poses.down) out[id] = poses.down;
     }
+    for (const [id, poses] of Object.entries(overrides?.hats ?? {})) {
+      if (poses.down) out[id] = { x: poses.down.x, y: poses.down.y + headTop };
+    }
+
+    return out;
   },
 };
 

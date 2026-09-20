@@ -77,7 +77,7 @@ export const propKey = (id: string) => `prop:${id}`;
  * survived the move to painted maps, because it marks a thing the painting
  * does not depict.
  */
-export const UNUSED_GATE_ART: Record<number, string> = {
+export const GATE_PROP: Record<number, string> = {
   1: "portal_meadows",
   2: "portal_forest",
   3: "portal_caves",
@@ -136,15 +136,13 @@ export function queueArt(scene: Phaser.Scene, manifest: Manifest): void {
     scene.load.image(companionKey(companion.id), `${GENERATED}/companions/${companion.id}.png`);
   }
   /*
-   * No props are loaded at all now.
-   *
-   * The buildings, the ground and the shrubs are painted into the maps, and
-   * the three gate arches - the last props still drawn - are built in code
-   * by world/portal.ts. A painted arch is one picture, and a gate is the
-   * loudest object in the hub: it has to turn, glow and throw motes, which
-   * a picture cannot. The source drawings and the cut props are still on
-   * disk and are named by UNUSED_GATE_ART; nothing fetches them.
+   * Of the generated props only the three gate arches are loaded. The
+   * buildings, the ground and the shrubs are painted into the maps; an arch
+   * over a path mouth is not, and without one a gate is a patch of dirt.
    */
+  for (const id of Object.values(GATE_PROP)) {
+    scene.load.image(propKey(id), `${GENERATED}/props/${id}.png`);
+  }
 
   for (const recipeId of manifest.dishes ?? []) {
     scene.load.image(dishKey(recipeId), `${GENERATED}/dishes/${recipeId}.png`);

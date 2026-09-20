@@ -288,53 +288,6 @@ export interface AreaFile {
   generatedAt?: string;
 }
 
-// --- portals ---------------------------------------------------------------
-
-/** How one gate is built. The three the game has are stone, trunks and crystal. */
-export type PortalStyle = "stone" | "trunks" | "crystal";
-
-export interface PortalDef {
-  /** The map this gate leads to. 0 is the way home, used by every biome. */
-  section: number;
-  name: string;
-  style: PortalStyle;
-  /** Three shades of whatever the arch is made of: mid, dark, light. */
-  stone: [string, string, string];
-  vortex: string;
-  vortexCore: string;
-  glow: string;
-  vine: string;
-  vineLight: string;
-  flowers: string[];
-  mote: string;
-  moteEveryMs: number;
-  petal: string;
-  petalEveryMs: number;
-  /** Multiplies the glow's pulse. The caves use it; nothing else has to. */
-  glowPulse?: number;
-}
-
-export interface PortalDefaults {
-  widthChars: number;
-  heightChars: number;
-  charWidthPx: number;
-  charHeightPx: number;
-  pulseMs: number;
-  glowAlphaMin: number;
-  glowAlphaMax: number;
-  /** Milliseconds per turn, per spiral layer. Negative turns the other way. */
-  spinMs: number[];
-  spiralScale: number[];
-  spiralAlpha: number[];
-  spiralArms: number[];
-  alphaSteps: number;
-}
-
-export interface PortalsFile {
-  defaults: PortalDefaults;
-  portals: PortalDef[];
-}
-
 // --- ambience --------------------------------------------------------------
 
 /** One of the hub's residents, as authored. */

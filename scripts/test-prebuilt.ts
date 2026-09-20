@@ -159,7 +159,7 @@ function main(): void {
   console.log("\n-- the art counts as source --");
   check(
     "the offsets are hashed",
-    explained().includes("client/public/assets/generated/offsets.json"),
+    explained().includes("client/public/assets/generated/offsets.default.json"),
   );
   check(
     "and so are the painted maps",

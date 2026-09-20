@@ -8,7 +8,21 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
 const GENERATED = path.join(here, "public", "assets", "generated");
 const AREA_MAPS = path.join(repoRoot, "shared", "src", "content", "maps");
-const OFFSETS = path.join(GENERATED, "offsets.json");
+/**
+ * The two halves of a garment's placement, and who owns each.
+ *
+ * OVERRIDES is authored: it lives in art/ beside the drawings, it is
+ * committed, and only the alignment tool writes it. OVERRIDES_MIRROR is the
+ * copy the browser fetches, because art/ is not served by this dev server or
+ * by the Express one - the sprite pipeline writes the same copy, and writing
+ * both here is what makes a save visible without a pipeline run.
+ *
+ * The generated half, offsets.default.json, is not written here at all. It
+ * belongs to the pipeline, and the two being one file is what used to make
+ * every re-cut either clobber somebody's nudges or invalidate them.
+ */
+const OVERRIDES = path.join(repoRoot, "art", "offsets.overrides.json");
+const OVERRIDES_MIRROR = path.join(GENERATED, "offsets.overrides.json");
 
 /** Reads a JSON request body, with a ceiling so a bad client cannot fill memory. */
 function readJson(req: { on: (event: string, cb: (chunk: Buffer) => void) => void }): Promise<unknown> {
@@ -58,17 +72,27 @@ function devAlign(): Plugin {
           return next();
         }
 
-        if (url === "/dev/offsets" && req.method === "POST") {
+        if (url === "/dev/overrides" && req.method === "POST") {
           const chunks: Buffer[] = [];
           req.on("data", (chunk: Buffer) => chunks.push(chunk));
           req.on("end", () => {
             try {
               const body = Buffer.concat(chunks).toString("utf8");
               JSON.parse(body); // Refuse to write anything that is not JSON.
-              fs.mkdirSync(path.dirname(OFFSETS), { recursive: true });
-              fs.writeFileSync(OFFSETS, `${body}\n`);
+
+              for (const file of [OVERRIDES, OVERRIDES_MIRROR]) {
+                fs.mkdirSync(path.dirname(file), { recursive: true });
+                fs.writeFileSync(file, `${body}\n`);
+              }
+
               res.statusCode = 200;
-              res.end(JSON.stringify({ ok: true, wrote: path.relative(repoRoot, OFFSETS) }));
+              res.end(
+                JSON.stringify({
+                  ok: true,
+                  wrote: path.relative(repoRoot, OVERRIDES),
+                  mirrored: path.relative(repoRoot, OVERRIDES_MIRROR),
+                }),
+              );
             } catch (err) {
               res.statusCode = 400;
               res.end(JSON.stringify({ ok: false, error: (err as Error).message }));

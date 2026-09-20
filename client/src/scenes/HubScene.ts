@@ -66,7 +66,7 @@ import { Avatar } from "../world/avatar.js";
 import { Effects } from "../world/effects.js";
 import { Ambience } from "../world/ambience.js";
 import { sound } from "../world/sound.js";
-import { directionFor, directionForVector, loadArt, type Manifest, type OffsetsFile } from "../art/manifest.js";
+import { directionFor, directionForVector, loadArt, type Art, type Manifest } from "../art/manifest.js";
 import { WalkDebug, type VectorSource } from "../dev/walkDebug.js";
 import { Companion } from "../world/companion.js";
 import {
@@ -166,7 +166,14 @@ export class HubScene extends Phaser.Scene {
   private marker!: Phaser.GameObjects.Image;
   private readonly avatars = new Map<string, AvatarEntry>();
   private manifest!: Manifest;
-  private artOffsets!: OffsetsFile;
+  /**
+   * The generated defaults and the hand nudges, unresolved.
+   *
+   * Unresolved because resolving needs a body, and an avatar knows its own -
+   * one nudge in /dev/align then lands correctly on every figure that wears
+   * the item rather than on whichever body happened to be previewed.
+   */
+  private art!: Art;
   private fx!: Effects;
   private ambience!: Ambience;
   /** Hub residents, kept apart from players so neither list has to filter. */
@@ -225,7 +232,7 @@ export class HubScene extends Phaser.Scene {
     // Boot has already fetched these; this resolves from its cache.
     void loadArt().then((art) => {
       this.manifest = art.manifest;
-      this.artOffsets = art.offsets;
+      this.art = art;
     });
     this.departing = false;
     this.pending = null;
@@ -341,7 +348,6 @@ export class HubScene extends Phaser.Scene {
 
     // Grass, water, lanterns and the light shaft, one frame on.
     this.ambience.tick(now);
-    this.map.tickPortals(now);
 
     // Everyone in the room breathes, fidgets and dances - the motion is
     // procedural, so it costs the same for one player or thirty.
@@ -397,7 +403,7 @@ export class HubScene extends Phaser.Scene {
 
   private buildMap(mapId: number) {
     this.map?.destroy();
-    this.map = new GameMap(this, mapId, this.fx);
+    this.map = new GameMap(this, mapId);
     this.currentSection = mapId;
     this.map.applyLabelScale(this.zoom);
     this.refreshNodes();
@@ -1132,7 +1138,7 @@ export class HubScene extends Phaser.Scene {
     const avatar = new Avatar(
       this,
       this.manifest,
-      this.artOffsets,
+      this.art,
       {
         body: villager.body || "male",
         hatId: villager.hatId ?? "",
@@ -1241,7 +1247,7 @@ export class HubScene extends Phaser.Scene {
     const avatar = new Avatar(
       this,
       this.manifest,
-      this.artOffsets,
+      this.art,
       {
         body: player.body || "male",
         hatId: player.hatId ?? "",

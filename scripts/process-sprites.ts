@@ -128,7 +128,67 @@ function readGrid(file: string): { clean: Img; cells: Rect[] } | null {
  * anchoring at the feet means a garment offset is true in every frame; the bob
  * is supplied procedurally instead.
  */
-function buildBody(body: "male" | "female"): { frames: Frame[]; scale: number } | null {
+/**
+ * The two rows an overlay hangs from, measured off the finished body.
+ *
+ * A hat sits on the head, so it is placed from the row the head starts on; a
+ * cloak hangs from the shoulders, so it is placed from the row the figure
+ * first reaches its full width. Both are measured rather than assumed,
+ * because the whole reason they exist is that a re-cut moves them: a drawing
+ * cropped two pixels differently shifts every absolute offset in the file
+ * and every hand nudge with it. Expressed against these rows, a nudge keeps
+ * meaning what it meant.
+ *
+ * `centre` is the column the figure is centred on, which is BODY_W / 2 by
+ * construction - it is measured anyway, so that a body blitted off-centre
+ * some day does not silently take every hat with it.
+ */
+export interface BodyAnchors {
+  headTop: number;
+  shoulders: number;
+  centre: number;
+}
+
+/** Where the head starts, where the shoulders are, and the centre line. */
+function measureAnchors(frame: Img): BodyAnchors {
+  const widths: number[] = [];
+  let centreSum = 0;
+  let centreCount = 0;
+
+  for (let y = 0; y < frame.height; y += 1) {
+    let min = Infinity;
+    let max = -Infinity;
+    for (let x = 0; x < frame.width; x += 1) {
+      if ((frame.data[(y * frame.width + x) * 4 + 3] ?? 0) < 40) continue;
+      min = Math.min(min, x);
+      max = Math.max(max, x);
+      centreSum += x;
+      centreCount += 1;
+    }
+    widths.push(max < min ? 0 : max - min + 1);
+  }
+
+  const headTop = widths.findIndex((w) => w > 0);
+  const widest = Math.max(...widths);
+
+  /*
+   * The shoulders are the first row that is most of the way to the widest
+   * the figure ever gets, searched below the head. Seven tenths rather than
+   * all of it: the widest row is usually mid-stride with an arm out, and a
+   * cloak hangs from where the body broadens, not from the elbow.
+   */
+  const shoulders = widths.findIndex((w, y) => y > headTop && w >= widest * 0.7);
+
+  return {
+    headTop: headTop < 0 ? 0 : headTop,
+    shoulders: shoulders < 0 ? Math.round(frame.height * 0.25) : shoulders,
+    centre: centreCount === 0 ? Math.round(frame.width / 2) : Math.round(centreSum / centreCount),
+  };
+}
+
+function buildBody(
+  body: "male" | "female",
+): { frames: Frame[]; scale: number; anchors: BodyAnchors } | null {
   const idleFile = path.join(SRC, "characters", `${body}_idle.png`);
   if (!exists(idleFile)) {
     note("skipped", `${body}_idle.png - missing, cannot build ${body}`);
@@ -206,7 +266,17 @@ function buildBody(body: "male" | "female"): { frames: Frame[]; scale: number } 
     );
   }
 
-  return { frames, scale };
+  const front = frames.find((f) => f.name === `${body}_idle_down`) ?? frames[0];
+  const anchors = front
+    ? measureAnchors(front.img)
+    : { headTop: 0, shoulders: Math.round(BODY_H * 0.25), centre: Math.round(BODY_W / 2) };
+
+  note(
+    "made",
+    `${body}: head-top row ${anchors.headTop}, shoulders row ${anchors.shoulders}, centre column ${anchors.centre}`,
+  );
+
+  return { frames, scale, anchors };
 }
 
 interface AtlasFrame {
@@ -263,6 +333,132 @@ function writeSheet(name: string, frames: Frame[]): void {
 // --------------------------------------------------------------------------
 // Overlays
 // --------------------------------------------------------------------------
+
+// --------------------------------------------------------------------------
+// Offsets: the generated half
+// --------------------------------------------------------------------------
+
+/** Where the alignment tool's hand nudges live. Never written by this file. */
+const OVERRIDES_SOURCE = path.join(ROOT, "art", "offsets.overrides.json");
+
+interface Vec2 {
+  x: number;
+  y: number;
+}
+interface ItemOffsets {
+  down: Vec2;
+  up: Vec2;
+  left: Vec2;
+  right: Vec2;
+  flip: boolean;
+}
+type OffsetsFile = Record<"hats" | "cloaks", Record<string, ItemOffsets>>;
+
+/**
+ * The computed placement for every overlay, as its own file.
+ *
+ * Split from the hand-tuned one, and that split is the whole point. There
+ * used to be a single offsets.json holding both, so every re-cut either
+ * clobbered the nudges or left them describing a body that had moved
+ * underneath them - and either way somebody had to redo an afternoon's work.
+ * This file is generated and may be overwritten freely;
+ * art/offsets.overrides.json is written only by the alignment tool and only
+ * ever read here.
+ */
+function writeDefaultOffsets(overlays: {
+  hats: { id: string; offset: Vec2 }[];
+  cloaks: { id: string; offset: Vec2 }[];
+}): void {
+  const file = path.join(OUT, "offsets.default.json");
+  const previous = readJsonOr<OffsetsFile>(file, { hats: {}, cloaks: {} });
+
+  const built: OffsetsFile = { hats: {}, cloaks: {} };
+  for (const kind of ["hats", "cloaks"] as const) {
+    for (const entry of overlays[kind]) {
+      const base = entry.offset ?? { x: 0, y: 0 };
+      built[kind][entry.id] = {
+        down: { ...base },
+        up: { ...base },
+        left: { ...base },
+        right: { ...base },
+        flip: true,
+      };
+    }
+  }
+
+  reportDefaultDrift(previous, built);
+
+  fs.writeFileSync(file, `${JSON.stringify(built, null, 2)}\n`);
+  note("made", "generated/offsets.default.json");
+}
+
+/** How far this item's computed placement has moved since the last run. */
+const DRIFT_PX = 2;
+
+/**
+ * Names every item whose computed placement moved more than two pixels.
+ *
+ * A note, not a change. An override is a statement about where a hat should
+ * sit, and a re-cut moving the default underneath it does not make that
+ * statement wrong - but it might, so the person who wrote it is told which
+ * items to look at. Nothing is deleted, and nothing is adjusted.
+ */
+function reportDefaultDrift(before: OffsetsFile, after: OffsetsFile): void {
+  const overrides = readJsonOr<OffsetsFile>(OVERRIDES_SOURCE, { hats: {}, cloaks: {} });
+
+  for (const kind of ["hats", "cloaks"] as const) {
+    for (const [id, now] of Object.entries(after[kind])) {
+      const was = before[kind]?.[id];
+      if (!was) continue;
+
+      const moved = Math.max(
+        Math.abs(now.down.x - was.down.x),
+        Math.abs(now.down.y - was.down.y),
+      );
+      if (moved <= DRIFT_PX) continue;
+
+      const nudged = overrides[kind]?.[id] !== undefined;
+      suspect.push(
+        `${id}: its computed placement moved ${moved}px in this run ` +
+          `(${was.down.x},${was.down.y} -> ${now.down.x},${now.down.y})` +
+          (nudged
+            ? " and you have hand-tuned it - worth re-checking in /dev/align. The override is untouched."
+            : " - worth a look in /dev/align."),
+      );
+    }
+  }
+}
+
+/**
+ * Copies the hand-tuned file where a browser can fetch it.
+ *
+ * The source of truth lives in art/ because it is authored, not generated,
+ * and art/ is not served. Rather than teach two servers to serve one file,
+ * the pipeline mirrors it into generated/ alongside everything else the
+ * client loads. A missing source produces an empty mirror, which is what an
+ * install with no nudges in it should look like.
+ */
+function mirrorOverrides(): void {
+  const overrides = readJsonOr<OffsetsFile>(OVERRIDES_SOURCE, { hats: {}, cloaks: {} });
+  fs.writeFileSync(
+    path.join(OUT, "offsets.overrides.json"),
+    `${JSON.stringify(overrides, null, 2)}\n`,
+  );
+
+  const count = ["hats", "cloaks"].reduce(
+    (total, kind) => total + Object.keys(overrides[kind as "hats"] ?? {}).length,
+    0,
+  );
+  note("made", `generated/offsets.overrides.json (${count} hand-tuned item(s), copied from art/)`);
+}
+
+function readJsonOr<T>(file: string, fallback: T): T {
+  try {
+    return JSON.parse(fs.readFileSync(file, "utf8")) as T;
+  } catch {
+    return fallback;
+  }
+}
 
 // --------------------------------------------------------------------------
 // Walk cycles
@@ -1243,7 +1439,12 @@ function main() {
   // --- bodies -------------------------------------------------------------
   const bodies: Record<
     string,
-    { scale: number; frames: string[]; walk: Record<string, WalkCycle> }
+    {
+      scale: number;
+      frames: string[];
+      walk: Record<string, WalkCycle>;
+      anchors: BodyAnchors;
+    }
   > = {};
   const cycles: Record<string, Record<string, WalkCycle>> = {};
   let baseForOverlays: OverlayBase | null = null;
@@ -1267,7 +1468,12 @@ function main() {
     }
     cycles[body] = walk;
 
-    bodies[body] = { scale: built.scale, frames: built.frames.map((f) => f.name), walk };
+    bodies[body] = {
+      scale: built.scale,
+      frames: built.frames.map((f) => f.name),
+      walk,
+      anchors: built.anchors,
+    };
 
     // The overlays are diffed against the male front pose, which is the figure
     // every hat and cloak drop is fitted against.
@@ -1394,6 +1600,9 @@ function main() {
   };
   fs.writeFileSync(path.join(OUT, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
   note("made", "generated/manifest.json");
+
+  writeDefaultOffsets(overlays);
+  mirrorOverrides();
 
   report();
 }
