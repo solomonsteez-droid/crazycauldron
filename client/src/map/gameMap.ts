@@ -194,14 +194,29 @@ export class GameMap {
 
     const centre = zoneCentre(zone);
     const at = cellToWorld(centre.tileX, centre.tileY);
+
+    /*
+     * The base of the arch sits on the gate cell, and the art grows upward
+     * from there - origin (0.5, 1) on the bottom edge of the baseline row. A
+     * player walking to the gate stands in front of its foot rather than
+     * inside it.
+     */
     const sprite = this.scene.add
       .image(at.x, (zone.baseline + 1) * CELL, key)
       .setOrigin(0.5, 1)
       .setDepth(this.depthFor(zone.baseline));
 
-    const width = zone.w * CELL;
-    sprite.setDisplaySize(width, (sprite.height / sprite.width) * width);
-    sprite.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    /*
+     * Drawn at the size it was cut, and drawn smoothly.
+     *
+     * The pipeline sizes a portal by height - three characters - because that
+     * is what makes it read as a doorway rather than as scenery. Stretching it
+     * to the zone's width instead would make an arch over a two-cell gate
+     * squat and one over a four-cell gate enormous, for no reason a player
+     * could see. LINEAR because it is a painting: NEAREST on a downscaled
+     * painting is the one thing that makes it look like a mistake.
+     */
+    sprite.texture.setFilter(Phaser.Textures.FilterMode.LINEAR);
     return sprite;
   }
 

@@ -637,6 +637,14 @@ function auditOverlays(overlays: { hats: OverlayResult[]; cloaks: OverlayResult[
 // --------------------------------------------------------------------------
 
 /** Buildings take a 2x2 tile footprint, portals 1x2, small props one. Height is free. */
+/**
+ * How tall a portal stands, in character heights.
+ *
+ * Three: tall enough to read as a way out of the picture from across the
+ * plaza, short enough that it does not cover the path behind it.
+ */
+const PORTAL_CHARACTER_HEIGHTS = 3;
+
 function buildProp(file: string, id: string, footprint: "building" | "portal" | "small"): void {
   const cleaned = denoise(removeChroma(load(file)));
   const bounds = alphaBounds(cleaned);
@@ -646,6 +654,30 @@ function buildProp(file: string, id: string, footprint: "building" | "portal" | 
   }
 
   const cut = crop(cleaned, bounds);
+
+  /*
+   * A portal is a painting, and is cut like one.
+   *
+   * The rest of the props are pixel art: quantised to a palette and drawn at
+   * 32 or 64 pixels, which is right for a thing that sits among sprites. A
+   * portal sits on a painted map, at the mouth of a painted path, and a
+   * quantised 32px arch in front of a 2688px painting reads as a sticker on a
+   * photograph. So it keeps its own colours and is sized by height rather than
+   * width - three characters tall, whatever that makes it wide.
+   */
+  if (footprint === "portal") {
+    const height = BODY_H * PORTAL_CHARACTER_HEIGHTS;
+    const width = Math.max(8, Math.round((cut.width / cut.height) * height));
+    // Averaged, and not quantised: the gradients in the arch are the point.
+    save(path.join(OUT, "props", `${id}.png`), downscaleAveraged(cut, width, height));
+    note(
+      "made",
+      `generated/props/${id}.png ${width}x${height} - painted, ` +
+        `${PORTAL_CHARACTER_HEIGHTS} characters tall, no quantise`,
+    );
+    return;
+  }
+
   const targetW = footprint === "building" ? 64 : 32;
   const height = Math.max(16, Math.round((cut.height / cut.width) * targetW));
 
